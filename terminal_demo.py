@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 
 from market_session import ET, calendar, rth_bounds
+from terminal_data import valid_date
 from tradytics_feed import Feed, Snapshot
 
 DEMO_AT = datetime(2026, 11, 6, 17, 16, 20, tzinfo=timezone.utc)
@@ -83,37 +84,60 @@ class DemoStore:
                 "time": (DEMO_AT - timedelta(minutes=1, seconds=20)).isoformat(), "date": str(self.day), "spot": self.spot,
                 "total": sum(r["net"] for r in rows) if selected else None, "rows": rows if selected else [],
                 "levels": {"call_wall": self.center + 4 * self.step, "put_wall": self.center - 4 * self.step,
-                           "flip": self.center - self.step, "max_pain": self.center}}
+                           "flip": self.center - self.step, "max_pain": self.center} if selected else {}}
 
-    def flow_timeline(self, interval, dte):
-        start, _ = rth_bounds(str(self.day))
+    def flow_timeline(self, interval, dte, day, symbol):
+        bounds = rth_bounds(day)
+        if not bounds or day > self.day or not any(row["time"].startswith(str(day)) for row in self.bars):
+            return []
+        start, close = bounds
         minutes = int(interval.removesuffix("m")) if interval in ("1m", "5m", "15m") else 60
-        factor = .54 if dte == 0 else .83 if dte == 7 else 1
+        factor = sum(weight for days, weight in ((0, .45), (3, .15), (7, .16), (14, .12), (42, .12))
+                     if dte is None or days <= dte)
+        seed = zlib.crc32((symbol or "market").encode())
+        scale = 1 + seed % 7 / 6
+        lean = 1 if seed % 4 else -1
+        prices = {row["time"]: row["close"] for row in self.bars} if symbol in (None, self.ticker) else {}
         rows = []
-        for i in range(int((DEMO_AT - start).total_seconds() // 60) // minutes):
-            call = round(factor * minutes / 5 * (270000 + 1050000 * math.sin(i * minutes / 29) + 210000 * math.cos(i * minutes / 5)))
-            put = round(factor * minutes / 5 * (-630000 + 690000 * math.cos(i * minutes / 34)))
-            rows.append({"time": (start + timedelta(minutes=i * minutes)).isoformat(), "date": str(self.day),
+        for i in range(int((min(DEMO_AT, close) - start).total_seconds() // 60) // minutes):
+            stamp = start + timedelta(minutes=i * minutes)
+            call = round(lean * scale * factor * minutes / 5 * (270000 + 1050000 * math.sin(i * minutes / 29) + 210000 * math.cos(i * minutes / 5)))
+            put = round(lean * scale * factor * minutes / 5 * (-630000 + 690000 * math.cos(i * minutes / 34)))
+            rows.append({"time": stamp.isoformat(), "date": str(day), "symbol": symbol,
                          "call_premium_usd": call, "put_premium_usd": put, "net_premium_usd": call - put,
-                         "put_call_ratio": .82 + .21 * math.sin(i / 5), "prints": 36 + i % 17})
+                         "net_delta_usd": 7 * (call - put), "price": prices.get((stamp + timedelta(minutes=minutes - 1)).isoformat()),
+                         "put_call_ratio": .82 + .21 * math.sin(i / 5), "prints": round(factor * (36 + i % 17))})
         return rows
 
-    def options_tape(self):
+    def options_tape(self, day=None):
+        day = day or self.day
+        bounds = rth_bounds(day)
+        if not bounds:
+            return []
+        start, end = bounds
+        now = min(DEMO_AT, end)
+        minute_prices = {row["time"]: row["close"] for row in self.bars}
+        expiries = [str(day + timedelta(days=n)) for n in (0, 3, 7, 14, 42)]
         rows = []
         for i in range(90):
-            expiry = self.expiries[i % len(self.expiries)]
+            stamp = now - timedelta(seconds=13 + 103*i)
+            if stamp < start:
+                break
+            expiry = expiries[i % len(expiries)]
             kind = ("sweep", "block", "single", "split")[i % 4]
-            option_type = "call" if i % 4 != 2 else "put"
+            option_type = "call" if i % 4 in (0, 3) else "put"
             strike = self.center + (i % 13 - 6) * self.step
             price = round(.77 + (i % 9) * .41, 2)
             size = 300 + (89 - i) * 29
-            rows.append({"id": 10600 - i, "time": (DEMO_AT - timedelta(seconds=13 + 38*i)).isoformat(),
+            minute = stamp.replace(second=0, microsecond=0) - timedelta(minutes=1)
+            rows.append({"id": 10600 - i, "time": stamp.isoformat(),
                          "symbol": self.ticker, "type": option_type, "strike": strike, "expiry": expiry,
-                         "dte": (datetime.fromisoformat(expiry).date() - self.day).days, "price": price, "size": size,
+                         "dte": (datetime.fromisoformat(expiry).date() - day).days, "price": price, "size": size,
                          "contract": f"{self.ticker}{expiry[2:].replace('-', '')}{option_type[0].upper()}{int(strike*1000):08d}",
                          "premium_usd": round(price * size * 100), "side": ("bought", "sold", "bought", "mid")[i % 4],
-                         "side_checked": i > 1, "kind": kind, "condition": "spread" if i % 7 == 3 else None,
-                         "opening": i % 7 == 0, "open_interest": 2400 + i * 211, "spot": self.spot})
+                         "side_checked": i > 1, "aggression": (2, -2, 3, 0)[i % 4], "kind": kind,
+                         "bid": round(price - .04, 2), "ask": price, "condition": "spread" if i % 7 == 3 else None,
+                         "opening": i % 7 == 0, "open_interest": 2400 + i * 211, "spot": minute_prices.get(minute.isoformat())})
         return rows
 
     def get(self, name, **params):
@@ -130,15 +154,20 @@ class DemoStore:
                                  "low": base * .995, "close": base, "volume": 30000000 + i*251000})
             else:
                 data = self.bars
+            data = [row for row in data if params.get("from", "0000") <= row["time"][:10] <= params.get("to", "9999")]
+        elif name == "expirations":
+            data = [{"expiry": e, "dte": (valid_date(e) - self.day).days, "contracts": 140, "strikes": 70, "cycle": "weekly"}
+                    for e in self.expiries]
         elif name == "breadth":
             data = {"up": 648, "down": 391, "total": 1068, "strong_up": 54, "strong_down": 28,
                     "equal_weight_change_pct": .43, "cap_weight_change_pct": .64}
         elif name == "exposure":
             data = self.exposure(params.get("greek", "gamma"), params.get("by", "strike"), params.get("dte"), params.get("expiry"))
         elif name == "timeline":
-            data = self.flow_timeline(params.get("interval", "5m"), params.get("dte"))
+            data = self.flow_timeline(params.get("interval", "5m"), params.get("dte"),
+                                      valid_date(params.get("date")) or self.day, params.get("symbol"))
         elif name in ("flow", "chain"):
-            data = self.options_tape()
+            data = self.options_tape(valid_date(params.get("date")))
             if name == "chain":
                 data = [{**row, "bid": round(row["price"] - .03, 2), "ask": round(row["price"] + .03, 2), "iv": .164 + i * .0015,
                          "delta": (-1 if row["type"] == "put" else 1) * (.14 + (i % 17) / 30), "gamma": .02, "theta": -.12,
@@ -151,6 +180,27 @@ class DemoStore:
                 data = [row for row in data if row["dte"] <= dte]
             if params.get("min_premium"):
                 data = [row for row in data if row["premium_usd"] >= params["min_premium"]]
+            if params.get("opening"):
+                data = [row for row in data if row["opening"]]
+        elif name in ("leaders", "screener"):
+            names = ("NVDA", "TSLA", "AMD", "AVGO", "META", "MSFT", "AMZN", "MU", "ORCL", "COIN", "AAPL", "PLTR")
+            nets = (80.7, 62.7, 36.5, 18.7, -18.8, 15.7, 14.3, 21.9, -10.3, 22.7, -8.9, -14.1)
+            data = [{"symbol": ticker, "sector": "Technology", "net_premium_usd": net * 1e6,
+                     "premium_usd": abs(net) * 2.5e6, "premium_vs_average": 1.2 + i * .23, "date": str(self.day)}
+                    for i, (ticker, net) in enumerate(zip(names, nets))]
+            if name == "screener":
+                data = [{**row, "price": PRICES.get(row["symbol"], 144.0), "relative_volume": 1 + i*.12,
+                         "options_premium_usd": row["premium_usd"], "options_net_premium_usd": row["net_premium_usd"],
+                         "options_premium_relative": row["premium_vs_average"], "change_pct": i*.27 - 1.6,
+                         "iv_rank": 20 + i*4, "iv_change": i*.22, "dark_pool_value_usd": row["premium_usd"] * 1.3}
+                        for i, row in enumerate(data) if params.get("kind", "stock") == "stock" and
+                        row["premium_usd"] >= params.get("min_options_premium_usd", 0)]
+                data = sorted(data, key=lambda row: row.get(params.get("sort"), 0), reverse=params.get("order") != "asc")
+            elif params.get("by") == "sector":
+                data = [{**data[0], "sector": sector, "net_premium_usd": net * 1e6}
+                        for sector, net in (("Technology", 157), ("Energy", 48), ("Health Care", -22), ("Financial Services", -31))]
+            if name == "leaders":
+                data = [row for row in data if (row["net_premium_usd"] > 0) == (params.get("direction") != "bearish")]
         elif name == "volatility":
             data = {"date": str(self.day), "symbol": self.ticker, "underlying_price": self.spot, "atm_iv_30d": .164,
                     "iv_rank": .24, "iv_percentile": .37, "realized_vol_20d": .136, "realized_vol_30d": .142, "vrp": .022,
@@ -190,4 +240,6 @@ class DemoStore:
                 data.append({"date": d.date().isoformat(), "close": self.spot * (.966 + i*.0009), "net_gamma_usd": (math.sin(i/3) + .45)*1.1e9,
                              "net_delta": (math.cos(i/4) + .7)*1.5e7, "atm_iv_30d": .167 + .025*math.sin(i/7),
                              "realized_vol_20d": .148 + .019*math.cos(i/6), "dark_notional_usd": (2.5 + math.sin(i/2))*1e9})
-        return Feed(Snapshot(data, {"date": str(self.day), "as_of": DEMO_AT.isoformat()}, DEMO_AT))
+        if isinstance(data, list) and params.get("limit"):
+            data = data[:params["limit"]]
+        return Feed(Snapshot(data, {"date": params.get("date", str(self.day)), "as_of": DEMO_AT.isoformat()}, DEMO_AT))

@@ -33,6 +33,8 @@ ENDPOINTS = {
     "breadth": Endpoint("/market/breadth", "Market breadth", "market", 60),
     "timeline": Endpoint("/options/flow/timeline", "Net options flow", "options", 20),
     "flow": Endpoint("/options/flow", "Options tape", "options", 12),
+    "leaders": Endpoint("/options/flow/leaders", "Options flow leaders", "options", 60),
+    "expirations": Endpoint("/options/expirations", "Listed expirations", "options", 300),
     "exposure": Endpoint("/options/exposure", "Dealer positioning", "options", 45),
     "exposure_history": Endpoint("/options/exposure/history", "Daily exposure", "options", 600),
     "chain": Endpoint("/options/chain", "Option chain", "options", 35),
@@ -44,6 +46,7 @@ ENDPOINTS = {
     "signals": Endpoint("/signals", "Tradytics signals", "signals", 35),
     "signal": Endpoint("/signals/{id}", "Signal detail", "signals", 60),
     "performance": Endpoint("/signals/performance", "Signal performance", "signals", 300),
+    "screener": Endpoint("/screener/stocks", "Stock screener", "scanner", 300),
 }
 
 
@@ -76,7 +79,7 @@ class Feed:
         if isinstance(data, list):
             return [row for row in data if isinstance(row, dict)]
         if isinstance(data, dict):
-            for name in ("rows", "items", "prints", "bars", "quotes", "levels", "signals", "results", "contracts", "indices"):
+            for name in ("rows", "items", "prints", "bars", "quotes", "levels", "signals", "results", "contracts", "indices", "expirations"):
                 if isinstance(data.get(name), list):
                     return [row for row in data[name] if isinstance(row, dict)]
         return []
@@ -163,8 +166,9 @@ class TradyticsClient:
                 raise FeedError("INPUT", "Choose a signal to inspect.") from None
             path = path.format(id=signal_id)
         self._reserve(endpoint.scope)
-        query = {key: value for key, value in params.items() if value is not None and key != "apiKey"}
-        headers = {"Accept": "application/json", "User-Agent": "QuantDesk/2.0"}
+        query = {key: str(value).lower() if isinstance(value, bool) else value
+                 for key, value in params.items() if value is not None and key != "apiKey"}
+        headers = {"Accept": "application/json", "User-Agent": "QuantDesk/2.1"}
         if self.auth_mode == "bearer":
             headers["Authorization"] = f"Bearer {self._key}"
         else:
@@ -207,7 +211,7 @@ class TradyticsClient:
         if not isinstance(payload, dict) or "data" not in payload or not isinstance(payload["data"], (dict, list, type(None))):
             raise FeedError("FORMAT ERROR", f"Unexpected Tradytics response for {endpoint.label}.")
         meta = dict(payload["meta"]) if isinstance(payload.get("meta"), dict) else {}
-        for field in ("as_of", "date", "session", "symbol", "timeframe", "count"):
+        for field in ("as_of", "date", "session", "symbol", "timeframe", "count", "scan_as_of", "quote_as_of", "delay_minutes"):
             if field in payload and field not in meta:
                 meta[field] = payload[field]
         cursor = payload.get("next_cursor")
@@ -284,7 +288,7 @@ class FeedStore:
         day = datetime.now(ET).date().isoformat()
         # Rebase the tape every 75 seconds so final NBBO classifications and
         # cancellations replace provisional rows. Dates use a fresh snapshot.
-        tape = name == "flow" and not params.get("date")
+        tape = name == "flow" and not any(params.get(p) for p in ("date", "from", "to", "cursor", "since"))
         old_rows = Feed(previous).rows if tape and previous and market_day == day else []
         oldest_first_cursor = max((i for row in old_rows if (i := _print_id(row)) is not None), default=None)
         if oldest_first_cursor is None or now - head_at >= 75:

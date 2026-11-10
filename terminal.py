@@ -1,4 +1,4 @@
-"""Quant Desk 2.0. Single local dashboard for Tradytics and the Webull model."""
+"""Quant Desk 2.1, with Tradytics data and the optional Webull model."""
 from __future__ import annotations
 
 import hashlib
@@ -11,28 +11,34 @@ from dotenv import dotenv_values
 
 from data_utils import DataError
 from live_engine import LiveEngine, data_quality
-from market_session import session_state
+from market_session import active_session, session_state
 from settings import ROOT, Settings
-from terminal_data import EXPIRY_DTE, EXPIRY_LABELS, INDICES, et_time, numeric, quote_row, status, ticker_symbol
+from terminal_data import INDICES, et_time, expiration_date, listed_dtes, numeric, quote_row, status, ticker_symbol
 from terminal_demo import DEMO_AT, DemoStore
 from terminal_learn import learn_page
 from terminal_style import STYLE, amount, esc, signed_pct, tag
 from terminal_views import Desk, PAGES
-from tradytics_feed import FeedError, FeedStore, TradyticsClient
+from tradytics_feed import Feed, FeedError, FeedStore, TradyticsClient
 
 UTC = timezone.utc
 PAGES_LABEL = {
-    "Overview": ("Market overview", "Price, dealer positioning and options flow for your selected market.", "◈"),
-    "Options Flow": ("Options flow", "Net premium through the session and the prints behind it.", "≋"),
+    "Overview": ("Market overview", "Price, nearby levels and the latest market read.", "◈"),
+    "Options Flow": ("Flow & bubbles", "See how options flow builds, then look at the largest trades.", "≋"),
+    "Money Map": ("Money map", "See which stocks, sectors or watchlist names lead in net options premium.", "▦"),
     "Positioning": ("Dealer positioning", "Gamma, Vanna, Charm and Delta by strike or expiration.", "▥"),
-    "Volatility": ("Volatility", "Implied and realized volatility, skew, term structure and expected move.", "∿"),
+    "Volatility": ("Market regime", "See how fast price is moving and how much movement options are pricing.", "∿"),
     "Dark Pool": ("Dark pool", "Reported off-exchange share prints and their price concentrations.", "◉"),
+    "Trade Plan": ("Trade plan", "A checklist for the next price level, with supporting and conflicting evidence.", "▷"),
     "Signals": ("Tradytics signals", "Flow pattern alerts, contract marks and provider performance.", "◇"),
     "Forecast": ("Monte Carlo forecast", "Short-horizon price distributions from completed market candles.", "⋰"),
-    "History": ("History", "Daily exposure, volatility and off-exchange notional by session.", "◷"),
+    "Scanner": ("Stock scanner", "Find names with active options, high relative volume or large off-exchange prints.", "⌕"),
+    "History": ("History & replay", "Review previous sessions and see what happened after large prints or a range break.", "◷"),
+    "TradingView": ("TradingView levels", "Export the current price levels as a Pine indicator.", "↗"),
     "Learn": ("Learn", "A practical guide to the tools on your desk.", "▤"),
     "Data Health": ("Data health", "Connection, permissions and source timing across the desk.", "⊙"),
 }
+NAV_LABELS = {"Options Flow": "Flow & Bubbles", "Positioning": "Dealer Positioning",
+              "Volatility": "Market Regime", "History": "History & Replay"}
 
 
 @st.cache_resource
@@ -120,6 +126,42 @@ def refresh():
         registry["webull"].refresh()
 
 
+@st.cache_data(ttl=300, max_entries=64, show_spinner="Loading listed expirations…")
+def api_expirations(ticker, session, credential_tag, _client):
+    return listed_dtes(Feed(_client.get("expirations", symbol=ticker)), session)
+
+
+def expiration_picker(ticker, now, preview, paused, store):
+    session = active_session(now)
+    mode = st.selectbox("Options expiration", ["All DTE", "0 DTE", "Listed expiration", "Enter exact DTE"],
+                        key="desk_expiry_mode")
+    dte = None
+    if mode == "Listed expiration":
+        choices = []
+        try:
+            if preview:
+                choices = listed_dtes(demo(ticker).get("expirations"), session)
+            elif store and not paused:
+                choices = api_expirations(ticker, session, resources()["token"], store.client)
+        except FeedError as exc:
+            st.caption(str(exc))
+        if choices:
+            dates = {expiration_date(session, n): n for n in choices}
+            selected_date = st.selectbox("Listed date", list(dates), key=f"desk_listed_{ticker}",
+                                         format_func=lambda expiry: f"{dates[expiry]} DTE · {expiry}")
+            dte = dates[selected_date]
+        else:
+            st.caption("Listed dates are unavailable. You can enter a DTE.")
+    if mode == "Enter exact DTE" or (mode == "Listed expiration" and dte is None):
+        dte = st.number_input("Calendar days to expiry", min_value=0, max_value=36500,
+                              value=0, step=1, key="desk_manual_dte")
+    if mode == "0 DTE":
+        dte = 0
+    if dte is not None:
+        st.caption(f"Session {session} → expiry {expiration_date(session, dte)}")
+    return dte
+
+
 def header(page):
     title, subtitle, _ = PAGES_LABEL[page]
     left, right = st.columns([2.7, 1.2], vertical_alignment="bottom")
@@ -193,15 +235,16 @@ def main():
     ticker = st.session_state["desk_ticker"]
     with st.sidebar:
         st.markdown('<div class="qd-brand"><div class="qd-mark">◈</div><div><div class="qd-name">Quant Desk</div>'
-                    '<div class="qd-brand-sub">Options intelligence · 2.0</div></div></div>', unsafe_allow_html=True)
-        st.markdown('<div class="qd-rule"></div><div class="qd-nav-label">Workspace</div>', unsafe_allow_html=True)
-        page = st.radio("Workspace navigation", list(PAGES_LABEL), format_func=lambda p: f"{PAGES_LABEL[p][2]}  {p}",
-                        key="desk_page", label_visibility="collapsed", width="stretch")
-        st.markdown('<div class="qd-rule"></div><div class="qd-nav-label">Quick symbols</div>', unsafe_allow_html=True)
+                    '<div class="qd-brand-sub">Options intelligence · 2.1</div></div></div>', unsafe_allow_html=True)
         for col, symbol in zip(st.columns(3, gap="small"), ("SPY", "SPX", "QQQ")):
             col.button(symbol, key=f"watch_{symbol}", width="stretch", on_click=choose_ticker, args=(symbol,))
-        expiry = st.selectbox("Options expiry scope", EXPIRY_LABELS, key="desk_expiry_scope")
         mode = st.segmented_control("Workspace mode", ["Live", "Preview"], key="desk_mode") or "Live"
+        dte = expiration_picker(ticker, DEMO_AT if mode == "Preview" else datetime.now(UTC), mode == "Preview",
+                                st.session_state.get("desk_paused", False), store)
+        st.markdown('<div class="qd-rule"></div><div class="qd-nav-label">Workspace</div>', unsafe_allow_html=True)
+        page = st.radio("Workspace navigation", list(PAGES_LABEL),
+                        format_func=lambda p: f"{PAGES_LABEL[p][2]}  {NAV_LABELS.get(p, p)}",
+                        key="desk_page", label_visibility="collapsed", width="stretch")
         with st.expander("Feed controls"):
             selected_provider = st.selectbox("Price and candle source", ["Tradytics", "Webull"], key="desk_price_provider",
                                              disabled=mode == "Preview")
@@ -209,14 +252,14 @@ def main():
             paused = st.toggle("Pause requests", key="desk_paused", disabled=mode == "Preview")
             st.button("Refresh feeds", key="desk_refresh", on_click=refresh, disabled=mode == "Preview", width="stretch")
             st.caption("Tradytics key configured" if key else "Set your Tradytics key in .env")
-        st.caption("Quant Options Agent · 2.0")
+        st.caption("Quant Options Agent · 2.1")
     preview = mode == "Preview"
     price_provider = "Tradytics" if preview else selected_provider
     paused = bool(paused and not preview)
     if page == "Learn":
         webull_snapshot(ticker, enabled=False, paused=True)
         header(page)
-        learn_page(go_to)
+        learn_page(go_to, NAV_LABELS)
         return
     header(page)
     if config_error and not preview:
@@ -233,7 +276,7 @@ def main():
         if not preview and (comparison or price_provider == "Webull") and not webull_configured:
             w_error = "Add WEBULL_APP_KEY and WEBULL_APP_SECRET to .env for Webull."
         ctx = Desk(ticker, DEMO_AT if preview else datetime.now(UTC), demo(ticker) if preview else store,
-                   preview, paused, EXPIRY_DTE.get(expiry), bool(key), price_provider,
+                   preview, paused, dte, bool(key), price_provider,
                    w_state, w_quality, w_error, config_error)
         symbol_bar(ctx)
         if page == "Overview":

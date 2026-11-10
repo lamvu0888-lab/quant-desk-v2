@@ -1,7 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title Quant Desk 2.0
+title Quant Desk 2.1
 py -3 launch.py
 if errorlevel 1 (
   echo.

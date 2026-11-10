@@ -7,7 +7,8 @@ import numpy as np
 class CandleError(ValueError):
     pass
 
-def analyze_volatility(candles, *, annual_bars=19656, lookback=100, bb_period=20, atr_period=14, confirm_bars=3):
+def analyze_volatility(candles, *, annual_bars=19656, lookback=100, bb_period=20, atr_period=14,
+                       confirm_bars=3, allow_missing_volume=False):
     """Requires >= 120 closed, chronological 5-minute OHLCV candles.
     The 1-minute confirmation is optional and evaluated by the caller separately.
     No signal is emitted on insufficient or malformed data.
@@ -20,8 +21,10 @@ def analyze_volatility(candles, *, annual_bars=19656, lookback=100, bb_period=20
             ts=datetime.fromisoformat(str(bar['time_utc']).replace('Z','+00:00'))
             if ts.tzinfo is None: raise ValueError('timezone required')
             ts=ts.astimezone(timezone.utc)
-            o,h,l,c,v=[float(bar[k]) for k in ('open','high','low','close','volume')]
-            if not all(map(math.isfinite,(o,h,l,c,v))) or min(o,h,l,c)<=0 or v<0 or h<max(o,c,l) or l>min(o,c,h):
+            o,h,l,c=[float(bar[k]) for k in ('open','high','low','close')]
+            v = None if allow_missing_volume and bar.get('volume') is None else float(bar['volume'])
+            if (not all(map(math.isfinite,(o,h,l,c))) or min(o,h,l,c)<=0 or
+                    (v is not None and (not math.isfinite(v) or v<0)) or h<max(o,c,l) or l>min(o,c,h)):
                 raise ValueError('invalid OHLCV')
             if parsed and ts<=parsed[-1][0]: raise ValueError('timestamps must increase, no duplicates')
             parsed.append((ts,o,h,l,c,v))
@@ -42,7 +45,11 @@ def analyze_volatility(candles, *, annual_bars=19656, lookback=100, bb_period=20
     returns=np.diff(np.log(close))
     rv=float(np.std(returns[-20:],ddof=1)*np.sqrt(annual_bars)*100)
     rv_prev=float(np.std(returns[-40:-20],ddof=1)*np.sqrt(annual_bars)*100)
-    vol_avg=float(np.mean(vol[-21:-1])); vol_ratio=float(vol[-1]/vol_avg) if vol_avg>0 else None
+    recent_volume = vol[-21:]
+    vol_ratio = None
+    if all(value is not None for value in recent_volume):
+        vol_avg = float(np.mean(recent_volume[:-1]))
+        vol_ratio = float(recent_volume[-1] / vol_avg) if vol_avg > 0 else None
     compression=bb_pct<=20 and atr_ratio is not None and atr_ratio<.85
     expansion=rising_bb and atr_ratio is not None and atr_ratio>1.15 and rv>rv_prev
     prior_compressed=bool(100*np.mean(widths[-lookback-1:-1]<=widths[-2])<=20) if len(widths)>=lookback+1 else False

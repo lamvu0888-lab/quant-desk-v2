@@ -1,6 +1,6 @@
 """NYSE sessions, holidays and early closes. All API times stay in UTC."""
 from functools import lru_cache
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import pandas as pd
 from data_utils import DataError, utc
@@ -37,3 +37,12 @@ def rth_bounds(day):
         return c.session_open(str(day)).to_pydatetime(), c.session_close(str(day)).to_pydatetime()
     except Exception as exc:
         raise DataError('Market calendar cannot validate candle session') from exc
+
+
+def active_session(now):
+    """Today's session after it opens, otherwise the last completed session."""
+    local_day = now.astimezone(ET).date()
+    bounds = rth_bounds(local_day)
+    if not bounds or now < bounds[0]:
+        local_day -= timedelta(days=1)
+    return calendar().date_to_session(local_day.isoformat(), direction="previous").date()

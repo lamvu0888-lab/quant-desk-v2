@@ -1,3 +1,12 @@
+# 2.1 — Quant Desk
+
+- Added exact calendar DTE and listed-expiration controls.
+- Added executed-order overlays, premium bubbles, cumulative flow, momentum, a Money Map and estimated volume delta.
+- Restored a candle-based price regime for ETFs, stocks and indices, including SPX without share volume.
+- Added the Trade Plan, evidence download, scanner and historical event replay.
+- Added Pine and JSON snapshots for support, resistance, gamma, GEX strikes and dark-pool price levels.
+- Reordered the sidebar and shortened the help bubbles.
+
 # 2.0 — Quant Desk
 
 - Added a dark Tradytics terminal with the existing Webull model available for comparison.

@@ -7,11 +7,10 @@ from datetime import date, datetime, timedelta
 from functools import lru_cache
 
 from data_utils import DataError, field, utc
-from market_session import ET, rth_bounds, session_state
+from market_session import ET, active_session, rth_bounds, session_state
+from tradytics_feed import Feed, FeedError, Snapshot
 
 INDICES = {"SPX", "NDX", "RUT", "DJI", "VIX"}
-EXPIRY_LABELS = ("All expiries", "0DTE", "≤7 DTE", "≤30 DTE")
-EXPIRY_DTE = {"0DTE": 0, "≤7 DTE": 7, "≤30 DTE": 30}
 GREEK_UNITS = {
     "usd_per_1pct_move": "$ per 1% spot move",
     "shares": "shares",
@@ -65,6 +64,94 @@ def valid_date(value):
         return None
 
 
+def expiration_date(session, dte):
+    return (session + timedelta(days=dte)).isoformat() if dte is not None else None
+
+
+def listed_dtes(feed, session):
+    dates = {valid_date(row.get("expiry")) for row in feed.rows}
+    return sorted((day - session).days for day in dates if day and day >= session)
+
+
+def filter_expiration(rows, session, dte):
+    if dte is None:
+        return rows
+    target = expiration_date(session, dte)
+    return [row for row in rows if row.get("expiry") == target]
+
+
+def interval_length(interval):
+    return timedelta(minutes=int(interval[:-1])) if interval.endswith("m") else timedelta(hours=1)
+
+
+def closed_flow_rows(rows, session, now, interval):
+    """Validate interval bounds and remove the forming bar or another session."""
+    bounds = _bounds(session.isoformat())
+    if not bounds:
+        return []
+    opened, closed = bounds
+    width = interval_length(interval)
+    selected = {}
+    for row in rows:
+        stamp = time_or_none(row.get("time"))
+        if not stamp or not opened <= stamp or stamp + width > min(closed, now):
+            continue
+        if (stamp - opened) % width or row.get("date") not in (None, session.isoformat()):
+            continue
+        if numeric(row.get("net_premium_usd")) is None:
+            continue
+        selected[stamp] = {**row, "time": stamp.isoformat(), "date": session.isoformat()}
+    return [selected[stamp] for stamp in sorted(selected)]
+
+
+def exact_timeline(upper, lower, session, now, interval):
+    """Recover one DTE by subtracting additive buckets at matching timestamps."""
+    if upper.error or lower.error:
+        return Feed(error=upper.error or lower.error, loading=upper.loading or lower.loading)
+    if not upper.snapshot or not lower.snapshot:
+        return Feed(loading=upper.loading or lower.loading)
+    latest = max(upper.snapshot.received_at, lower.snapshot.received_at)
+    if abs((upper.snapshot.received_at - lower.snapshot.received_at).total_seconds()) > 75:
+        return Feed(error=FeedError("WAITING", "Waiting for both expiry totals to refresh together."))
+    a = closed_flow_rows(upper.rows, session, now, interval)
+    b = closed_flow_rows(lower.rows, session, now, interval)
+    before = {row["time"]: row for row in b}
+    fields = ("call_premium_usd", "put_premium_usd", "net_premium_usd", "net_delta_usd", "prints")
+    result = []
+    for row in a:
+        match = before.get(row["time"])
+        if match is None:
+            continue
+        values = {}
+        for key in fields:
+            x, y = numeric(row.get(key)), numeric(match.get(key))
+            values[key] = x - y if x is not None and y is not None else None
+        # Higher DTE threshold is a superset. A negative count implies out-of-sync data.
+        if values["prints"] is not None and values["prints"] < 0:
+            continue
+        result.append({"time": row["time"], "date": row["date"], "price": row.get("price"), **values})
+    delay = max(numeric(feed.snapshot.meta.get("delay_minutes")) or 0 for feed in (upper, lower))
+    return Feed(Snapshot(result, {"date": str(session), "matched_intervals": len(result), "delay_minutes": delay,
+                                  "source_intervals": max(len(a), len(b))}, latest), loading=upper.loading or lower.loading)
+
+
+def scope_timeline(fetch, now, dte, *, symbol=None, interval="5m", session=None):
+    selected = session or active_session(now)
+    params = {"symbol": symbol, "interval": interval, "date": str(session) if session else None}
+    if dte is None or dte == 0:
+        feed = fetch("timeline", dte=dte, **params)
+        if not feed.snapshot:
+            return feed
+        rows = closed_flow_rows(same_ticker(feed.rows, symbol) if symbol else feed.rows, selected, now, interval)
+        return Feed(Snapshot(rows, feed.snapshot.meta, feed.snapshot.received_at, feed.snapshot.cursor), feed.error, feed.loading)
+    upper = fetch("timeline", dte=dte, **params)
+    lower = fetch("timeline", dte=dte - 1, **params)
+    if symbol and any(feed.snapshot and (feed.snapshot.meta.get("symbol") not in (None, symbol) or
+                      any(row.get("symbol") not in (None, symbol) for row in feed.rows)) for feed in (upper, lower)):
+        return Feed(error=FeedError("CHECK SYMBOL", "The two expiry totals did not identify the selected ticker."))
+    return exact_timeline(upper, lower, selected, now, interval)
+
+
 def quote_row(feed, ticker):
     rows = feed.rows or ([feed.obj] if feed.obj else [])
     return next((row for row in rows if str(row.get("symbol", "")).upper() == ticker), {})
@@ -115,6 +202,10 @@ def source_stamp(name, feed, ticker=None):
             return max(stamps)
     days = [d for row in feed.rows if (d := valid_date(row.get("date")))]
     return max(days) if days else valid_date(field(feed.snapshot.meta, "date", "session"))
+
+
+def feed_has_delay(feed):
+    return bool(feed.snapshot and (numeric(feed.snapshot.meta.get("delay_minutes")) or 0) > 0)
 
 
 def status(name, feed, now, ticker=None, *, preview=False, paused=False):

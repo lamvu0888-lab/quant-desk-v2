@@ -1,4 +1,11 @@
-# Validation — Quant Desk 2.0
+# Validation — Quant Desk 2.1
+
+- 65 automated checks passed with Python 3.12, Streamlit 1.67.0 and Plotly 6.9.0.
+- The tests cover exact nonzero DTE arithmetic, missing intervals, SPX regime without volume, share CVD, no-future-price order markers, price and flow agreement, and timestamped Pine exports.
+- Preview checks render the new pages and interact with listed expiries, Money Map watchlist, contract volume, replay, and the TradingView generator.
+- The local Streamlit server responded to its health check. Browser rendering, authenticated Tradytics data and Pine compilation in a TradingView account were outside this validation. Preview and API fixtures exercise the logic. Signal accuracy and trade P&L require separate evaluation.
+
+## Prior validation — Quant Desk 2.0
 
 Verified November 9, 2026 using Python 3.12, Streamlit 1.67.0 and Plotly 6.9.0.
 

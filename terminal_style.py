@@ -59,7 +59,7 @@ h1,h2,h3 {color:#e5edf8;letter-spacing:-.035em}
 .qd-kpi {min-width:0;border:1px solid #263449;border-radius:10px;background:#111b2c;padding:.8rem .85rem;position:relative;overflow:hidden}
 .qd-kpi:first-child {background:linear-gradient(115deg,#102a32,#111b2c 85%);border-color:#265157}
 .qd-kpi-label {font-size:.65rem;letter-spacing:.075em;color:#acbfd8;font-weight:750;text-transform:uppercase}
-.qd-kpi-value {font-size:clamp(1rem,1.72vw,1.65rem);letter-spacing:-.04em;line-height:1.2;font-variant-numeric:tabular-nums;font-weight:750;color:#f2f6fd;margin:.35rem 0 .33rem;white-space:nowrap}
+.qd-kpi-value {font-size:clamp(1rem,1.72vw,1.65rem);letter-spacing:-.04em;line-height:1.2;font-variant-numeric:tabular-nums;font-weight:750;color:#f2f6fd;margin:.35rem 0 .33rem;overflow-wrap:anywhere}
 .qd-kpi-value.up,.qd-positive {color:#69e3c3}
 .qd-kpi-value.down,.qd-negative {color:#ff91a4}
 .qd-kpi-sub {font-size:.68rem;color:#a1b5cf;line-height:1.33;min-height:1em}
