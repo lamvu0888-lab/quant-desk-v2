@@ -396,23 +396,39 @@ def overview(ctx):
             panel_header("Session net flow", "net_flow", "overview_flow", "Cumulative directional premium")
             render_chart(flow_figure(flow.rows, compact=True), "overview_flow_spark", flow)
             feed_stamp("timeline", flow, ctx)
-    # Independent 0DTE profile: never silently reuse the workspace DTE selection.
+    # Independently request 0DTE; fall forward only when the current expiry
+    # has no usable, fresh gamma data. Do not alter the workspace DTE setting.
     with st.container(border=True):
-        panel_header("0DTE gamma exposure by strike", "gamma", "overview_0dte_gex", f"{ctx.ticker} · same-session expiration")
-        zero_feed = ctx.get("exposure", symbol=ctx.ticker, greek="gamma", by="strike", expiry=expiration_date(ctx.session, 0))
-        zero = exposure_obj(zero_feed, ctx.ticker, "gamma")
-        stamp = source_stamp("exposure", zero_feed, ctx.ticker)
-        valid = (ctx.preview or (not zero_feed.error and not feed_has_delay(zero_feed)
-                 and isinstance(stamp, datetime) and 0 <= (ctx.now - stamp).total_seconds() <= 420))
-        zero_rows = zero.get("rows") if isinstance(zero.get("rows"), list) else zero_feed.rows
-        if valid and zero_rows:
+        panel_header("Nearest-expiry gamma exposure by strike", "gamma", "overview_0dte_gex",
+                     f"{ctx.ticker} · 0DTE preferred · Net GEX")
+        selected = None
+        for dte in range(0, 8):
+            requested_expiry = expiration_date(ctx.session, dte)
+            candidate_feed = ctx.get("exposure", symbol=ctx.ticker, greek="gamma",
+                                     by="strike", expiry=requested_expiry)
+            candidate = exposure_obj(candidate_feed, ctx.ticker, "gamma")
+            stamp = source_stamp("exposure", candidate_feed, ctx.ticker)
+            valid = (ctx.preview or (not candidate_feed.error and not feed_has_delay(candidate_feed)
+                     and isinstance(stamp, datetime) and 0 <= (ctx.now - stamp).total_seconds() <= 420))
+            rows = candidate.get("rows") if isinstance(candidate.get("rows"), list) else candidate_feed.rows
+            usable = [r for r in (rows or []) if isinstance(r, dict)
+                      and numeric(r.get("strike")) is not None and numeric(r.get("net")) is not None]
+            if valid and usable:
+                selected = (dte, requested_expiry, candidate_feed, candidate, usable)
+                break
+        if selected:
+            dte, selected_expiry, zero_feed, zero, zero_rows = selected
+            st.caption(f"Showing {dte}DTE · expiration {selected_expiry} · "
+                       + ("0DTE available" if dte == 0 else "0DTE unavailable; nearest valid expiration"))
             chart = exposure_figure(zero_rows, "strike", display_exposure_unit(zero), spot,
-                                    positive((zero.get("levels") or {}).get("flip")), split=True)
+                                    positive((zero.get("levels") or {}).get("flip")), split=False,
+                                    focus_radius_pct=0.0125)
             render_chart(chart, "overview_0dte_gex_chart", zero_feed)
-            st.caption("0DTE only · provider exposure model · calls/puts and net are model estimates, not observed dealer inventory.")
+            st.caption("Net gamma exposure · provider model estimate, not observed dealer inventory. "
+                       "Zoom/pan using the chart toolbar.")
+            feed_stamp("exposure", zero_feed, ctx)
         else:
-            st.info("0DTE GEX unavailable or not fresh. No chart is inferred from all-expiration exposure.")
-        feed_stamp("exposure", zero_feed, ctx)
+            st.info("No fresh gamma exposure found for 0DTE or the next seven calendar days.")
     show_session_changes(ctx, read, prints, prints_feed)
     with st.container(border=True):
         panel_header("Cumulative flow & momentum", "net_flow", "overview_momentum", ctx.scope)

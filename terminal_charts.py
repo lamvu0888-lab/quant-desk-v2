@@ -254,7 +254,7 @@ def flow_figure(rows, components=False, compact=False):
     return style_chart(fig, 141 if compact else 330, legend=not compact)
 
 
-def exposure_figure(rows, by, unit, spot=None, flip=None, *, split=False, compact=False):
+def exposure_figure(rows, by, unit, spot=None, flip=None, *, split=False, compact=False, focus_radius_pct=None):
     field = "strike" if by == "strike" else "expiry"
     data = [row for row in rows if row.get(field) is not None and numeric(row.get("net")) is not None]
     if by == "strike":
@@ -265,7 +265,8 @@ def exposure_figure(rows, by, unit, spot=None, flip=None, *, split=False, compac
         # hover and the underlying feed.
         if spot is not None and len(data) > 12:
             strikes = [numeric(row["strike"]) for row in data]
-            radius = max(100.0, abs(float(spot)) * 0.025)
+            radius = (max(5.0, abs(float(spot)) * focus_radius_pct) if focus_radius_pct is not None
+                      else max(100.0, abs(float(spot)) * 0.025))
             focused = [row for row in data if abs(numeric(row["strike"]) - float(spot)) <= radius]
             if len(focused) >= 6:
                 data = focused
