@@ -178,6 +178,8 @@ def overview(ctx):
     spot, change = positive(quote.get("price")), numeric(quote.get("change_pct"))
     net = net_sum(flow, "net_premium_usd")
     scope = SCOPE_NAMES[ctx.dte]
+    regime_raw = str(vol.obj.get("status") or "UNAVAILABLE").upper()
+    regime = {"COMPRESSION": "COMPRESSING", "EXPANSION": "EXPANDING", "NEUTRAL": "NORMAL"}.get(regime_raw, regime_raw)
     panel_header("Market pulse", "overview", "overview_kpis", f"{scope} for options figures")
     kpis([
         metric("Underlying", amount(spot), f"{signed_pct(change)} · {ctx.price_provider}", change),
@@ -187,6 +189,7 @@ def overview(ctx):
         metric("Net Charm", compact(charm.get("total"), signed=True), f"{scope} · {display_exposure_unit(charm)}", charm.get("total")),
         metric("Options net flow", compact(net, currency=True, signed=True), f"{scope} · latest session", net),
         metric("30D ATM IV", ratio_pct(vol.obj.get("atm_iv_30d")), f"Rank {ratio_pct(vol.obj.get('iv_rank'))} · Tradytics"),
+        metric("Volatility regime", regime, "5m realized-volatility context"),
     ])
     with st.expander("Snapshot times"):
         for name, label, feed in (("exposure", "Gamma", gamma_feed), ("exposure", "Vanna", vanna_feed),
