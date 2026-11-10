@@ -177,8 +177,10 @@ def style_chart(fig, height=320, *, hover="x unified", legend=True, revision=Non
     fig.update_layout(
         template="plotly_dark", paper_bgcolor=PANEL, plot_bgcolor=PANEL, height=height,
         font=dict(family="Inter, system-ui, sans-serif", color=MUTED, size=11),
-        margin=dict(l=12, r=14, t=29 if legend else 12, b=12),
-        legend=dict(orientation="h", y=1.08, x=0, bgcolor="rgba(0,0,0,0)", font=dict(size=10)),
+        margin=dict(l=12, r=14, t=12, b=65 if legend else 20),
+        legend=dict(orientation="h", y=-0.19, x=0, yanchor="top", xanchor="left",
+                    bgcolor="rgba(0,0,0,0)", font=dict(size=12, color=INK),
+                    itemclick="toggle", itemdoubleclick="toggleothers"),
         hovermode=hover, showlegend=legend, uirevision=revision,
         hoverlabel=dict(bgcolor="#1c2d45", font_color=INK, bordercolor="#354b68"),
     )

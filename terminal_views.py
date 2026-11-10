@@ -396,6 +396,23 @@ def overview(ctx):
             panel_header("Session net flow", "net_flow", "overview_flow", "Cumulative directional premium")
             render_chart(flow_figure(flow.rows, compact=True), "overview_flow_spark", flow)
             feed_stamp("timeline", flow, ctx)
+    # Independent 0DTE profile: never silently reuse the workspace DTE selection.
+    with st.container(border=True):
+        panel_header("0DTE gamma exposure by strike", "gamma", "overview_0dte_gex", f"{ctx.ticker} · same-session expiration")
+        zero_feed = ctx.get("exposure", symbol=ctx.ticker, greek="gamma", by="strike", expiry=expiration_date(ctx.session, 0))
+        zero = exposure_obj(zero_feed, ctx.ticker, "gamma")
+        stamp = source_stamp("exposure", zero_feed, ctx.ticker)
+        valid = (ctx.preview or (not zero_feed.error and not feed_has_delay(zero_feed)
+                 and isinstance(stamp, datetime) and 0 <= (ctx.now - stamp).total_seconds() <= 420))
+        zero_rows = zero.get("rows") if isinstance(zero.get("rows"), list) else zero_feed.rows
+        if valid and zero_rows:
+            chart = exposure_figure(zero_rows, "strike", display_exposure_unit(zero), spot,
+                                    positive((zero.get("levels") or {}).get("flip")), split=True)
+            render_chart(chart, "overview_0dte_gex_chart", zero_feed)
+            st.caption("0DTE only · provider exposure model · calls/puts and net are model estimates, not observed dealer inventory.")
+        else:
+            st.info("0DTE GEX unavailable or not fresh. No chart is inferred from all-expiration exposure.")
+        feed_stamp("exposure", zero_feed, ctx)
     show_session_changes(ctx, read, prints, prints_feed)
     with st.container(border=True):
         panel_header("Cumulative flow & momentum", "net_flow", "overview_momentum", ctx.scope)

@@ -108,3 +108,12 @@ The forecast uses completed regular-session candles and a recent quote from the 
 - [Signal performance schema](https://tradytics.com/docs/signals/signals-performance)
 - [TradingView Pine lines and boxes](https://www.tradingview.com/pine-script-docs/visuals/lines-and-boxes/)
 - [TradingView cumulative volume delta](https://www.tradingview.com/support/solutions/43000725058-cumulative-volume-delta/)
+
+## V2.2: Discord monitoring and 0DTE Overview GEX
+
+- Overview now has a **separate 0DTE GEX-by-strike** chart, regardless of the global expiration selection. A stale or missing exposure feed displays an unavailable message instead of substituting all-DTE data.
+- Chart legends are placed **below the charts**, with larger text and reserved space.
+- Run the **read-only** Discord monitor as a separate process with `python discord_monitor.py --interval 30`. It requires `TRADYTICS_API_KEY` and `DISCORD_WEBHOOK_URL` in `.env` or environment variables. Never commit the webhook or API key. `--once` is a diagnostic run.
+- The monitor checks SPY and SPX, uses the existing completed-5-minute-bar Trade Plan, and sends only eligible GET READY / ENTER SETUP alerts. It deliberately **does not place orders**, does not use preview data, and suppresses signals when market is closed or feeds are stale/misaligned. Repeated alerts for the same bar/state are suppressed while the process remains running.
+- For true 24/7 operation, deploy `discord_monitor.py` to an **always-on Python worker** with environment secrets. Streamlit Community Cloud alone does not provide a persistent background worker. Polling more frequently than provider refresh intervals does not create fresh data; follow API rate limits.
+- **Important:** Entry classification is based on existing Trade Plan state and evidence score. Validate signal quality in paper mode before relying on alerts. The agent does not claim calibrated probability or guaranteed execution price.
