@@ -1,4 +1,4 @@
-# Quant Desk 2.1
+# Quant Desk 2.2
 
 Quant Desk combines Tradytics market data, dealer positioning, flow and signals with the Quant Options Agent Monte Carlo model. Open any supported ticker in the command bar. The quick buttons open SPY, SPX and QQQ.
 
@@ -9,6 +9,8 @@ Quant Desk combines Tradytics market data, dealer positioning, flow and signals 
 3. Open the newly created `.env` next to the launcher and set `TRADYTICS_API_KEY` to your existing key. Save it and restart the launcher. Enable **market**, **options**, **darkpool**, **signals**, and **scanner** for the feeds you use.
 
 The first launch opens the labeled Preview workspace when no keys are configured. Preview includes illustrative values for each page so you can learn the controls. Select **Live** to use your configured feed. The application runs locally and keeps the key in its server process.
+
+Quant Desk 2.2 adds a readable near-spot exposure view. Distant strikes are removed from the default chart when there are enough strikes to focus; extreme display outliers are capped with a note, while hover values remain exact. It also adds a **Send Discord test message** button under Feed controls when `DISCORD_WEBHOOK_URL` is configured.
 
 On Mac or Linux, run `bash start_dashboard.sh`. Python 3.11+ is required. The dashboard listens on localhost. Stop an older dashboard if port 8501 is occupied.
 
@@ -29,7 +31,7 @@ git commit -m "Upgrade Quant Desk to 2.1"
 git push origin main
 ```
 
-Open the existing Streamlit URL after the rebuild and look for **2.1** in the sidebar. The main file is still `terminal.py`. For a local install, use `.env`. For Streamlit Cloud, enter your existing key under **Secrets** as TOML.
+Open the existing Streamlit URL after the rebuild and look for **2.2** in the sidebar. The main file is still `terminal.py`. For a local install, use `.env`. For Streamlit Cloud, enter your existing key under **Secrets** as TOML.
 
 ```toml
 TRADYTICS_API_KEY = "your_key_here"

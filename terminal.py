@@ -1,4 +1,4 @@
-"""Quant Desk 2.1, with Tradytics data and the optional Webull model."""
+"""Quant Desk 2.2, with Tradytics data, optional Webull model and Discord alerts."""
 from __future__ import annotations
 
 import hashlib
@@ -19,6 +19,7 @@ from terminal_learn import learn_page
 from terminal_style import STYLE, amount, esc, signed_pct, tag
 from terminal_views import Desk, PAGES
 from tradytics_feed import Feed, FeedError, FeedStore, TradyticsClient
+from discord_monitor import send_test as send_discord_test
 
 UTC = timezone.utc
 PAGES_LABEL = {
@@ -52,7 +53,13 @@ def demo(ticker):
 
 
 def config_value(local, name, default=""):
-    return str(local.get(name) or os.getenv(name) or default).strip()
+    value = local.get(name) or os.getenv(name)
+    if not value:
+        try:
+            value = st.secrets.get(name)
+        except Exception:
+            value = None
+    return str(value or default).strip()
 
 
 def tradytics_store(key, auth):
@@ -235,7 +242,7 @@ def main():
     ticker = st.session_state["desk_ticker"]
     with st.sidebar:
         st.markdown('<div class="qd-brand"><div class="qd-mark">◈</div><div><div class="qd-name">Quant Desk</div>'
-                    '<div class="qd-brand-sub">Options intelligence · 2.1</div></div></div>', unsafe_allow_html=True)
+                    '<div class="qd-brand-sub">Options intelligence · 2.2</div></div></div>', unsafe_allow_html=True)
         for col, symbol in zip(st.columns(3, gap="small"), ("SPY", "SPX", "QQQ")):
             col.button(symbol, key=f"watch_{symbol}", width="stretch", on_click=choose_ticker, args=(symbol,))
         mode = st.segmented_control("Workspace mode", ["Live", "Preview"], key="desk_mode") or "Live"
@@ -251,8 +258,18 @@ def main():
             comparison = st.toggle("Enable Webull comparison", key="desk_webull_compare", disabled=mode == "Preview")
             paused = st.toggle("Pause requests", key="desk_paused", disabled=mode == "Preview")
             st.button("Refresh feeds", key="desk_refresh", on_click=refresh, disabled=mode == "Preview", width="stretch")
+            discord_webhook = config_value(local, "DISCORD_WEBHOOK_URL")
+            if st.button("Send Discord test message", key="discord_test_button", disabled=not discord_webhook,
+                         width="stretch", help="Sends one harmless connectivity message to your configured Discord webhook."):
+                try:
+                    send_discord_test(discord_webhook)
+                    st.success("Discord test message sent.")
+                except Exception as exc:
+                    st.error(f"Discord test failed: {exc}")
+            if not discord_webhook:
+                st.caption("Add DISCORD_WEBHOOK_URL to .env or Streamlit Secrets to enable the test button.")
             st.caption("Tradytics key configured" if key else "Set your Tradytics key in .env")
-        st.caption("Quant Options Agent · 2.1")
+        st.caption("Quant Options Agent · 2.2")
     preview = mode == "Preview"
     price_provider = "Tradytics" if preview else selected_provider
     paused = bool(paused and not preview)

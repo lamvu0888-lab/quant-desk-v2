@@ -57,6 +57,19 @@ def send(webhook, signal):
     response.raise_for_status()
 
 
+def send_test(webhook):
+    """Send a harmless connectivity test; never evaluates a trading signal."""
+    if not webhook.startswith("https://discord.com/api/webhooks/") and not webhook.startswith("https://discordapp.com/api/webhooks/"):
+        raise ValueError("Discord webhook must be a Discord HTTPS webhook URL")
+    response = requests.post(
+        webhook,
+        json={"content": "✅ Quant Desk Discord test successful. Alerts are connected.",
+              "allowed_mentions": {"parse": []}},
+        timeout=12,
+    )
+    response.raise_for_status()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--interval", type=int, default=30)

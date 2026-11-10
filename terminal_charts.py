@@ -259,6 +259,16 @@ def exposure_figure(rows, by, unit, spot=None, flip=None, *, split=False, compac
     data = [row for row in rows if row.get(field) is not None and numeric(row.get("net")) is not None]
     if by == "strike":
         data = sorted((row for row in data if numeric(row["strike"]) is not None), key=lambda row: numeric(row["strike"]))
+        # Provider exposure can include very distant strikes. They make the
+        # chart technically correct but unreadable on a phone. Keep the
+        # default view centered on spot while preserving the full values in
+        # hover and the underlying feed.
+        if spot is not None and len(data) > 12:
+            strikes = [numeric(row["strike"]) for row in data]
+            radius = max(100.0, abs(float(spot)) * 0.025)
+            focused = [row for row in data if abs(numeric(row["strike"]) - float(spot)) <= radius]
+            if len(focused) >= 6:
+                data = focused
     else:
         data.sort(key=lambda row: str(row[field]))
     if not data:
@@ -277,6 +287,19 @@ def exposure_figure(rows, by, unit, spot=None, flip=None, *, split=False, compac
             if value is not None and min(x) <= value <= max(x):
                 fig.add_vline(x=value, line_color=color, line_dash="dot",
                               annotation_text=name, annotation_font_color=color, annotation_font_size=10)
+        magnitudes = [abs(v) for v in y if v is not None]
+        if len(magnitudes) >= 8:
+            # A single strike can be much larger than the rest. Use a robust
+            # default display scale so nearby structure remains visible;
+            # hover still reports the unmodified exposure value.
+            robust = float(pd.Series(magnitudes).quantile(0.97))
+            peak = max(magnitudes)
+            if robust > 0 and peak > robust * 2:
+                fig.update_yaxes(range=[-robust * 1.15, robust * 1.15])
+                fig.add_annotation(x=0.01, y=0.98, xref="paper", yref="paper",
+                                   text="Display scale capped; hover for full value",
+                                   showarrow=False, xanchor="left", yanchor="top",
+                                   font=dict(size=10, color=MUTED), bgcolor="rgba(17,27,44,.78)")
     fig.update_xaxes(title=None if compact else field.title(), nticks=6 if compact else 12)
     fig.update_yaxes(tickformat="~s", title=None if compact else unit)
     return style_chart(fig, 176 if compact else 374, legend=split)
