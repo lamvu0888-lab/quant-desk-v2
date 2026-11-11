@@ -277,5 +277,29 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:TSLA:2026-11-11T15:20:00+00:00:edff37b4f0",
     "explanation": "A completed candle confirming the entry trigger."
+  },
+  {
+    "symbol": "TSLA",
+    "status": "WAIT",
+    "bias": "Bullish",
+    "score": 75,
+    "bar": "2026-11-11T15:20:00+00:00",
+    "entry_bar": "2026-11-11T15:21:00+00:00",
+    "triggered_at_utc": "2026-11-11T15:22:02.390663+00:00",
+    "price": 393.2,
+    "scope": "2026-11-11",
+    "setup": "Breakout watch",
+    "entry": 393.7,
+    "trigger": 393.5,
+    "invalidation": 393.5,
+    "stop": 392.27,
+    "tp1": 395.85,
+    "tp2": 397.27,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Expanding",
+    "validation": "Unvalidated",
+    "id": "signal:Tradytics:0:TSLA:2026-11-11T15:20:00+00:00:ac1b0f03a4",
+    "explanation": "Current regular-session quote."
   }
 ]
