@@ -2703,5 +2703,34 @@
     },
     "id": "level:Tradytics:0:SPY:2026-11-11T19:10:00+00:00:Call wall",
     "explanation": "A completed 5m close crossed a level recorded before this bar."
+  },
+  {
+    "symbol": "SPY",
+    "status": "LEVEL CROSSING",
+    "bias": "Bearish",
+    "score": 40,
+    "bar": "2026-11-11T19:15:00+00:00",
+    "entry_bar": "2026-11-11T19:15:00+00:00",
+    "triggered_at_utc": "2026-11-11T19:15:31.430799+00:00",
+    "price": 760.48,
+    "scope": "2026-11-11",
+    "setup": "Breakout watch",
+    "entry": 760.33,
+    "trigger": 760.38,
+    "invalidation": 760.38,
+    "stop": 760.7,
+    "tp1": 759.78,
+    "tp2": 759.4,
+    "rr": 1.49,
+    "rr2": 2.51,
+    "regime": "Compressing",
+    "validation": "Unvalidated",
+    "crossing": {
+      "level": "Gamma flip",
+      "price": 760.418,
+      "direction": "above"
+    },
+    "id": "level:Tradytics:0:SPY:2026-11-11T19:15:00+00:00:Gamma flip",
+    "explanation": "A completed 5m close crossed a level recorded before this bar."
   }
 ]
