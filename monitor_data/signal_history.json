@@ -3151,5 +3151,34 @@
     "validation": "Unvalidated",
     "id": "quality:TSLA:2026-11-11:20:0",
     "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "LEVEL CROSSING",
+    "bias": "Bearish",
+    "score": 45,
+    "bar": "2026-11-11T20:10:00+00:00",
+    "entry_bar": "2026-11-11T20:11:00+00:00",
+    "triggered_at_utc": "2026-11-11T20:11:32.397177+00:00",
+    "price": 174.87,
+    "scope": "2026-11-11",
+    "setup": "Breakout watch",
+    "entry": 174.81,
+    "trigger": 174.84,
+    "invalidation": 174.84,
+    "stop": 175.06,
+    "tp1": 174.65,
+    "tp2": 174.19,
+    "rr": 0.64,
+    "rr2": 2.48,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "crossing": {
+      "level": "Put wall",
+      "price": 175.0,
+      "direction": "below"
+    },
+    "id": "level:Tradytics:0:NVDA:2026-11-11T20:10:00+00:00:Put wall",
+    "explanation": "A completed 5m close crossed a level recorded before this bar."
   }
 ]
