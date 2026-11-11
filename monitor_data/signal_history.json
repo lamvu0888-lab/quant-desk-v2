@@ -1704,5 +1704,29 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:NVDA:2026-11-11T17:05:00+00:00:fbe84a1ae3",
     "explanation": "The recent breakout failed back through its range boundary."
+  },
+  {
+    "symbol": "TSLA",
+    "status": "DATA QUALITY",
+    "bias": "Bearish",
+    "score": 50,
+    "bar": "2026-11-11T17:05:00+00:00",
+    "entry_bar": "2026-11-11T17:06:00+00:00",
+    "triggered_at_utc": "2026-11-11T17:06:32.402128+00:00",
+    "price": 392.63,
+    "scope": "2026-11-11",
+    "setup": "Breakout watch",
+    "entry": 391.63,
+    "trigger": 391.68,
+    "invalidation": 391.68,
+    "stop": 393.17,
+    "tp1": 390.0,
+    "tp2": 387.78,
+    "rr": 1.06,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "quality:TSLA:2026-11-11:17:0",
+    "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
   }
 ]
