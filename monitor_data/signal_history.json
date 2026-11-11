@@ -929,5 +929,29 @@
     },
     "id": "exit:candidate:Tradytics:0:SPY:2026-11-11T15:42:00+00:00",
     "explanation": "Tracked setup closed by time limit."
+  },
+  {
+    "symbol": "SPY",
+    "status": "ENTER LONG",
+    "bias": "Bullish",
+    "score": 90,
+    "bar": "2026-11-11T15:55:00+00:00",
+    "entry_bar": "2026-11-11T15:58:00+00:00",
+    "triggered_at_utc": "2026-11-11T15:58:31.556323+00:00",
+    "price": 758.25,
+    "scope": "2026-11-11",
+    "setup": "Breakout close",
+    "entry": 758.25,
+    "trigger": 757.64,
+    "invalidation": 757.64,
+    "stop": 757.53,
+    "tp1": 759.33,
+    "tp2": 760.05,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "signal:Tradytics:0:SPY:2026-11-11T15:55:00+00:00:0154b99a99",
+    "explanation": "5m EMA 8/10 and price confirm a bullish trend."
   }
 ]
