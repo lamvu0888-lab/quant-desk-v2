@@ -1025,5 +1025,29 @@
     "validation": "Unvalidated",
     "id": "quality:NVDA:2026-11-11:16:0",
     "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "ENTER LONG",
+    "bias": "Bullish",
+    "score": 85,
+    "bar": "2026-11-11T16:00:00+00:00",
+    "entry_bar": "2026-11-11T16:00:00+00:00",
+    "triggered_at_utc": "2026-11-11T16:01:32.303226+00:00",
+    "price": 176.03,
+    "scope": "2026-11-11",
+    "setup": "Breakout close",
+    "entry": 176.03,
+    "trigger": 175.68,
+    "invalidation": 175.68,
+    "stop": 175.56,
+    "tp1": 176.74,
+    "tp2": 177.2,
+    "rr": 1.51,
+    "rr2": 2.49,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "signal:Tradytics:0:NVDA:2026-11-11T16:00:00+00:00:0154b99a99",
+    "explanation": "5m EMA 8/10 and price confirm a bullish trend."
   }
 ]
