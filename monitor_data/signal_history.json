@@ -2410,5 +2410,29 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:NVDA:2026-11-11T18:40:00+00:00:18355af3c7",
     "explanation": "Aligned 3m and 1m entry timing."
+  },
+  {
+    "symbol": "TSLA",
+    "status": "DATA QUALITY",
+    "bias": "Mixed",
+    "score": 65,
+    "bar": "2026-11-11T18:40:00+00:00",
+    "entry_bar": "2026-11-11T18:40:00+00:00",
+    "triggered_at_utc": "2026-11-11T18:41:02.104558+00:00",
+    "price": 393.7,
+    "scope": "2026-11-11",
+    "setup": "EMA 8/10 pullback",
+    "entry": 393.7,
+    "trigger": 393.7,
+    "invalidation": 393.7,
+    "stop": 393.59,
+    "tp1": 393.87,
+    "tp2": 393.98,
+    "rr": 1.55,
+    "rr2": 2.55,
+    "regime": "Compressing",
+    "validation": "Unvalidated",
+    "id": "quality:TSLA:2026-11-11:18:1",
+    "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
   }
 ]
