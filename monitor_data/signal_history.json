@@ -1551,5 +1551,29 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:NVDA:2026-11-11T16:55:00+00:00:edff37b4f0",
     "explanation": "A completed candle confirming the entry trigger."
+  },
+  {
+    "symbol": "SPX",
+    "status": "DATA QUALITY",
+    "bias": "Bullish",
+    "score": 65,
+    "bar": "2026-11-11T17:00:00+00:00",
+    "entry_bar": "2026-11-11T17:00:00+00:00",
+    "triggered_at_utc": "2026-11-11T17:00:01.725583+00:00",
+    "price": 7623.48,
+    "scope": "2026-11-11",
+    "setup": "Breakout close",
+    "entry": 7623.48,
+    "trigger": 7620.25,
+    "invalidation": 7620.25,
+    "stop": 7619.4,
+    "tp1": 7629.6,
+    "tp2": 7633.68,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "quality:SPX:2026-11-11:17:0",
+    "explanation": "Current regular-session quote."
   }
 ]
