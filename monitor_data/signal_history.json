@@ -1249,5 +1249,34 @@
     },
     "id": "level:Tradytics:0:NVDA:2026-11-11T16:20:00+00:00:Call wall",
     "explanation": "A completed 5m close crossed a level recorded before this bar."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "LEVEL CROSSING",
+    "bias": "Bullish",
+    "score": 45,
+    "bar": "2026-11-11T16:25:00+00:00",
+    "entry_bar": "2026-11-11T16:25:00+00:00",
+    "triggered_at_utc": "2026-11-11T16:25:32.622931+00:00",
+    "price": 175.36,
+    "scope": "2026-11-11",
+    "setup": "EMA 8/10 pullback",
+    "entry": 175.36,
+    "trigger": 175.23,
+    "invalidation": 175.23,
+    "stop": 175.12,
+    "tp1": 175.72,
+    "tp2": 175.96,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "crossing": {
+      "level": "Call wall",
+      "price": 175.0,
+      "direction": "above"
+    },
+    "id": "level:Tradytics:0:NVDA:2026-11-11T16:25:00+00:00:Call wall",
+    "explanation": "A completed 5m close crossed a level recorded before this bar."
   }
 ]
