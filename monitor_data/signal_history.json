@@ -1848,5 +1848,38 @@
     "validation": "Unvalidated",
     "id": "quality:NVDA:2026-11-11:17:0",
     "explanation": "Current regular-session quote."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "EXIT",
+    "bias": "Bullish",
+    "score": 85,
+    "bar": "2026-11-11T17:22:00+00:00",
+    "entry_bar": "2026-11-11T17:19:00+00:00",
+    "triggered_at_utc": "2026-11-11T17:22:02.587253+00:00",
+    "price": 176.25,
+    "scope": "2026-11-11",
+    "setup": "EMA 8/10 pullback",
+    "entry": 176.44,
+    "trigger": 176.41,
+    "invalidation": 176.41,
+    "stop": 176.25,
+    "tp1": 176.72,
+    "tp2": 176.91,
+    "rr": 1.47,
+    "rr2": 2.47,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "outcome": {
+      "state": "STOP",
+      "at": "2026-11-11T17:22:00+00:00",
+      "price": 176.25,
+      "tp1_first": false,
+      "tp2_first": false,
+      "minutes": 2,
+      "r": -1.0928631578947379
+    },
+    "id": "exit:candidate:Tradytics:0:NVDA:2026-11-11T17:19:00+00:00",
+    "explanation": "Tracked setup closed by stop."
   }
 ]
