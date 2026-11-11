@@ -2083,5 +2083,34 @@
     "validation": "Unvalidated",
     "id": "quality:SPY:2026-11-11:17:1",
     "explanation": "Current regular-session quote."
+  },
+  {
+    "symbol": "SPY",
+    "status": "LEVEL CROSSING",
+    "bias": "Bullish",
+    "score": 35,
+    "bar": "2026-11-11T17:35:00+00:00",
+    "entry_bar": "2026-11-11T17:35:00+00:00",
+    "triggered_at_utc": "2026-11-11T17:35:01.402114+00:00",
+    "price": 761.04,
+    "scope": "2026-11-11",
+    "setup": "Breakout watch",
+    "entry": 761.2,
+    "trigger": 761.15,
+    "invalidation": 761.15,
+    "stop": 760.79,
+    "tp1": 761.82,
+    "tp2": 762.23,
+    "rr": 1.51,
+    "rr2": 2.51,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "crossing": {
+      "level": "Put wall",
+      "price": 761.0,
+      "direction": "above"
+    },
+    "id": "level:Tradytics:0:SPY:2026-11-11T17:35:00+00:00:Put wall",
+    "explanation": "A completed 5m close crossed a level recorded before this bar."
   }
 ]
