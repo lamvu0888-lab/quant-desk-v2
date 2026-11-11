@@ -17,7 +17,7 @@ from settings import ROOT, Settings
 from terminal_data import INDICES, et_time, expiration_date, listed_dtes, numeric, quote_row, status, ticker_symbol
 from terminal_demo import DEMO_AT, DemoStore
 from terminal_learn import learn_page
-from terminal_style import STYLE, amount, esc, signed_pct, tag
+from terminal_style import amount, esc, signed_pct, tag, theme_css
 from terminal_views import Desk, PAGES
 from tradytics_feed import Feed, FeedError, FeedStore, TradyticsClient
 from discord_monitor import send_test as send_discord_test
@@ -244,7 +244,8 @@ def market_strip(ctx):
 
 def main():
     st.set_page_config(page_title="Quant Desk | Options Intelligence", page_icon="◈", layout="wide", initial_sidebar_state="auto")
-    st.markdown(STYLE, unsafe_allow_html=True)
+    st.session_state.setdefault("desk_dark_mode", False)
+    st.markdown(theme_css("Dark" if st.session_state["desk_dark_mode"] else "Light"), unsafe_allow_html=True)
     local = dotenv_values(ROOT / ".env")
     key = config_value(local, "TRADYTICS_API_KEY")
     auth = config_value(local, "TRADYTICS_AUTH_MODE", "query").lower()
@@ -272,6 +273,7 @@ def main():
     with st.sidebar:
         st.markdown('<div class="qd-brand"><div class="qd-mark">◈</div><div><div class="qd-name">Quant Desk</div>'
                     '<div class="qd-brand-sub">Options intelligence · 2.5</div></div></div>', unsafe_allow_html=True)
+        st.toggle("Dark mode", key="desk_dark_mode", help="Switch between the light and dark dashboard themes.")
         for col, symbol in zip(st.columns(3, gap="small"), ("SPY", "SPX", "QQQ")):
             col.button(symbol, key=f"watch_{symbol}", width="stretch", on_click=choose_ticker, args=(symbol,))
         mode = st.segmented_control("Workspace mode", ["Live", "Preview"], key="desk_mode") or "Live"

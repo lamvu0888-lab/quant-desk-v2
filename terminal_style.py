@@ -117,6 +117,40 @@ h1,h2,h3 {color:#172b43;letter-spacing:-.035em}
 </style>
 """
 
+DARK_STYLE = """
+<style>
+:root {color-scheme:dark}
+.stApp,[data-testid="stAppViewContainer"],[data-testid="stMain"] {background:#0b1220!important;color:#e7edf7!important}
+[data-testid="stHeader"] {background:#0b1220e8!important}
+[data-testid="stSidebar"],[data-testid="stSidebar"] > div:first-child {background:#0f1728!important;border-color:#2b3a54!important}
+[data-testid="stMainBlockContainer"] [data-testid="stVerticalBlockBorderWrapper"],.qd-command,.qd-kpi,.qd-symbol-bar {background:#111c30!important;border-color:#34445f!important;color:#e7edf7!important}
+[data-testid="stVerticalBlockBorderWrapper"] {border-color:#34445f!important}
+h1,h2,h3,.qd-panel-title,.qd-kpi-value,.qd-name {color:#e7edf7!important}
+p,[data-testid="stCaptionContainer"] p,.stCaption,.qd-page p,.qd-panel-sub,.qd-command p,.qd-kpi-sub,.qd-source,.qd-symbol-name,.qd-level,.qd-empty {color:#aebdd2!important}
+.qd-brand-sub,.qd-eyebrow,.qd-nav-label,.qd-kpi-label {color:#91a5c0!important}
+.qd-rule,.qd-level,.qd-market-strip {background:#2b3a54!important;border-color:#2b3a54!important}
+.qd-tag {background:#1b2940!important;border-color:#405474!important;color:#c4d3e7!important}
+.qd-tag.good,.qd-status.long {background:#123e3a!important;color:#7ee0c2!important;border-color:#28685f!important}
+.qd-tag.warn,.qd-status.ready {background:#453515!important;color:#f4cc79!important;border-color:#73582a!important}
+.qd-tag.preview {background:#302647!important;color:#cbb4f5!important;border-color:#5b4781!important}
+.qd-status {background:#1b2940!important;color:#c4d3e7!important}
+.qd-status.short,.qd-status.avoid {background:#45202b!important;color:#ff9eae!important}
+.qd-status.exit {background:#302647!important;color:#d0b9ff!important}
+.qd-timeframes span {background:#1b2940!important;color:#c4d3e7!important}
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {background:#243451!important}
+[data-testid="stSidebar"] [role="radiogroup"] label:hover {background:#1a2940!important}
+input,textarea,[data-baseweb="select"] > div,[data-testid="stNumberInput"] input {background:#111c30!important;color:#e7edf7!important;border-color:#405474!important}
+button {color:#e7edf7!important;border-color:#405474!important;background:#16243a!important}
+[data-testid="stExpander"] {border-color:#34445f!important;background:#111c30!important}
+[data-testid="stDataFrame"] {border-color:#34445f!important}
+</style>
+"""
+
+
+def theme_css(theme):
+    """Return the base dashboard CSS plus the selected appearance overrides."""
+    return STYLE + (DARK_STYLE if str(theme).lower() == "dark" else "")
+
 
 def esc(value):
     return html.escape(str(value), quote=True)
