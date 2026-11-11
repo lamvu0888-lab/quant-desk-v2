@@ -1800,5 +1800,29 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:SPY:2026-11-11T17:15:00+00:00:fbe84a1ae3",
     "explanation": "Put wall is only 0.74R from entry."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "ENTER LONG",
+    "bias": "Bullish",
+    "score": 85,
+    "bar": "2026-11-11T17:15:00+00:00",
+    "entry_bar": "2026-11-11T17:19:00+00:00",
+    "triggered_at_utc": "2026-11-11T17:19:02.395471+00:00",
+    "price": 176.44,
+    "scope": "2026-11-11",
+    "setup": "EMA 8/10 pullback",
+    "entry": 176.44,
+    "trigger": 176.41,
+    "invalidation": 176.41,
+    "stop": 176.25,
+    "tp1": 176.72,
+    "tp2": 176.91,
+    "rr": 1.47,
+    "rr2": 2.47,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "signal:Tradytics:0:NVDA:2026-11-11T17:15:00+00:00:1501f3eb0f",
+    "explanation": "5m EMA 8/10 and price confirm a bullish trend."
   }
 ]
