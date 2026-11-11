@@ -1,0 +1,26 @@
+[
+  {
+    "symbol": "SPX",
+    "status": "DATA QUALITY",
+    "bias": "Neutral",
+    "score": 0,
+    "bar": "2026-11-11T14:40:00+00:00",
+    "entry_bar": "2026-11-11T14:43:00+00:00",
+    "triggered_at_utc": "2026-11-11T14:43:13.409829+00:00",
+    "price": 7583.5,
+    "scope": "2026-11-11",
+    "setup": null,
+    "entry": null,
+    "trigger": null,
+    "invalidation": null,
+    "stop": null,
+    "tp1": null,
+    "tp2": null,
+    "rr": null,
+    "rr2": null,
+    "regime": "Expanding",
+    "validation": "Unvalidated",
+    "id": "quality:SPX:2026-11-11:14:1",
+    "explanation": "Current regular-session quote."
+  }
+]
