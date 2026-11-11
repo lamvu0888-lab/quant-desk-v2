@@ -2434,5 +2434,29 @@
     "validation": "Unvalidated",
     "id": "quality:TSLA:2026-11-11:18:1",
     "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "WAIT",
+    "bias": "Bullish",
+    "score": 85,
+    "bar": "2026-11-11T18:40:00+00:00",
+    "entry_bar": "2026-11-11T18:40:00+00:00",
+    "triggered_at_utc": "2026-11-11T18:41:02.795726+00:00",
+    "price": 177.21,
+    "scope": "2026-11-11",
+    "setup": "Breakout and retest",
+    "entry": 177.21,
+    "trigger": 177.14,
+    "invalidation": 177.14,
+    "stop": 177.03,
+    "tp1": 177.48,
+    "tp2": 177.66,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Compressing",
+    "validation": "Unvalidated",
+    "id": "signal:Tradytics:0:NVDA:2026-11-11T18:40:00+00:00:ac1b0f03a4",
+    "explanation": "Current regular-session quote."
   }
 ]
