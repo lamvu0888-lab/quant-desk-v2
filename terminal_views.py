@@ -112,7 +112,9 @@ class Desk:
 
     def tape(self, *, session=None, limit=250, **filters):
         day = session or self.session
-        feed = self.get("flow", symbol=self.ticker, date=str(session) if session else None,
+        # A premarket workspace displays the previous completed session.  An
+        # undated tape request would instead fetch today's (empty) prints.
+        feed = self.get("flow", symbol=self.ticker, date=str(day) if day != self.day or session else None,
                         expiry=expiration_date(day, self.dte), limit=limit, **filters)
         rows = filter_expiration(feed.rows, day, self.dte)
         return order_rows(rows, self.ticker, self.now, session=day), feed
@@ -291,7 +293,9 @@ def price_panel(ctx, read):
         else:
             feed_stamp("bars", feed, ctx)
         if show_orders and not daily:
-            st.caption(f"Orders · {ctx.scope} · {compact(premium, currency=True)}+ · {len(marks)} matched prints selected by premium")
+            st.caption(f"Orders · session {ctx.session} · {ctx.scope} · {compact(premium, currency=True)}+ · {len(marks)} matched prints")
+            if not marks:
+                st.info("No large option prints match this chart and filter. Check the session, select All DTE, or lower Minimum premium in Price chart filters. The options feed may also be empty before the open.")
             feed_stamp("flow", prints_feed, ctx)
         if rows:
             with st.expander("Download candles"):
@@ -571,6 +575,8 @@ def options_flow(ctx):
         render_chart(bubble_figure(bars, marks, ctx.ticker), "option_bubble_chart", bar_feed,
                      "Waiting for completed underlying price candles for this session.")
         st.caption(f"{len(marks)} bubbles from {len(orders)} loaded prints · size by premium · filled bought, hollow sold · C / P is the contract type")
+        if not marks:
+            st.info(f"No bubbles matched session {tape_day} and {scope}. Try All DTE, reduce Minimum premium, set Tape window to Full session, and clear the other filters. If the tape is empty, check Data Health for options access.")
         if tape.snapshot and (tape.snapshot.cursor or len(tape.rows) >= 500):
             st.caption("The tape is a recent sample. Earlier matching prints may exist.")
         feed_stamp("flow", tape, ctx)
