@@ -2184,5 +2184,34 @@
     "validation": "Unvalidated",
     "id": "quality:SPY:2026-11-11:18:0",
     "explanation": "Current regular-session quote."
+  },
+  {
+    "symbol": "TSLA",
+    "status": "LEVEL CROSSING",
+    "bias": "Bearish",
+    "score": 65,
+    "bar": "2026-11-11T18:05:00+00:00",
+    "entry_bar": "2026-11-11T18:05:00+00:00",
+    "triggered_at_utc": "2026-11-11T18:05:01.996031+00:00",
+    "price": 392.495,
+    "scope": "2026-11-11",
+    "setup": "EMA 8/10 pullback",
+    "entry": 392.5,
+    "trigger": 392.61,
+    "invalidation": 392.61,
+    "stop": 392.86,
+    "tp1": 391.96,
+    "tp2": 391.6,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Compressing",
+    "validation": "Unvalidated",
+    "crossing": {
+      "level": "Put wall",
+      "price": 392.5,
+      "direction": "below"
+    },
+    "id": "level:Tradytics:0:TSLA:2026-11-11T18:05:00+00:00:Put wall",
+    "explanation": "A completed 5m close crossed a level recorded before this bar."
   }
 ]
