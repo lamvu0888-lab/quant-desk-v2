@@ -2602,5 +2602,29 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:SPY:2026-11-11T18:50:00+00:00:ac1b0f03a4",
     "explanation": "Current regular-session quote."
+  },
+  {
+    "symbol": "SPY",
+    "status": "GET READY",
+    "bias": "Bullish",
+    "score": 55,
+    "bar": "2026-11-11T18:50:00+00:00",
+    "entry_bar": "2026-11-11T18:50:00+00:00",
+    "triggered_at_utc": "2026-11-11T18:50:31.450285+00:00",
+    "price": 762.3,
+    "scope": "2026-11-11",
+    "setup": "Breakout watch",
+    "entry": 762.45,
+    "trigger": 762.4,
+    "invalidation": 762.4,
+    "stop": 762.2,
+    "tp1": 762.83,
+    "tp2": 763.08,
+    "rr": 1.52,
+    "rr2": 2.52,
+    "regime": "Compressing",
+    "validation": "Unvalidated",
+    "id": "signal:Tradytics:0:SPY:2026-11-11T18:50:00+00:00:edff37b4f0",
+    "explanation": "Aligned 3m and 1m entry timing."
   }
 ]
