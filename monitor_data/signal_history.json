@@ -2242,5 +2242,29 @@
     },
     "id": "level:Tradytics:0:TSLA:2026-11-11T18:10:00+00:00:Put wall",
     "explanation": "A completed 5m close crossed a level recorded before this bar."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "DATA QUALITY",
+    "bias": "Mixed",
+    "score": 55,
+    "bar": "2026-11-11T18:15:00+00:00",
+    "entry_bar": "2026-11-11T18:16:00+00:00",
+    "triggered_at_utc": "2026-11-11T18:16:02.321932+00:00",
+    "price": 176.66,
+    "scope": "2026-11-11",
+    "setup": "EMA 8/10 pullback",
+    "entry": 176.66,
+    "trigger": 176.6,
+    "invalidation": 176.6,
+    "stop": 176.54,
+    "tp1": 176.84,
+    "tp2": 176.96,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Compressing",
+    "validation": "Unvalidated",
+    "id": "quality:NVDA:2026-11-11:18:0",
+    "explanation": "Current regular-session quote."
   }
 ]
