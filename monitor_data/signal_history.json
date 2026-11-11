@@ -1278,5 +1278,29 @@
     },
     "id": "level:Tradytics:0:NVDA:2026-11-11T16:25:00+00:00:Call wall",
     "explanation": "A completed 5m close crossed a level recorded before this bar."
+  },
+  {
+    "symbol": "SPX",
+    "status": "DATA QUALITY",
+    "bias": "Bullish",
+    "score": 85,
+    "bar": "2026-11-11T16:25:00+00:00",
+    "entry_bar": "2026-11-11T16:29:00+00:00",
+    "triggered_at_utc": "2026-11-11T16:30:01.904904+00:00",
+    "price": 7613.74,
+    "scope": "2026-11-11",
+    "setup": "Breakout close",
+    "entry": 7613.74,
+    "trigger": 7610.03,
+    "invalidation": 7610.03,
+    "stop": 7609.15,
+    "tp1": 7620.62,
+    "tp2": 7625.22,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "quality:SPX:2026-11-11:16:1",
+    "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
   }
 ]
