@@ -598,5 +598,34 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:NVDA:2026-11-11T15:35:00+00:00:ac1b0f03a4",
     "explanation": "Current regular-session quote."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "LEVEL CROSSING",
+    "bias": "Bullish",
+    "score": 80,
+    "bar": "2026-11-11T15:40:00+00:00",
+    "entry_bar": "2026-11-11T15:40:00+00:00",
+    "triggered_at_utc": "2026-11-11T15:41:02.494443+00:00",
+    "price": 174.61,
+    "scope": "2026-11-11",
+    "setup": "Breakout watch",
+    "entry": 175.22,
+    "trigger": 175.1,
+    "invalidation": 175.1,
+    "stop": 174.13,
+    "tp1": 176.86,
+    "tp2": 177.94,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "crossing": {
+      "level": "Gamma flip",
+      "price": 174.072,
+      "direction": "above"
+    },
+    "id": "level:Tradytics:0:NVDA:2026-11-11T15:40:00+00:00:Gamma flip",
+    "explanation": "A completed 5m close crossed a level recorded before this bar."
   }
 ]
