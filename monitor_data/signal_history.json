@@ -3281,5 +3281,34 @@
     },
     "id": "level:Tradytics:0:NVDA:2026-11-11T20:35:00+00:00:Gamma flip",
     "explanation": "A completed 5m close crossed a level recorded before this bar."
+  },
+  {
+    "symbol": "TSLA",
+    "status": "LEVEL CROSSING",
+    "bias": "Bearish",
+    "score": 70,
+    "bar": "2026-11-11T20:50:00+00:00",
+    "entry_bar": "2026-11-11T20:51:00+00:00",
+    "triggered_at_utc": "2026-11-11T20:51:32.001867+00:00",
+    "price": 389.64,
+    "scope": "2026-11-11",
+    "setup": "EMA 8/10 pullback",
+    "entry": 389.64,
+    "trigger": 390.16,
+    "invalidation": 390.16,
+    "stop": 390.44,
+    "tp1": 388.44,
+    "tp2": 387.64,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "crossing": {
+      "level": "Call wall",
+      "price": 390.0,
+      "direction": "below"
+    },
+    "id": "level:Tradytics:0:TSLA:2026-11-11T20:50:00+00:00:Call wall",
+    "explanation": "A completed 5m close crossed a level recorded before this bar."
   }
 ]
