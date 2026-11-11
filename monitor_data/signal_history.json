@@ -1881,5 +1881,34 @@
     },
     "id": "exit:candidate:Tradytics:0:NVDA:2026-11-11T17:19:00+00:00",
     "explanation": "Tracked setup closed by stop."
+  },
+  {
+    "symbol": "SPY",
+    "status": "LEVEL CROSSING",
+    "bias": "Bullish",
+    "score": 95,
+    "bar": "2026-11-11T17:25:00+00:00",
+    "entry_bar": "2026-11-11T17:25:00+00:00",
+    "triggered_at_utc": "2026-11-11T17:25:01.466559+00:00",
+    "price": 761.07,
+    "scope": "2026-11-11",
+    "setup": "Breakout close",
+    "entry": 761.07,
+    "trigger": 760.61,
+    "invalidation": 760.61,
+    "stop": 760.55,
+    "tp1": 761.85,
+    "tp2": 762.37,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "crossing": {
+      "level": "Put wall",
+      "price": 761.0,
+      "direction": "above"
+    },
+    "id": "level:Tradytics:0:SPY:2026-11-11T17:25:00+00:00:Put wall",
+    "explanation": "A completed 5m close crossed a level recorded before this bar."
   }
 ]
