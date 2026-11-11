@@ -2862,5 +2862,29 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:SPY:2026-11-11T19:20:00+00:00:ac1b0f03a4",
     "explanation": "The recent breakout failed back through its range boundary."
+  },
+  {
+    "symbol": "SPX",
+    "status": "DATA QUALITY",
+    "bias": "Bearish",
+    "score": 25,
+    "bar": "2026-11-11T19:30:00+00:00",
+    "entry_bar": "2026-11-11T19:30:00+00:00",
+    "triggered_at_utc": "2026-11-11T19:30:02.090770+00:00",
+    "price": 7625.02,
+    "scope": "2026-11-11",
+    "setup": "Breakout watch",
+    "entry": 7620.08,
+    "trigger": 7620.54,
+    "invalidation": 7620.54,
+    "stop": 7626.74,
+    "tp1": 7610.09,
+    "tp2": 7603.43,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "quality:SPX:2026-11-11:19:1",
+    "explanation": "Current regular-session quote."
   }
 ]
