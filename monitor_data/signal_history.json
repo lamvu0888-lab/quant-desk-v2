@@ -1824,5 +1824,29 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:NVDA:2026-11-11T17:15:00+00:00:1501f3eb0f",
     "explanation": "5m EMA 8/10 and price confirm a bullish trend."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "DATA QUALITY",
+    "bias": "Bullish",
+    "score": 85,
+    "bar": "2026-11-11T17:20:00+00:00",
+    "entry_bar": "2026-11-11T17:21:00+00:00",
+    "triggered_at_utc": "2026-11-11T17:21:02.088332+00:00",
+    "price": 176.525,
+    "scope": "2026-11-11",
+    "setup": "EMA 8/10 pullback",
+    "entry": 176.53,
+    "trigger": 176.46,
+    "invalidation": 176.46,
+    "stop": 176.36,
+    "tp1": 176.78,
+    "tp2": 176.95,
+    "rr": 1.47,
+    "rr2": 2.47,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "quality:NVDA:2026-11-11:17:0",
+    "explanation": "Current regular-session quote."
   }
 ]
