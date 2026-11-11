@@ -349,5 +349,29 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:TSLA:2026-11-11T15:20:00+00:00:ce2443aea8",
     "explanation": "5m EMA 8/10 and price confirm a bullish trend."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "DATA QUALITY",
+    "bias": "Bearish",
+    "score": 0,
+    "bar": "2026-11-11T15:20:00+00:00",
+    "entry_bar": "2026-11-11T15:26:00+00:00",
+    "triggered_at_utc": "2026-11-11T15:26:02.798655+00:00",
+    "price": 173.04,
+    "scope": "2026-11-11",
+    "setup": null,
+    "entry": null,
+    "trigger": null,
+    "invalidation": null,
+    "stop": null,
+    "tp1": null,
+    "tp2": null,
+    "rr": null,
+    "rr2": null,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "quality:NVDA:2026-11-11:15:0",
+    "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
   }
 ]
