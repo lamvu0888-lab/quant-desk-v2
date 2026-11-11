@@ -1728,5 +1728,29 @@
     "validation": "Unvalidated",
     "id": "quality:TSLA:2026-11-11:17:0",
     "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
+  },
+  {
+    "symbol": "SPY",
+    "status": "DATA QUALITY",
+    "bias": "Bullish",
+    "score": 85,
+    "bar": "2026-11-11T17:15:00+00:00",
+    "entry_bar": "2026-11-11T17:15:00+00:00",
+    "triggered_at_utc": "2026-11-11T17:15:01.606486+00:00",
+    "price": 760.22,
+    "scope": "2026-11-11",
+    "setup": "Breakout and retest",
+    "entry": 760.22,
+    "trigger": 760.18,
+    "invalidation": 760.18,
+    "stop": 760.01,
+    "tp1": 760.54,
+    "tp2": 760.75,
+    "rr": 1.52,
+    "rr2": 2.52,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "quality:SPY:2026-11-11:17:0",
+    "explanation": "Current regular-session quote."
   }
 ]
