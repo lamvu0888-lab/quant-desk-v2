@@ -1776,5 +1776,29 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:SPY:2026-11-11T17:15:00+00:00:18355af3c7",
     "explanation": "Aligned 3m and 1m entry timing."
+  },
+  {
+    "symbol": "SPY",
+    "status": "AVOID",
+    "bias": "Bullish",
+    "score": 60,
+    "bar": "2026-11-11T17:15:00+00:00",
+    "entry_bar": "2026-11-11T17:18:00+00:00",
+    "triggered_at_utc": "2026-11-11T17:18:01.399819+00:00",
+    "price": 760.39,
+    "scope": "2026-11-11",
+    "setup": "Breakout watch",
+    "entry": 760.63,
+    "trigger": 760.58,
+    "invalidation": 760.58,
+    "stop": 760.13,
+    "tp1": 761.0,
+    "tp2": 761.88,
+    "rr": 0.74,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "signal:Tradytics:0:SPY:2026-11-11T17:15:00+00:00:fbe84a1ae3",
+    "explanation": "Put wall is only 0.74R from entry."
   }
 ]
