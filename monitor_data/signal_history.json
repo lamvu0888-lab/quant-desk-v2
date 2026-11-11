@@ -977,5 +977,29 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:SPX:2026-11-11T16:00:00+00:00:0154b99a99",
     "explanation": "5m EMA 8/10 and price confirm a bullish trend."
+  },
+  {
+    "symbol": "TSLA",
+    "status": "DATA QUALITY",
+    "bias": "Bullish",
+    "score": 0,
+    "bar": "2026-11-11T15:55:00+00:00",
+    "entry_bar": "2026-11-11T16:01:00+00:00",
+    "triggered_at_utc": "2026-11-11T16:01:02.284886+00:00",
+    "price": 394.83,
+    "scope": "2026-11-11",
+    "setup": null,
+    "entry": null,
+    "trigger": null,
+    "invalidation": null,
+    "stop": null,
+    "tp1": null,
+    "tp2": null,
+    "rr": null,
+    "rr2": null,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "quality:TSLA:2026-11-11:16:0",
+    "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
   }
 ]
