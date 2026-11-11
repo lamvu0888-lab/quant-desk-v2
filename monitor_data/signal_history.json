@@ -627,5 +627,29 @@
     },
     "id": "level:Tradytics:0:NVDA:2026-11-11T15:40:00+00:00:Gamma flip",
     "explanation": "A completed 5m close crossed a level recorded before this bar."
+  },
+  {
+    "symbol": "SPY",
+    "status": "GET READY",
+    "bias": "Bullish",
+    "score": 55,
+    "bar": "2026-11-11T15:40:00+00:00",
+    "entry_bar": "2026-11-11T15:41:00+00:00",
+    "triggered_at_utc": "2026-11-11T15:41:31.599117+00:00",
+    "price": 756.87,
+    "scope": "2026-11-11",
+    "setup": "Breakout watch",
+    "entry": 757.13,
+    "trigger": 757.03,
+    "invalidation": 757.03,
+    "stop": 756.6,
+    "tp1": 757.92,
+    "tp2": 758.45,
+    "rr": 1.49,
+    "rr2": 2.49,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "signal:Tradytics:0:SPY:2026-11-11T15:40:00+00:00:edff37b4f0",
+    "explanation": "Aligned 3m and 1m entry timing."
   }
 ]
