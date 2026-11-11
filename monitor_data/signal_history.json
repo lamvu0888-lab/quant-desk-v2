@@ -2650,5 +2650,29 @@
     "validation": "Unvalidated",
     "id": "quality:SPX:2026-11-11:19:0",
     "explanation": "Current regular-session quote."
+  },
+  {
+    "symbol": "TSLA",
+    "status": "DATA QUALITY",
+    "bias": "Bullish",
+    "score": 30,
+    "bar": "2026-11-11T19:00:00+00:00",
+    "entry_bar": "2026-11-11T19:00:00+00:00",
+    "triggered_at_utc": "2026-11-11T19:01:02.198321+00:00",
+    "price": 394.43,
+    "scope": "2026-11-11",
+    "setup": "Breakout watch",
+    "entry": 394.85,
+    "trigger": 394.81,
+    "invalidation": 394.81,
+    "stop": 394.36,
+    "tp1": 395.0,
+    "tp2": 396.08,
+    "rr": 0.31,
+    "rr2": 2.51,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "quality:TSLA:2026-11-11:19:0",
+    "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
   }
 ]
