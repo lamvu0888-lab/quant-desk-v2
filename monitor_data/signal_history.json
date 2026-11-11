@@ -104,5 +104,34 @@
     },
     "id": "level:Tradytics:0:TSLA:2026-11-11T15:10:00+00:00:Call wall",
     "explanation": "A completed 5m close crossed a level recorded before this bar."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "LEVEL CROSSING",
+    "bias": "Bearish",
+    "score": 55,
+    "bar": "2026-11-11T15:10:00+00:00",
+    "entry_bar": "2026-11-11T15:10:00+00:00",
+    "triggered_at_utc": "2026-11-11T15:10:44.605876+00:00",
+    "price": 172.39,
+    "scope": "2026-11-11",
+    "setup": "VWAP rejection",
+    "entry": 172.39,
+    "trigger": 173.07,
+    "invalidation": 173.07,
+    "stop": 173.49,
+    "tp1": 170.8,
+    "tp2": 169.64,
+    "rr": 1.45,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "crossing": {
+      "level": "Put wall",
+      "price": 172.5,
+      "direction": "below"
+    },
+    "id": "level:Tradytics:0:NVDA:2026-11-11T15:10:00+00:00:Put wall",
+    "explanation": "A completed 5m close crossed a level recorded before this bar."
   }
 ]
