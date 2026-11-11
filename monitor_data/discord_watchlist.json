@@ -1,0 +1,9 @@
+{
+  "symbols": [
+    "SPY",
+    "SPX",
+    "TSLA"
+  ],
+  "enabled": true,
+  "interval_seconds": 30
+}
