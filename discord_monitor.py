@@ -13,6 +13,8 @@ from market_session import session_state
 from terminal_data import numeric
 from terminal_views import Desk, read_workspace
 from tradytics_feed import TradyticsClient, FeedStore
+from monitor_storage import SharedStore
+from signal_explain import describe, explain_evidence, discord_text
 
 ROOT = Path(__file__).resolve().parent
 UTC = timezone.utc
@@ -43,16 +45,16 @@ def evaluate(ctx):
     return {"symbol":ctx.ticker, "status":status, "bias":bias, "score":round(score),
             "bar":stamp.isoformat() if stamp else None, "state":state,
             "price":numeric(ctx.quote().get("price")), "scope":"0DTE",
-            "notes":"Review the dashboard Trade Plan for the exact trigger and invalidation. No order was sent."}
+            "trigger":numeric(plan.get("trigger")), "invalidation":numeric(plan.get("invalidation")),
+            "evidence":explain_evidence(plan), "triggered_at_utc":ctx.now.isoformat(),
+            "explanation":describe(plan, status),
+            "notes":"Informational only. No order was sent."}
 
 
 def send(webhook, signal):
     if not webhook.startswith("https://discord.com/api/webhooks/") and not webhook.startswith("https://discordapp.com/api/webhooks/"):
         raise ValueError("Discord webhook must be a Discord HTTPS webhook URL")
-    content = (f"**{signal['symbol']} · {signal['status']} · {signal['bias']}**\n"
-               f"Evidence score: {signal['score']}/100 (not win probability) | {signal['scope']}\n"
-               f"Price: {signal['price']} | Completed bar: {signal['bar']}\n"
-               f"{signal['notes']}")
+    content = discord_text(signal)
     response = requests.post(webhook, json={"content":content, "allowed_mentions":{"parse":[]}}, timeout=12)
     response.raise_for_status()
 
@@ -84,10 +86,32 @@ def main():
     if args.interval < 10:
         raise SystemExit("Minimum interval is 10 seconds; endpoint caching/rate limits still apply")
     store = FeedStore(TradyticsClient(key, secret("TRADYTICS_AUTH_MODE", "query")))
+    shared = SharedStore(repo=secret("MONITOR_GITHUB_REPO"), token=secret("MONITOR_GITHUB_TOKEN"),
+                         branch=secret("MONITOR_GITHUB_BRANCH", "main"))
     sent = {}
+    next_scan = 0.0
+    last_watchlist = None
     try:
         while True:
-            for symbol in ("SPY", "SPX"):
+            try:
+                watchlist, _ = shared.watchlist()
+                last_watchlist = watchlist
+            except Exception as exc:
+                # Do not silently revert to hardcoded tickers after a remote error.
+                print(f"Shared watchlist unavailable: {type(exc).__name__}: {exc}", flush=True)
+                if shared.configured:
+                    if args.once:
+                        break
+                    time.sleep(args.interval)
+                    continue
+                watchlist = last_watchlist or {'symbols': ['SPY', 'SPX'], 'enabled': True, 'interval_seconds': 30}
+            if not watchlist['enabled']:
+                print('Discord monitoring paused in shared settings', flush=True)
+                if args.once:
+                    break
+                time.sleep(args.interval)
+                continue
+            for symbol in watchlist['symbols']:
                 try:
                     now = datetime.now(UTC)
                     ctx = Desk(symbol, now, store, False, False, 0, True)
@@ -95,8 +119,19 @@ def main():
                     if result:
                         signature = (result["status"], result["bias"], result["bar"])
                         if sent.get(symbol) != signature:
+                            event = {**result, 'id': f"{symbol}:{result['status']}:{result['bias']}:{result['bar']}"}
+                            if shared.configured:
+                                previous, _ = shared.history()
+                                if any(row.get('id') == event['id'] for row in previous):
+                                    sent[symbol] = signature
+                                    continue
                             send(webhook, result)
                             sent[symbol] = signature
+                            if shared.configured:
+                                try:
+                                    shared.append_event(event)
+                                except Exception as log_exc:
+                                    print(f"{symbol}: alert sent but history save failed: {log_exc}", flush=True)
                             print(json.dumps({"sent":result}), flush=True)
                     else:
                         print(f"{now.isoformat()} {symbol}: no eligible confirmed signal", flush=True)
@@ -104,7 +139,7 @@ def main():
                     print(f"{symbol}: monitor error ({type(exc).__name__}): {exc}", flush=True)
             if args.once:
                 break
-            time.sleep(args.interval)
+            time.sleep(max(args.interval, watchlist.get("interval_seconds", 30)))
     finally:
         store.close()
 

@@ -24,6 +24,8 @@ from terminal_data import (INDICES, chart_buckets, display_exposure_unit, et_tim
 from terminal_style import (AMBER, BLUE, RED, TEAL, VIOLET, amount, compact, empty, esc, feed_stamp, kpis,
                             panel_header, plot, ratio_pct, signed_pct)
 from tradytics_feed import ENDPOINTS, Feed, FeedError
+from monitor_storage import SharedStore
+from signal_explain import describe
 from tradingview_levels import (PINE_COLORS, dark_levels, dealer_levels, expected_levels, export_payload, pine_script)
 
 LEVELS = (("put_wall", "Put wall", "down", RED), ("flip", "Gamma flip", "gold", AMBER),
@@ -1051,6 +1053,46 @@ def trade_plan(ctx):
         st.write("Price returned inside the prior range. Wait for another completed candle to confirm the direction.")
     if plan["divergence"]:
         st.caption("The latest price change and signed options premium are pointing in opposite directions.")
+    with st.expander("What does this setup mean?", expanded=True):
+        state = str(plan.get("state") or "").upper()
+        if "TRIGGER" in state or "READY" in state:
+            interpretation = "ENTER SETUP"
+        elif "WAIT" in state or "WATCH" in state:
+            interpretation = "GET READY"
+        else:
+            interpretation = "WAIT"
+        st.write(describe(plan, interpretation))
+        st.caption("GET READY = developing conditions; ENTER SETUP = rule-based ready/triggered state. "
+                   "Neither guarantees a profitable trade. AVOID/WAIT = insufficient or conflicting confirmation.")
+        st.caption("Signals use completed 5-minute bars and require fresh, synchronized price and flow data.")
+    with st.expander("Discord signal history (cloud)", expanded=True):
+        import os
+        def cloud_secret(name, default=""):
+            try:
+                return os.getenv(name) or st.secrets.get(name, default)
+            except Exception:
+                return os.getenv(name, default)
+        shared = SharedStore(repo=cloud_secret("MONITOR_GITHUB_REPO"),
+                             token=cloud_secret("MONITOR_GITHUB_TOKEN"),
+                             branch=cloud_secret("MONITOR_GITHUB_BRANCH", "main"))
+        if shared.configured:
+            try:
+                events, _ = shared.history()
+                events = [e for e in events if e.get("symbol") == ctx.ticker]
+                events.reverse()
+                if events:
+                    table([{"Detected UTC": e.get("triggered_at_utc"), "Signal": e.get("status"),
+                            "Bias": e.get("bias"), "Price": e.get("price"),
+                            "Trigger": e.get("trigger"), "Invalidation": e.get("invalidation"),
+                            "5m bar UTC": e.get("bar"), "Explanation": e.get("explanation")}
+                           for e in events[:100]], height=310)
+                    csv_export(events, ctx.title("discord_signal_history.csv"), "discord_history_export")
+                else:
+                    st.info("No Discord signals recorded for this ticker yet. Monitoring may be waiting for a valid setup.")
+            except Exception as exc:
+                st.warning(f"Could not load cloud signal history: {exc}")
+        else:
+            st.info("Configure shared GitHub monitoring credentials to display persistent cloud signal history.")
     a, b = st.columns(2)
     with a.container(border=True):
         panel_header("What agrees?", "readiness", "plan_evidence")

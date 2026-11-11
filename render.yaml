@@ -10,5 +10,11 @@ services:
         sync: false
       - key: DISCORD_WEBHOOK_URL
         sync: false
+      - key: MONITOR_GITHUB_REPO
+        sync: false
+      - key: MONITOR_GITHUB_TOKEN
+        sync: false
+      - key: MONITOR_GITHUB_BRANCH
+        value: main
       - key: TRADYTICS_AUTH_MODE
         value: query

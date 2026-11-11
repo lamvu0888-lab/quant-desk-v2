@@ -20,6 +20,7 @@ from terminal_style import STYLE, amount, esc, signed_pct, tag
 from terminal_views import Desk, PAGES
 from tradytics_feed import Feed, FeedError, FeedStore, TradyticsClient
 from discord_monitor import send_test as send_discord_test
+from monitor_storage import SharedStore, normalize_symbols
 
 UTC = timezone.utc
 PAGES_LABEL = {
@@ -242,7 +243,7 @@ def main():
     ticker = st.session_state["desk_ticker"]
     with st.sidebar:
         st.markdown('<div class="qd-brand"><div class="qd-mark">◈</div><div><div class="qd-name">Quant Desk</div>'
-                    '<div class="qd-brand-sub">Options intelligence · 2.2</div></div></div>', unsafe_allow_html=True)
+                    '<div class="qd-brand-sub">Options intelligence · 2.4</div></div></div>', unsafe_allow_html=True)
         for col, symbol in zip(st.columns(3, gap="small"), ("SPY", "SPX", "QQQ")):
             col.button(symbol, key=f"watch_{symbol}", width="stretch", on_click=choose_ticker, args=(symbol,))
         mode = st.segmented_control("Workspace mode", ["Live", "Preview"], key="desk_mode") or "Live"
@@ -258,6 +259,34 @@ def main():
             comparison = st.toggle("Enable Webull comparison", key="desk_webull_compare", disabled=mode == "Preview")
             paused = st.toggle("Pause requests", key="desk_paused", disabled=mode == "Preview")
             st.button("Refresh feeds", key="desk_refresh", on_click=refresh, disabled=mode == "Preview", width="stretch")
+            with st.expander("Discord ticker monitoring", expanded=False):
+                shared = SharedStore(repo=config_value(local, "MONITOR_GITHUB_REPO"),
+                                     token=config_value(local, "MONITOR_GITHUB_TOKEN"),
+                                     branch=config_value(local, "MONITOR_GITHUB_BRANCH", "main"))
+                if shared.configured:
+                    try:
+                        watchlist, revision = shared.watchlist()
+                        st.caption("Cloud watchlist (shared with Render). Up to 12 tickers; 30-second minimum polling.")
+                        with st.form("discord_monitor_form"):
+                            names = st.text_input("Tickers (comma-separated)", value=", ".join(watchlist["symbols"]))
+                            enabled = st.checkbox("Enable alerts", value=watchlist["enabled"])
+                            interval = st.number_input("Polling interval (seconds)", min_value=30, max_value=3600,
+                                                       value=watchlist["interval_seconds"], step=30)
+                            saved = st.form_submit_button("Save cloud monitor settings")
+                        if saved:
+                            symbols = normalize_symbols([v.strip() for v in names.split(",") if v.strip()])
+                            if enabled and not symbols:
+                                st.error("Choose at least one ticker before enabling alerts.")
+                            else:
+                                shared.write('monitor_data/discord_watchlist.json',
+                                             {'symbols': symbols, 'enabled': enabled,
+                                              'interval_seconds': int(interval)}, revision,
+                                             'Update Discord watchlist from dashboard')
+                                st.success("Saved to GitHub. Render worker will read the update on its next scan.")
+                    except Exception as exc:
+                        st.error(f"Unable to load/save cloud monitor settings: {exc}")
+                else:
+                    st.info("Set MONITOR_GITHUB_REPO and MONITOR_GITHUB_TOKEN in Streamlit and Render to edit the cloud watchlist.")
             discord_webhook = config_value(local, "DISCORD_WEBHOOK_URL")
             if st.button("Send Discord test message", key="discord_test_button", disabled=not discord_webhook,
                          width="stretch", help="Sends one harmless connectivity message to your configured Discord webhook."):
@@ -269,7 +298,7 @@ def main():
             if not discord_webhook:
                 st.caption("Add DISCORD_WEBHOOK_URL to .env or Streamlit Secrets to enable the test button.")
             st.caption("Tradytics key configured" if key else "Set your Tradytics key in .env")
-        st.caption("Quant Options Agent · 2.2")
+        st.caption("Quant Options Agent · 2.4")
     preview = mode == "Preview"
     price_provider = "Tradytics" if preview else selected_provider
     paused = bool(paused and not preview)
