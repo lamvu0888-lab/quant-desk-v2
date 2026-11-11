@@ -1422,5 +1422,29 @@
     "validation": "Unvalidated",
     "id": "quality:SPY:2026-11-11:16:1",
     "explanation": "Current regular-session quote."
+  },
+  {
+    "symbol": "TSLA",
+    "status": "DATA QUALITY",
+    "bias": "Neutral",
+    "score": 0,
+    "bar": "2026-11-11T16:50:00+00:00",
+    "entry_bar": "2026-11-11T16:52:00+00:00",
+    "triggered_at_utc": "2026-11-11T16:53:01.895187+00:00",
+    "price": 393.01,
+    "scope": "2026-11-11",
+    "setup": null,
+    "entry": null,
+    "trigger": null,
+    "invalidation": null,
+    "stop": null,
+    "tp1": null,
+    "tp2": null,
+    "rr": null,
+    "rr2": null,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "quality:TSLA:2026-11-11:16:1",
+    "explanation": "Current regular-session quote."
   }
 ]
