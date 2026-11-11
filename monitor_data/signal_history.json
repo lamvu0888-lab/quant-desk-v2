@@ -1446,5 +1446,29 @@
     "validation": "Unvalidated",
     "id": "quality:TSLA:2026-11-11:16:1",
     "explanation": "Current regular-session quote."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "GET READY",
+    "bias": "Bullish",
+    "score": 55,
+    "bar": "2026-11-11T16:50:00+00:00",
+    "entry_bar": "2026-11-11T16:53:00+00:00",
+    "triggered_at_utc": "2026-11-11T16:53:02.190892+00:00",
+    "price": 175.885,
+    "scope": "2026-11-11",
+    "setup": "Breakout watch",
+    "entry": 176.32,
+    "trigger": 176.26,
+    "invalidation": 176.26,
+    "stop": 175.64,
+    "tp1": 177.34,
+    "tp2": 178.02,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "signal:Tradytics:0:NVDA:2026-11-11T16:50:00+00:00:edff37b4f0",
+    "explanation": "Aligned 3m and 1m entry timing."
   }
 ]
