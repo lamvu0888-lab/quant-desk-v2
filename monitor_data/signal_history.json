@@ -325,5 +325,29 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:NVDA:2026-11-11T15:20:00+00:00:ac1b0f03a4",
     "explanation": "Current regular-session quote."
+  },
+  {
+    "symbol": "TSLA",
+    "status": "ENTER LONG",
+    "bias": "Bullish",
+    "score": 95,
+    "bar": "2026-11-11T15:20:00+00:00",
+    "entry_bar": "2026-11-11T15:24:00+00:00",
+    "triggered_at_utc": "2026-11-11T15:24:31.986317+00:00",
+    "price": 393.755,
+    "scope": "2026-11-11",
+    "setup": "Breakout and retest",
+    "entry": 393.75,
+    "trigger": 393.5,
+    "invalidation": 393.5,
+    "stop": 392.51,
+    "tp1": 395.61,
+    "tp2": 396.85,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Expanding",
+    "validation": "Unvalidated",
+    "id": "signal:Tradytics:0:TSLA:2026-11-11T15:20:00+00:00:ce2443aea8",
+    "explanation": "5m EMA 8/10 and price confirm a bullish trend."
   }
 ]
