@@ -3050,5 +3050,29 @@
     },
     "id": "level:Tradytics:0:NVDA:2026-11-11T19:55:00+00:00:Gamma flip",
     "explanation": "A completed 5m close crossed a level recorded before this bar."
+  },
+  {
+    "symbol": "SPX",
+    "status": "DATA QUALITY",
+    "bias": "Neutral",
+    "score": 0,
+    "bar": "2026-11-11T19:55:00+00:00",
+    "entry_bar": "2026-11-11T19:59:00+00:00",
+    "triggered_at_utc": "2026-11-11T20:00:01.985352+00:00",
+    "price": 7627.54,
+    "scope": "2026-11-11",
+    "setup": null,
+    "entry": null,
+    "trigger": null,
+    "invalidation": null,
+    "stop": null,
+    "tp1": null,
+    "tp2": null,
+    "rr": null,
+    "rr2": null,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "quality:SPX:2026-11-11:20:0",
+    "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
   }
 ]
