@@ -169,7 +169,8 @@ class DemoStore:
         elif name in ("flow", "chain"):
             data = self.options_tape(valid_date(params.get("date")))
             if name == "chain":
-                data = [{**row, "bid": round(row["price"] - .03, 2), "ask": round(row["price"] + .03, 2), "iv": .164 + i * .0015,
+                data = [{**row, "contract": "SPXW" + row["contract"][3:] if self.ticker == "SPX" else row["contract"],
+                         "bid": round(row["price"] - .03, 2), "ask": round(row["price"] + .03, 2), "iv": .164 + i * .0015,
                          "delta": (-1 if row["type"] == "put" else 1) * (.14 + (i % 17) / 30), "gamma": .02, "theta": -.12,
                          "vega": .045, "volume": 1700 + i*32, "updated_at": DEMO_AT.isoformat()} for i, row in enumerate(data)]
             for key in ("type", "kind", "side", "expiry"):

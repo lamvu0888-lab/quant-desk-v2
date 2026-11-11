@@ -1,4 +1,16 @@
-# Validation — Quant Desk 2.1
+# Validation — Quant Desk 2.5
+
+Verified on November 11, 2026 with Python 3.12, Streamlit 1.67.0 and Plotly 6.9.0.
+
+- Python syntax compilation completed. All 82 automated checks passed, including the V2.4 regression suite.
+- Streamlit's test harness opened all 14 workspace pages. It selected SPY and SPX, ran the underlying and quoted-option probability workflows, exercised historical replay, and checked the Discord test button's missing-credential state. A browser preview verified the light Overview, Dealer Positioning, IV, SPY simulation results and SPX Trade Plan. A server started from the extracted ZIP returned HTTP 200 from its health endpoint.
+- Provider-shaped fixtures exercised live assembly for SPY and SPX, 0DTE scope, missing SPX share VWAP, Tradytics hedge units and timestamps, exact-expiry IV and standard PM SPXW quote handling. The existing Webull tests cover live-data parsing, entitlement delay and quote gating.
+- Execution tests checked known hedge conversions, incomplete dealer snapshots, stale and misaligned inputs, price/flow disagreement, nearby obstacles, premium review, stop/target ordering, missed pending entries and changing option costs. Future and delayed candles cannot resolve tracked outcomes.
+- Worker tests checked entry and exit transitions, paper settlement, duplicate delivery suppression, bounded journal mirroring, rejected webhook URLs and HTTP errors using a mocked Discord transport.
+
+The verification used Preview, provider fixtures and mocked cloud services. Authenticated Tradytics and Webull data for this release, production GitHub/Streamlit/Render deployment, actual Discord delivery, and the optional PostgreSQL server were outside the test run. Deployment verification steps are in [the deployment guide](V2_5_DEPLOYMENT.md). No prospective calibration sample, live profitability result or observed dealer execution is bundled.
+
+## Prior validation — Quant Desk 2.1
 
 - 65 automated checks passed with Python 3.12, Streamlit 1.67.0 and Plotly 6.9.0.
 - The tests cover exact nonzero DTE arithmetic, missing intervals, SPX regime without volume, share CVD, no-future-price order markers, price and flow agreement, and timestamped Pine exports.

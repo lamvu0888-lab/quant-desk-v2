@@ -60,7 +60,7 @@ def price_figure(bars, ticker, timeframe, *, levels=None, overlays=True, orders=
             fig.add_trace(trace, row=1, col=1)
     last = rows[-1]["close"]
     fig.add_annotation(x=len(rows)-1, y=last, text=amount(last), showarrow=False,
-                       xanchor="left", xshift=10, bgcolor="#16433e", borderpad=4,
+                       xanchor="left", xshift=10, bgcolor="#e4f4ed", borderpad=4,
                        font=dict(color=TEAL, size=10), row=1, col=1)
     ticks = positions[::max(1, len(rows)//6)]
     fig.update_xaxes(rangeslider_visible=False, tickmode="array", tickvals=ticks,
@@ -224,7 +224,7 @@ def money_map_figure(rows, label):
     fig = go.Figure(go.Treemap(ids=keys, labels=names, parents=parents, values=values, branchvalues="total", customdata=text,
                               marker=dict(colors=colors, line=dict(width=2, color="#122034")), tiling=dict(pad=2),
                               texttemplate="<b>%{label}</b><br>%{customdata}", hovertemplate="<b>%{label}</b><br>%{customdata}<extra></extra>",
-                              textfont=dict(color=INK, size=14)))
+                              textfont=dict(color="#ffffff", size=14)))
     return style_chart(fig, 390, hover="closest", legend=False)
 
 
@@ -264,7 +264,6 @@ def exposure_figure(rows, by, unit, spot=None, flip=None, *, split=False, compac
         # default view centered on spot while preserving the full values in
         # hover and the underlying feed.
         if spot is not None and len(data) > 12:
-            strikes = [numeric(row["strike"]) for row in data]
             radius = (max(5.0, abs(float(spot)) * focus_radius_pct) if focus_radius_pct is not None
                       else max(100.0, abs(float(spot)) * 0.025))
             focused = [row for row in data if abs(numeric(row["strike"]) - float(spot)) <= radius]
@@ -287,7 +286,8 @@ def exposure_figure(rows, by, unit, spot=None, flip=None, *, split=False, compac
         for value, name, color in ((spot, "Spot", INK), (flip, "Flip", AMBER)):
             if value is not None and min(x) <= value <= max(x):
                 fig.add_vline(x=value, line_color=color, line_dash="dot",
-                              annotation_text=name, annotation_font_color=color, annotation_font_size=10)
+                              annotation_text=f"{name} {amount(value)}", annotation_font_color=color,
+                              annotation_position="top left" if name == "Spot" else "top right", annotation_font_size=10)
         magnitudes = [abs(v) for v in y if v is not None]
         if len(magnitudes) >= 8:
             # A single strike can be much larger than the rest. Use a robust
@@ -300,10 +300,13 @@ def exposure_figure(rows, by, unit, spot=None, flip=None, *, split=False, compac
                 fig.add_annotation(x=0.01, y=0.98, xref="paper", yref="paper",
                                    text="Display scale capped; hover for full value",
                                    showarrow=False, xanchor="left", yanchor="top",
-                                   font=dict(size=10, color=MUTED), bgcolor="rgba(17,27,44,.78)")
-    fig.update_xaxes(title=None if compact else field.title(), nticks=6 if compact else 12)
+                                   font=dict(size=10, color=MUTED), bgcolor="rgba(255,255,255,.88)")
+    fig.update_xaxes(title=None if compact else field.title(), nticks=6 if compact or focus_radius_pct else 10)
     fig.update_yaxes(tickformat="~s", title=None if compact else unit)
-    return style_chart(fig, 176 if compact else 374, legend=split)
+    styled = style_chart(fig, 176 if compact else 374, legend=split)
+    if by == "strike" and not compact:
+        styled.update_layout(margin=dict(t=38, l=16, r=16))
+    return styled
 
 
 def series_figure(rows, x, series, *, height=300, y_format=None, ticksuffix=None, x_time=False):

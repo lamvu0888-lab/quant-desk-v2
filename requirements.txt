@@ -9,3 +9,4 @@ webull-openapi-python-sdk==3.0.4
 exchange-calendars>=4.5,<5
 tzdata>=2025.2
 pytest>=8,<10
+psycopg[binary]>=3.2,<4

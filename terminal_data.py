@@ -142,6 +142,8 @@ def scope_timeline(fetch, now, dte, *, symbol=None, interval="5m", session=None)
         feed = fetch("timeline", dte=dte, **params)
         if not feed.snapshot:
             return feed
+        if symbol and feed.snapshot.meta.get("symbol") not in (None, symbol):
+            return Feed(error=FeedError("CHECK SYMBOL", "Options flow response identified a different ticker."))
         rows = closed_flow_rows(same_ticker(feed.rows, symbol) if symbol else feed.rows, selected, now, interval)
         return Feed(Snapshot(rows, feed.snapshot.meta, feed.snapshot.received_at, feed.snapshot.cursor), feed.error, feed.loading)
     upper = fetch("timeline", dte=dte, **params)

@@ -5,6 +5,9 @@ services:
     plan: starter
     buildCommand: pip install -r requirements.txt
     startCommand: python discord_monitor.py --interval 30
+    buildFilter:
+      ignoredPaths:
+        - monitor_data/**
     envVars:
       - key: TRADYTICS_API_KEY
         sync: false

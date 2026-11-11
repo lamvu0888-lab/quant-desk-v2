@@ -168,7 +168,7 @@ class TradyticsClient:
         self._reserve(endpoint.scope)
         query = {key: str(value).lower() if isinstance(value, bool) else value
                  for key, value in params.items() if value is not None and key != "apiKey"}
-        headers = {"Accept": "application/json", "User-Agent": "QuantDesk/2.1"}
+        headers = {"Accept": "application/json", "User-Agent": "QuantDesk/2.5"}
         if self.auth_mode == "bearer":
             headers["Authorization"] = f"Bearer {self._key}"
         else:

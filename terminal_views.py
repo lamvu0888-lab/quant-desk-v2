@@ -11,6 +11,8 @@ import pandas as pd
 import streamlit as st
 
 from data_utils import DataError, field, utc
+from decision_ui import (command_panel, dashboard_decision, dealer_center, iv_center, journal_panel,
+                         probability_center, validation_view)
 from desk_analytics import (FIVE_MINUTES, MINUTE, candles_on, flow_read, mark_orders, order_rows, price_levels,
                             realized_regime, replay_setups, session_window, setup_read, share_cvd, signed_moves)
 from market_session import ET, active_session, rth_bounds, session_state
@@ -47,6 +49,8 @@ class Desk:
     webull_quality: dict = default_field(default_factory=dict)
     webull_error: str | None = None
     config_error: str | None = None
+    journal: object | None = None
+    shared: object | None = None
 
     def get(self, name, **params):
         params = {key: value for key, value in params.items() if value is not None}
@@ -76,8 +80,12 @@ class Desk:
     def quote_endpoint(self):
         return "indices" if self.ticker in INDICES else "quotes"
 
-    def quote_feed(self):
+    @cached_property
+    def _quote_feed(self):
         return self.get("indices") if self.ticker in INDICES else self.get("quotes", symbol=self.ticker, limit=10)
+
+    def quote_feed(self):
+        return self._quote_feed
 
     def quote(self):
         if self.price_provider == "Webull":
@@ -194,7 +202,7 @@ def read_workspace(ctx, *, include_flow=True):
         reasons.append("Waiting for the price and flow feeds.")
     if ctx.price_provider == "Webull" and not ctx.webull_quality.get("forecast_ready"):
         reasons.append("Waiting for Webull's verified price and candles.")
-    if price_stamp is None or price_stamp != flow_stamp or (ctx.now - price_stamp) > timedelta(minutes=7):
+    if price_stamp is None or price_stamp != flow_stamp or not timedelta(0) <= ctx.now - price_stamp <= timedelta(minutes=7):
         reasons.append("Waiting for price and options flow from the same completed 5-minute bar.")
     if not flow_read(timeline.rows) or not regime.get("atr"):
         reasons.append("Need 30 minutes of session flow and enough recent candles.")
@@ -368,6 +376,8 @@ def cvd_panel(ctx, candles, feed):
 
 def overview(ctx):
     read = read_workspace(ctx)
+    decision, iv = dashboard_decision(ctx, read)
+    command_panel(ctx, decision, iv, read["candles"], key="overview")
     quote = ctx.quote()
     flow, plan, regime = read["flow"], read["plan"], read["regime"]
     gamma, vol = read["gamma"], read["vol"]
@@ -377,14 +387,12 @@ def overview(ctx):
     kpis([
         metric("Underlying", amount(spot), f"{signed_pct(change)} · {ctx.price_provider}", change),
         metric("Volatility regime", regime["label"], "Completed 5m candles"),
-        metric("Move readiness", f"{plan['score']}/100" if plan["score"] is not None else "—", plan["state"]),
+        metric("Legacy 5m readiness", f"{plan['score']}/100" if plan["score"] is not None else "—", plan["state"]),
         metric("Net GEX", compact(gamma.get("total"), currency=True, signed=True), "$ per 1% move", gamma.get("total")),
         metric("Options net flow", compact(net, currency=True, signed=True), "Completed intervals", net),
         metric("IV rank", ratio_pct(vol.obj.get("iv_rank")), f"30D ATM IV {ratio_pct(vol.obj.get('atm_iv_30d'))}"),
     ])
-    if plan["score"] is not None:
-        st.caption(f"Market bias {plan['bias']} · {plan['state']} · price and flow through {et_time(read['price_stamp'])}")
-    elif read["reasons"]:
+    if plan["score"] is None and read["reasons"]:
         st.caption(" ".join(read["reasons"]))
     left, right = st.columns([2.55, 1], gap="medium")
     with left:
@@ -415,6 +423,10 @@ def overview(ctx):
             rows = candidate.get("rows") if isinstance(candidate.get("rows"), list) else candidate_feed.rows
             usable = [r for r in (rows or []) if isinstance(r, dict)
                       and numeric(r.get("strike")) is not None and numeric(r.get("net")) is not None]
+            # A fetch in progress is not evidence that 0DTE is absent. Allow
+            # the preferred request to finish before labeling a later expiry.
+            if candidate_feed.loading and not candidate_feed.snapshot:
+                break
             if valid and usable:
                 selected = (dte, requested_expiry, candidate_feed, candidate, usable)
                 break
@@ -644,22 +656,13 @@ def comparison_panel(ctx, greek, feed):
 
 
 def positioning(ctx):
-    view = st.segmented_control("Positioning view", ["Exposure", "Hedge context", "Option chain", "Compare sources"], default="Exposure",
-                                key="positioning_view", label_visibility="collapsed") or "Exposure"
+    view = st.segmented_control("Positioning view", ["Hedge context", "Exposure", "Option chain", "Compare sources"], default="Hedge context",
+                                key="positioning_view", label_visibility="collapsed") or "Hedge context"
     if view == "Option chain":
         chain_panel(ctx)
         return
     if view == "Hedge context":
-        panel_header("Dealer hedge sensitivities", "gamma", "hedge_sensitivities", f"{ctx.ticker} · {ctx.scope}")
-        rows = []
-        for greek, text in (("gamma", "Price moves"), ("delta", "Current price exposure"), ("vanna", "IV changes"), ("charm", "Time passes")):
-            feed = ctx.exposure(greek)
-            obj = exposure_obj(feed, ctx.ticker, greek)
-            tag, stamp = status("exposure", feed, ctx.now, ctx.ticker, preview=ctx.preview, paused=ctx.paused)
-            rows.append({"Exposure": greek.title(), "What changes": text, "Net": numeric(obj.get("total")),
-                         "Unit": display_exposure_unit(obj), "Status": tag, "Source time (ET)": stamp})
-        table(rows, height=200)
-        st.caption("The table shows modeled sensitivities. Each Greek has its own units.")
+        dealer_center(ctx)
         return
     left, middle = st.columns([1.5, 1])
     greek = (left.segmented_control("Greek", ["Gamma", "Vanna", "Charm", "Delta"], default="Gamma", key="positioning_greek") or "Gamma").lower()
@@ -710,6 +713,14 @@ def positioning(ctx):
 def volatility_page(ctx):
     candles, bar_feed = ctx.history()
     regime = realized_regime(chart_buckets(candles, 5))
+    vol = ctx.get("volatility", symbol=ctx.ticker)
+    iv_center(ctx, vol, regime, positive(ctx.quote().get("price")))
+    with st.expander("Advanced Analysis", on_change="rerun", key="qd25_iv_advanced") as advanced:
+        if advanced.open:
+            detailed_volatility(ctx, candles, bar_feed, regime, vol)
+
+
+def detailed_volatility(ctx, candles, bar_feed, regime, vol):
     with st.container(border=True):
         panel_header("Volatility regime", "regime", "market_regime", "Recent completed 5-minute price bars")
         rv = numeric(regime.get("realized_vol_annual_pct"))
@@ -725,7 +736,6 @@ def volatility_page(ctx):
         typical = window["typical_move"]
         if typical is not None:
             st.caption(f"{window['phase']} · median absolute 30m move at this time {typical:.2%} · {window['sample']} prior sessions")
-    vol = ctx.get("volatility", symbol=ctx.ticker)
     obj = vol.obj
     move = obj.get("expected_move") if isinstance(obj.get("expected_move"), dict) else {}
     move_amount = numeric(move.get("move_usd"))
@@ -856,6 +866,20 @@ def calibration(candles, horizon, model, drift):
 
 
 def forecast_page(ctx):
+    view = st.segmented_control("Monte Carlo workspace", ["Trade probability", "Validation", "Price forecast"],
+                                default="Trade probability", key="qd25_mc_page") or "Trade probability"
+    if view == "Price forecast":
+        price_forecast_page(ctx)
+        return
+    read = read_workspace(ctx)
+    plan, _ = dashboard_decision(ctx, read)
+    if view == "Validation":
+        validation_view(ctx, plan)
+    else:
+        probability_center(ctx, read, plan)
+
+
+def price_forecast_page(ctx):
     quote = ctx.quote()
     spot = positive(quote.get("price"))
     candles, bar_feed = ctx.history()
@@ -1028,6 +1052,19 @@ def money_map(ctx):
 
 def trade_plan(ctx):
     read = read_workspace(ctx)
+    decision, iv = dashboard_decision(ctx, read)
+    shown = command_panel(ctx, decision, iv, read["candles"], key="trade", track=True,
+                          bar_ok=not read["bars"].error and not feed_has_delay(read["bars"]) and not ctx.paused)
+    journal_panel(ctx, shown)
+    st.download_button("Download current trade plan (JSON)", json.dumps(shown, indent=2, allow_nan=False),
+                       file_name=ctx.title("trade_plan_v25.json"), mime="application/json", key="qd25_plan_export")
+    discord_history(ctx)
+    with st.expander("Detailed setup and market context", on_change="rerun", key="qd25_legacy_trade") as advanced:
+        if advanced.open:
+            detailed_trade_plan(ctx, read)
+
+
+def detailed_trade_plan(ctx, read):
     plan = read["plan"]
     panel_header("Setup checklist", "readiness", "trade_plan", f"{ctx.ticker} · {ctx.scope}")
     momentum = plan["flow"].get("momentum")
@@ -1055,44 +1092,14 @@ def trade_plan(ctx):
         st.caption("The latest price change and signed options premium are pointing in opposite directions.")
     with st.expander("What does this setup mean?", expanded=True):
         state = str(plan.get("state") or "").upper()
-        if "TRIGGER" in state or "READY" in state:
+        if "TRIGGER" in state:
             interpretation = "ENTER SETUP"
-        elif "WAIT" in state or "WATCH" in state:
+        elif "READY" in state or "WAIT" in state or "WATCH" in state:
             interpretation = "GET READY"
         else:
             interpretation = "WAIT"
         st.write(describe(plan, interpretation))
-        st.caption("GET READY = developing conditions; ENTER SETUP = rule-based ready/triggered state. "
-                   "Neither guarantees a profitable trade. AVOID/WAIT = insufficient or conflicting confirmation.")
-        st.caption("Signals use completed 5-minute bars and require fresh, synchronized price and flow data.")
-    with st.expander("Discord signal history (cloud)", expanded=True):
-        import os
-        def cloud_secret(name, default=""):
-            try:
-                return os.getenv(name) or st.secrets.get(name, default)
-            except Exception:
-                return os.getenv(name, default)
-        shared = SharedStore(repo=cloud_secret("MONITOR_GITHUB_REPO"),
-                             token=cloud_secret("MONITOR_GITHUB_TOKEN"),
-                             branch=cloud_secret("MONITOR_GITHUB_BRANCH", "main"))
-        if shared.configured:
-            try:
-                events, _ = shared.history()
-                events = [e for e in events if e.get("symbol") == ctx.ticker]
-                events.reverse()
-                if events:
-                    table([{"Detected UTC": e.get("triggered_at_utc"), "Signal": e.get("status"),
-                            "Bias": e.get("bias"), "Price": e.get("price"),
-                            "Trigger": e.get("trigger"), "Invalidation": e.get("invalidation"),
-                            "5m bar UTC": e.get("bar"), "Explanation": e.get("explanation")}
-                           for e in events[:100]], height=310)
-                    csv_export(events, ctx.title("discord_signal_history.csv"), "discord_history_export")
-                else:
-                    st.info("No Discord signals recorded for this ticker yet. Monitoring may be waiting for a valid setup.")
-            except Exception as exc:
-                st.warning(f"Could not load cloud signal history: {exc}")
-        else:
-            st.info("Configure shared GitHub monitoring credentials to display persistent cloud signal history.")
+        st.caption("This 5m read is retained for reference. The Entry Command Center uses additional 1m/3m timing and risk checks.")
     a, b = st.columns(2)
     with a.container(border=True):
         panel_header("What agrees?", "readiness", "plan_evidence")
@@ -1127,6 +1134,39 @@ def trade_plan(ctx):
              "rules_version": "2.1", "regime": read["regime"], "setup": plan, "waiting_reasons": read["reasons"]}
     st.download_button("Download setup evidence (JSON)", json.dumps(audit, indent=2, allow_nan=False),
                        file_name=ctx.title("setup_evidence.json"), mime="application/json", key="export_trade_plan")
+
+
+@st.cache_data(ttl=45, max_entries=20, show_spinner=False)
+def cloud_history(repo, branch, credential, _shared):
+    return _shared.history()[0]
+
+
+def discord_history(ctx):
+    with st.expander("Discord signal history (cloud)", on_change="rerun", key="qd25_discord_history") as detail:
+        if not detail.open:
+            return
+        shared = ctx.shared
+        if not shared or not shared.configured:
+            st.info("Configure shared GitHub monitoring credentials to display persistent cloud signal history.")
+            return
+        try:
+            import hashlib
+
+            credential = hashlib.sha256(shared.token.encode()).hexdigest()
+            events = [event for event in cloud_history(shared.repo, shared.branch, credential, shared)
+                      if isinstance(event, dict) and event.get("symbol") == ctx.ticker]
+            events.reverse()
+            if not events:
+                st.caption("No delivered Discord alerts recorded for this ticker.")
+                return
+            table([{"Detected UTC": e.get("triggered_at_utc"), "Signal": e.get("status"),
+                    "Bias": e.get("bias"), "Price": e.get("price"), "Trigger": e.get("trigger"),
+                    "Invalidation": e.get("invalidation"), "Stop": e.get("stop"), "TP1": e.get("tp1"),
+                    "TP2": e.get("tp2"), "Completed bar UTC": e.get("bar"), "Explanation": e.get("explanation")}
+                   for e in events[:100]], height=310)
+            csv_export(events, ctx.title("discord_signal_history.csv"), "discord_history_export")
+        except Exception:
+            st.warning("Could not load cloud signal history. Check the GitHub repository, branch and token permissions.")
 
 
 def scanner(ctx):

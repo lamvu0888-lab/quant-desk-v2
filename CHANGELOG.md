@@ -1,3 +1,39 @@
+# 2.5 — Quant Desk
+
+## Entry Command Center and Trade Plan
+
+- Added a shared decision engine for the dashboard and Discord worker. It combines completed 5-minute trend and flow with 1- and 3-minute timing and checks for EMA 8/10 pullbacks, VWAP reclaims and rejections, breakouts, retests, failed breaks and liquidity sweeps.
+- Added WAIT, GET READY, ENTER LONG, ENTER SHORT, AVOID and paper EXIT. An entry has a trigger, reference entry, separate structural invalidation and protective stop, two targets, reward/risk, an evidence score and explanations. Nearby opposing price, gamma and available dark-pool levels limit room.
+- Added gates for stale or mismatched data, poor geometry, conflicting flow, stretched entries, limited expected-move room, elevated relative premium, negative modeled expectancy and large differences between the scenario models.
+- Added timestamped setup transitions, browser-session paper tracking, worker paper outcomes and research exports. Kept V2.4 delivered Discord history and the earlier setup detail under its own expander.
+
+## Dealer positioning and volatility
+
+- Added hedge sensitivity and demand from signed Tradytics Gamma, Vanna and Charm on a common hedge-equivalent basis. Checks source age, scope, snapshot alignment and units. Shows partial components when the combined estimate is unavailable.
+- Added the pressure map, 5/10/15/30-minute stress scenarios, sensitive strikes, gamma regime and walls, and key-level crossing alerts. Added an intraday timeline and comparison against later completed underlying prices.
+- Added the IV Decision Center with exact-date and 0/1/7/30-DTE views, ATM IV, 30-day IV rank and percentile, trailing RV, IV/RV, term structure, skew, expected move and anchored remaining range. Moved the existing detail charts under Advanced Analysis.
+- Added short explanations of what the data and models measure. Tradytics and Webull comparison remains available, and SPX share-only metrics stay blank.
+
+## Monte Carlo and validation
+
+- Imports Trade Plan geometry and compares immediate, breakout-retest, EMA 8/10 and VWAP entries. Pending entries can remain unfilled. Path outcomes account for stops, invalidation, targets and the time limit.
+- Added a regime- and clock-conditioned block model, Gaussian baseline and jump stress. Reports modeled fill, target/stop, holding time, break-even, tail risk and net expectancy. Preserved the earlier Price forecast workspace.
+- Added quoted long-option, debit-vertical and credit-vertical evaluation. Values each leg using price, time and a changing IV scenario, with modeled bid/ask, slippage and per-leg fees. Checks quote age, standard multipliers, expiry timing and optional loss budget.
+- Added forward paper validation and separate walk-forward replay, with Brier score, calibration, false positives, expectancy, win rate, drawdown and subgroup reports. Validated claims require comparable prospective outcomes. Replay and simulated options remain exploratory.
+
+## Dashboard and deployment
+
+- Switched to a light palette, high-contrast status colors and simpler Learn topics. Preserved flow bubbles and large-order overlays, Money Map, net-only near-spot gamma, dark pools, CVD, Tradytics signals, scanner, history and TradingView exports.
+- Preserved configurable ticker monitoring, SPY/SPX defaults, 30-second target cadence and the Discord test button. Added full trigger and risk details, flow and modeled dealer context, data-quality and level alerts, durable delivery claims, and outcome-aware signal changes.
+- Added a SQLite research journal, optional PostgreSQL storage and a bounded GitHub snapshot. The Render Blueprint ignores monitor-data commits when deciding whether to rebuild.
+- Kept live order execution disabled. Added installation, cloud update and method guides, a release manifest and regression tests.
+
+## 2.2–2.4 — Prior Discord and chart releases
+
+- 2.4 added dashboard watchlist editing and delivered signal history through shared GitHub storage.
+- 2.3 added the Render worker configuration, SPY/SPX monitoring and next-available-expiry fallback for the Overview gamma chart.
+- 2.2 improved the near-spot gamma chart and added the Discord test button. See [2.2 release notes](CHANGELOG_V2_2.md) for details.
+
 # 2.1 — Quant Desk
 
 - Added exact calendar DTE and listed-expiration controls.

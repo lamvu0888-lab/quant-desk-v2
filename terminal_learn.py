@@ -18,9 +18,13 @@ class Guide:
 DOC = "https://tradytics.com/docs/"
 GUIDES = {
     "overview": Guide("Market overview", "Start here",
-        "See price, how fast it is moving, and what options traders are doing.",
-        "Check the ticker, expiry, and update time first.",
-        "If price is near a wall, check whether flow strengthens as price gets closer.", "Overview"),
+        "See what price is doing and whether there is a setup to watch.",
+        "Check ticker, expiry and data confidence. Then read the status and the reason beneath it.",
+        "GET READY means the trend and flow support a setup. Check the trigger and wait for the smaller candles to confirm.", "Overview"),
+    "entry_command": Guide("Entry status and evidence", "Start here",
+        "The status tells you whether to watch, wait or review a confirmed setup.",
+        "Open Evidence and entry conditions for the reasons. An entry score measures how many checks agree.",
+        "A long setup can reach its trigger and still show AVOID if the next resistance leaves too little room for the target.", "Trade Plan"),
     "price": Guide("Price and large orders", "Start here",
         "Candles show price. Circles mark large options trades.",
         "C means call and P means put. Bigger circles mean more premium.",
@@ -81,22 +85,26 @@ GUIDES = {
         "Tradytics and Webull use different models.",
         "Check the expiry range, units and update time before comparing.",
         "Vanna can be in dollars or shares per IV point. Read each source in its own units.", "Positioning"),
+    "hedge_pressure": Guide("Hedge-pressure map", "Dealer positioning",
+        "See how a dealer model responds if price, IV or time changes.",
+        "Positive values indicate estimated hedge buying. Compare the stress cases and check actual price and flow separately.",
+        "A green cell after a price drop shows the model would buy under those assumptions. The dealer's actual hedge trades are unknown.", "Positioning"),
     "chain": Guide("Options chain", "Dealer positioning",
         "See the listed calls and puts for this ticker.",
         "Check the expiry, strike, bid and ask for each contract.",
         "The sidebar expiry narrows the chain. Open interest counts outstanding contracts and volume counts trades.", "Positioning", DOC + "options-contracts/options-chain"),
     "volatility": Guide("Implied volatility and expected move", "Market regime",
-        "Options prices imply how much the market may move.",
-        "Compare the expected move with its expiry date and nearby price levels.",
-        "An expected move of ±$7 describes a range priced for that expiry.", "Volatility", DOC + "options-volatility/options-volatility"),
+        "IV is how much movement the selected option expiry prices in.",
+        "Compare its ATM IV with past realized movement. Use the 30-day rank for the longer-dated benchmark.",
+        "IV of 24% and past realized volatility of 20% give 1.20×. The premium is rich on that comparison. Direction comes from Trade Plan.", "Volatility", DOC + "options-volatility/options-volatility"),
     "dark": Guide("Dark-pool prints and levels", "Market regime",
         "These levels show where large off-exchange share trades clustered.",
         "Watch how price reacts if it returns to the area.",
         "Several prints around $760 make that price worth tracking. The report alone does not tell you the trader’s intent.", "Dark Pool", DOC + "darkpool/darkpool-levels"),
     "readiness": Guide("Move readiness", "Setups and review",
-        "The score adds up clues for a larger move.",
-        "A setup triggers when a completed price break and flow agree.",
-        "Ready means watch the next few closes. A close back inside the range invalidates the break. The score is a checklist total.", "Trade Plan"),
+        "The detailed context shows the earlier five-minute readiness checklist.",
+        "Use the main Entry Command Center for the current decision and shorter timeframes.",
+        "A five-minute breakout can look ready while the one-minute entry timing is still falling.", "Trade Plan"),
     "timing": Guide("Time of day", "Setups and review",
         "Compare today with how far price typically moved at this time.",
         "Check the number of past sessions behind the comparison.",
@@ -113,6 +121,10 @@ GUIDES = {
         "The model runs many possible paths from recent price candles.",
         "Read the shaded area as a range of possible outcomes.",
         "Compare the 15-minute range with the distance to a level you are watching.", "Forecast"),
+    "trade_probability": Guide("Trade probability and payoff", "Setups and review",
+        "Compare entry methods using the same stop and targets from Trade Plan.",
+        "Check fill rate, net expectancy and the downside. Use Validation to see how predictions performed.",
+        "An EMA retest may have higher target odds when it fills. It can still have lower expectancy per opportunity if it rarely fills.", "Forecast"),
     "calibration": Guide("Forecast calibration", "Setups and review",
         "Check how often earlier forecasts covered the actual price.",
         "Compare the observed coverage with the label on the range.",
@@ -157,13 +169,12 @@ def learn_page(go_to, nav_labels):
     )
     st.markdown("#### A quick session walkthrough")
     columns = st.columns(3)
-    for column, (number, title, detail) in zip(columns, (
-        ("01", "Check the session", "Start with the symbol, price timestamp and active data source in Overview."),
-        ("02", "Map nearby levels", "Open Dealer Positioning and compare 0 DTE with All DTE."),
-        ("03", "Compare with flow", "Open Flow & Bubbles to see the net premium and the large trades behind it."),
+    for column, (title, detail) in zip(columns, (
+        ("Check the session", "Start with the symbol, source timestamp and entry status in Overview."),
+        ("Read the plan", "Open Trade Plan for the trigger, stop, targets and nearby opposing levels."),
+        ("Compare the payoff", "Check IV for the selected expiry and run Monte Carlo to compare entry methods after costs."),
     )):
         with column.container(border=True):
-            st.markdown(f'<div class="qd-eyebrow">{number}</div>', unsafe_allow_html=True)
             st.markdown(f"**{title}**")
             st.caption(detail)
     groups = list(dict.fromkeys(guide.group for guide in GUIDES.values()))

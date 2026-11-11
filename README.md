@@ -1,6 +1,10 @@
-# Quant Desk 2.2
+# Quant Desk 2.5
 
-Quant Desk combines Tradytics market data, dealer positioning, flow and signals with the Quant Options Agent Monte Carlo model. Open any supported ticker in the command bar. The quick buttons open SPY, SPX and QQQ.
+Quant Desk combines Tradytics market data and optional Webull data with intraday entry rules, dealer hedge scenarios, volatility context and paper trade evaluation. Open any covered ticker in the command bar. The quick buttons open SPY, SPX and QQQ. The dashboard and Discord worker run in analysis and paper mode.
+
+- [Deploy to your existing GitHub, Streamlit and Render services](V2_5_DEPLOYMENT.md)
+- [Read the decision rules, model assumptions and limitations](V2_5_METHODS.md)
+- [See what changed](CHANGELOG.md) and [review verification](VALIDATION.md).
 
 ## Start on Windows
 
@@ -10,47 +14,25 @@ Quant Desk combines Tradytics market data, dealer positioning, flow and signals 
 
 The first launch opens the labeled Preview workspace when no keys are configured. Preview includes illustrative values for each page so you can learn the controls. Select **Live** to use your configured feed. The application runs locally and keeps the key in its server process.
 
-Quant Desk 2.2 adds a readable near-spot exposure view. Distant strikes are removed from the default chart when there are enough strikes to focus; extreme display outliers are capped with a note, while hover values remain exact. It also adds a **Send Discord test message** button under Feed controls when `DISCORD_WEBHOOK_URL` is configured.
-
 On Mac or Linux, run `bash start_dashboard.sh`. Python 3.11+ is required. The dashboard listens on localhost. Stop an older dashboard if port 8501 is occupied.
 
 ## Update your existing Streamlit app
 
-Start in the GitHub repo folder you used for the first deployment. Run `git status --short` first. If it is clean, bring in the latest remote changes.
-
-```powershell
-git pull --rebase origin main
-```
-
-Extract the ZIP outside the repo, then copy its contents into the repo root so `terminal.py` is next to `requirements.txt`. Check the staged file list before pushing.
-
-```powershell
-git add -A
-git diff --cached --name-only
-git commit -m "Upgrade Quant Desk to 2.1"
-git push origin main
-```
-
-Open the existing Streamlit URL after the rebuild and look for **2.2** in the sidebar. The main file is still `terminal.py`. For a local install, use `.env`. For Streamlit Cloud, enter your existing key under **Secrets** as TOML.
-
-```toml
-TRADYTICS_API_KEY = "your_key_here"
-TRADYTICS_AUTH_MODE = "query"
-```
+Use the PowerShell steps in the [deployment guide](V2_5_DEPLOYMENT.md) from your already-extracted folder. The Streamlit entry point is `terminal.py`. Render runs `python discord_monitor.py --interval 30` as a background worker.
 
 ## Workspace
 
 | Page | What you can do |
 | --- | --- |
-| Overview | See the 5m regime, price, large-order markers, nearby levels, cumulative flow, momentum and estimated share CVD. |
+| Overview | Start with the Entry Command Center. See the current status, 1m/3m/5m alignment, nearby levels, price and large-order markers, 0DTE GEX, cumulative flow, momentum and estimated share CVD. |
 | Flow & Bubbles | Filter the executed options tape by dollars, call or put, trade side, kind, session and expiry. Compare premium bubbles, flow momentum and contract-volume delta. |
 | Money Map | Compare market leaders, sectors or a watchlist. Tile size represents absolute net options premium. |
-| Dealer Positioning | View Gamma, Delta, Vanna and Charm by strike or expiry, inspect contracts, or compare the optional Webull model. |
-| Market Regime | Compare the current 5m price regime with implied volatility, expected move and market breadth. |
+| Dealer Positioning | Review price, IV and time hedge scenarios, sensitive strikes, past price response, exposure profiles and the optional Webull comparison. |
+| IV Decision Center | Compare exact-expiry ATM IV, realized volatility, the 30-day benchmark, skew, and matching expected-move room. Advanced Analysis contains the detailed charts. |
 | Dark Pool | See reported off-exchange stock prints and price bins by notional. Choose a lookback and minimum print size. |
-| Trade Plan | See the rule-based setup state, direction, trigger, invalidation and the evidence behind the score. Download the setup evidence as JSON. |
+| Trade Plan | Review the trigger, separate invalidation and stop, targets, risk/reward, evidence, transitions, paper outcomes and Discord history. |
 | Signals | Filter Tradytics patterns for a ticker, inspect the chosen contract and marks, and view provider-wide pattern performance. |
-| Forecast | Run the block bootstrap or GBM model over 5, 15, 30 and 60 minutes during the regular session. See 68% and 95% ranges, neutral-zone probabilities, level touches and recent calibration. |
+| Monte Carlo | Compare four entry methods with fill odds, target/stop odds and net modeled P&L. Open Validation for paper outcomes or replay. Price forecast contains the earlier range models. |
 | Scanner | Rank stocks or ETFs by provider premium, volume, IV or dark-pool activity. |
 | History & Replay | Review daily series and measure underlying returns after large prints, signals or closed-bar range breaks. |
 | TradingView | Generate a Pine indicator or JSON snapshot of GEX strikes, gamma levels, dark-pool levels and support or resistance. |
@@ -75,9 +57,9 @@ The lines extend forward from the export time. Generate a new snapshot after lev
 
 ## Reading the setup and CVD
 
-The price regime measures recent five-minute price swings. It can read Compressing, Normal or Expanding. The readiness score adds rule points for range compression, proximity to an edge, changes in flow, expansion, volume and modeled gamma. Direction comes from the last 15 minutes of price and options flow. A setup trigger uses a completed five-minute close outside the prior range and agreement from flow. The score describes evidence, and its replay reports underlying price moves.
+The price regime measures recent five-minute price swings. It can read Compressing, Normal or Expanding. The Entry Command Center checks the five-minute trend and signed options flow, then uses completed one- and three-minute candles for timing. The evidence score summarizes rule agreement. The Monte Carlo page reports scenario probabilities separately.
 
-Open **Trade Plan → How the score adds up** for the current points. **History & Replay → Event replay** shows 15, 30 and 60 minute underlying returns and returns to the close. Range-break replay uses only price bars and flow intervals available at each origin. It uses finalized provider data, which can differ from what was visible live. Review sample sizes and the forecast calibration on the Forecast page separately.
+Open **Trade Plan → Evidence and entry conditions** for supporting checks, missing information, conflicting evidence and reasons to stand aside. **History & Replay → Event replay** retains the earlier 15, 30 and 60 minute underlying comparisons. **Monte Carlo → Validation** includes the new setup replay and forward paper outcomes.
 
 Share CVD estimates signed volume from completed one-minute OHLCV bars. It adds volume from up minutes and subtracts volume from down minutes, then resets at the regular-session open. Flat minutes use the change from the previous close or the last known direction. Index charts can show a separately labeled SPY proxy. The optional contract-volume view counts classified buys minus sells in the loaded options tape. Share CVD, contract-volume delta and directional net premium have different units.
 
@@ -111,11 +93,6 @@ The forecast uses completed regular-session candles and a recent quote from the 
 - [TradingView Pine lines and boxes](https://www.tradingview.com/pine-script-docs/visuals/lines-and-boxes/)
 - [TradingView cumulative volume delta](https://www.tradingview.com/support/solutions/43000725058-cumulative-volume-delta/)
 
-## V2.2: Discord monitoring and 0DTE Overview GEX
+## Discord monitoring
 
-- Overview now has a **separate 0DTE GEX-by-strike** chart, regardless of the global expiration selection. A stale or missing exposure feed displays an unavailable message instead of substituting all-DTE data.
-- Chart legends are placed **below the charts**, with larger text and reserved space.
-- Run the **read-only** Discord monitor as a separate process with `python discord_monitor.py --interval 30`. It requires `TRADYTICS_API_KEY` and `DISCORD_WEBHOOK_URL` in `.env` or environment variables. Never commit the webhook or API key. `--once` is a diagnostic run.
-- The monitor checks SPY and SPX, uses the existing completed-5-minute-bar Trade Plan, and sends only eligible GET READY / ENTER SETUP alerts. It deliberately **does not place orders**, does not use preview data, and suppresses signals when market is closed or feeds are stale/misaligned. Repeated alerts for the same bar/state are suppressed while the process remains running.
-- For true 24/7 operation, deploy `discord_monitor.py` to an **always-on Python worker** with environment secrets. Streamlit Community Cloud alone does not provide a persistent background worker. Polling more frequently than provider refresh intervals does not create fresh data; follow API rate limits.
-- **Important:** Entry classification is based on existing Trade Plan state and evidence score. Validate signal quality in paper mode before relying on alerts. The agent does not claim calibrated probability or guaranteed execution price.
+Open **Feed controls → Discord ticker monitoring** to edit the watchlist. The default is SPY and SPX. The worker monitors Tradytics 0DTE at a 30-second target cadence with the same entry rules used in the dashboard. **Trade Plan** shows setup transitions, paper outcomes and delivered messages. **Feed controls → Send Discord test message** checks webhook connectivity. See the [deployment guide](V2_5_DEPLOYMENT.md) for the required environment variables, journal storage and the worker's dry run.

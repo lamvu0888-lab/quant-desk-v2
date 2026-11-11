@@ -1,9 +1,10 @@
-"""Quant Desk 2.2, with Tradytics data, optional Webull model and Discord alerts."""
+"""Quant Desk 2.5 with integrated decision research and Discord monitoring."""
 from __future__ import annotations
 
 import hashlib
 import os
 import threading
+import time
 from datetime import datetime, timezone
 
 import streamlit as st
@@ -21,18 +22,19 @@ from terminal_views import Desk, PAGES
 from tradytics_feed import Feed, FeedError, FeedStore, TradyticsClient
 from discord_monitor import send_test as send_discord_test
 from monitor_storage import SharedStore, normalize_symbols
+from research_journal import Journal
 
 UTC = timezone.utc
 PAGES_LABEL = {
-    "Overview": ("Market overview", "Price, nearby levels and the latest market read.", "◈"),
+    "Overview": ("Market overview", "Entry timing, market direction, flow and nearby levels.", "◈"),
     "Options Flow": ("Flow & bubbles", "See how options flow builds, then look at the largest trades.", "≋"),
     "Money Map": ("Money map", "See which stocks, sectors or watchlist names lead in net options premium.", "▦"),
-    "Positioning": ("Dealer positioning", "Gamma, Vanna, Charm and Delta by strike or expiration.", "▥"),
-    "Volatility": ("Market regime", "See how fast price is moving and how much movement options are pricing.", "∿"),
+    "Positioning": ("Dealer positioning", "Hedge sensitivity, projected pressure and exposure by strike or expiration.", "▥"),
+    "Volatility": ("IV Decision Center", "Compare selected-expiry premium with realized price movement.", "∿"),
     "Dark Pool": ("Dark pool", "Reported off-exchange share prints and their price concentrations.", "◉"),
     "Trade Plan": ("Trade plan", "A checklist for the next price level, with supporting and conflicting evidence.", "▷"),
     "Signals": ("Tradytics signals", "Flow pattern alerts, contract marks and provider performance.", "◇"),
-    "Forecast": ("Monte Carlo forecast", "Short-horizon price distributions from completed market candles.", "⋰"),
+    "Forecast": ("Monte Carlo", "Compare timing, target and stop odds, and modeled P&L after costs.", "⋰"),
     "Scanner": ("Stock scanner", "Find names with active options, high relative volume or large off-exchange prints.", "⌕"),
     "History": ("History & replay", "Review previous sessions and see what happened after large prints or a range break.", "◷"),
     "TradingView": ("TradingView levels", "Export the current price levels as a Pine indicator.", "↗"),
@@ -40,12 +42,32 @@ PAGES_LABEL = {
     "Data Health": ("Data health", "Connection, permissions and source timing across the desk.", "⊙"),
 }
 NAV_LABELS = {"Options Flow": "Flow & Bubbles", "Positioning": "Dealer Positioning",
-              "Volatility": "Market Regime", "History": "History & Replay"}
+              "Volatility": "IV Decision Center", "History": "History & Replay", "Forecast": "Monte Carlo"}
 
 
 @st.cache_resource
 def resources():
-    return {"lock": threading.RLock(), "store": None, "token": None, "webull": None}
+    return {"lock": threading.RLock(), "store": None, "token": None, "webull": None, "discord_tests": {}}
+
+
+@st.cache_resource(ttl=90, max_entries=4, show_spinner=False)
+def journal_resource(path, dsn):
+    try:
+        return Journal(path=path, dsn=dsn)
+    except Exception:
+        return None
+
+
+def test_discord_once(webhook):
+    registry = resources()
+    key = hashlib.sha256(webhook.encode()).digest()
+    with registry["lock"]:
+        now = time.monotonic()
+        attempts = registry["discord_tests"]
+        if now - attempts.get(key, float("-inf")) < 30:
+            raise ValueError("Wait 30 seconds between test messages.")
+        attempts[key] = now
+    send_discord_test(webhook)
 
 
 @st.cache_resource(max_entries=8)
@@ -227,6 +249,12 @@ def main():
     key = config_value(local, "TRADYTICS_API_KEY")
     auth = config_value(local, "TRADYTICS_AUTH_MODE", "query").lower()
     webull_configured = bool(config_value(local, "WEBULL_APP_KEY") and config_value(local, "WEBULL_APP_SECRET"))
+    try:
+        shared = SharedStore(repo=config_value(local, "MONITOR_GITHUB_REPO"),
+                             token=config_value(local, "MONITOR_GITHUB_TOKEN"),
+                             branch=config_value(local, "MONITOR_GITHUB_BRANCH", "main"))
+    except ValueError:
+        shared = None
     config_error = None
     try:
         store = tradytics_store(key, auth)
@@ -243,7 +271,7 @@ def main():
     ticker = st.session_state["desk_ticker"]
     with st.sidebar:
         st.markdown('<div class="qd-brand"><div class="qd-mark">◈</div><div><div class="qd-name">Quant Desk</div>'
-                    '<div class="qd-brand-sub">Options intelligence · 2.4</div></div></div>', unsafe_allow_html=True)
+                    '<div class="qd-brand-sub">Options intelligence · 2.5</div></div></div>', unsafe_allow_html=True)
         for col, symbol in zip(st.columns(3, gap="small"), ("SPY", "SPX", "QQQ")):
             col.button(symbol, key=f"watch_{symbol}", width="stretch", on_click=choose_ticker, args=(symbol,))
         mode = st.segmented_control("Workspace mode", ["Live", "Preview"], key="desk_mode") or "Live"
@@ -259,11 +287,8 @@ def main():
             comparison = st.toggle("Enable Webull comparison", key="desk_webull_compare", disabled=mode == "Preview")
             paused = st.toggle("Pause requests", key="desk_paused", disabled=mode == "Preview")
             st.button("Refresh feeds", key="desk_refresh", on_click=refresh, disabled=mode == "Preview", width="stretch")
-            with st.expander("Discord ticker monitoring", expanded=False):
-                shared = SharedStore(repo=config_value(local, "MONITOR_GITHUB_REPO"),
-                                     token=config_value(local, "MONITOR_GITHUB_TOKEN"),
-                                     branch=config_value(local, "MONITOR_GITHUB_BRANCH", "main"))
-                if shared.configured:
+            with st.expander("Discord ticker monitoring", expanded=False, on_change="rerun", key="qd25_watchlist") as watch:
+                if watch.open and shared and shared.configured:
                     try:
                         watchlist, revision = shared.watchlist()
                         st.caption("Cloud watchlist (shared with Render). Up to 12 tickers; 30-second minimum polling.")
@@ -283,22 +308,24 @@ def main():
                                               'interval_seconds': int(interval)}, revision,
                                              'Update Discord watchlist from dashboard')
                                 st.success("Saved to GitHub. Render worker will read the update on its next scan.")
-                    except Exception as exc:
-                        st.error(f"Unable to load/save cloud monitor settings: {exc}")
-                else:
+                    except ValueError as exc:
+                        st.error(str(exc))
+                    except Exception:
+                        st.error("Unable to load or save cloud monitor settings. Check the GitHub token and branch permissions.")
+                elif watch.open:
                     st.info("Set MONITOR_GITHUB_REPO and MONITOR_GITHUB_TOKEN in Streamlit and Render to edit the cloud watchlist.")
             discord_webhook = config_value(local, "DISCORD_WEBHOOK_URL")
             if st.button("Send Discord test message", key="discord_test_button", disabled=not discord_webhook,
                          width="stretch", help="Sends one harmless connectivity message to your configured Discord webhook."):
                 try:
-                    send_discord_test(discord_webhook)
+                    test_discord_once(discord_webhook)
                     st.success("Discord test message sent.")
                 except Exception as exc:
                     st.error(f"Discord test failed: {exc}")
             if not discord_webhook:
                 st.caption("Add DISCORD_WEBHOOK_URL to .env or Streamlit Secrets to enable the test button.")
             st.caption("Tradytics key configured" if key else "Set your Tradytics key in .env")
-        st.caption("Quant Options Agent · 2.4")
+        st.caption("Quant Options Agent · 2.5")
     preview = mode == "Preview"
     price_provider = "Tradytics" if preview else selected_provider
     paused = bool(paused and not preview)
@@ -314,6 +341,9 @@ def main():
         st.caption("Preview uses illustrative data. Add your Tradytics key to .env and restart to load your live feeds.")
     if not preview and not key and price_provider == "Tradytics":
         st.info("Set TRADYTICS_API_KEY in the local .env file. Use Preview to explore every chart while you set up the feeds.")
+    journal = None
+    if not preview and page in ("Overview", "Trade Plan", "Forecast", "Positioning"):
+        journal = journal_resource(config_value(local, "MONITOR_JOURNAL_PATH"), config_value(local, "MONITOR_JOURNAL_DSN"))
 
     @st.fragment(run_every="4s" if not preview and not paused else None)
     def workspace():
@@ -323,7 +353,7 @@ def main():
             w_error = "Add WEBULL_APP_KEY and WEBULL_APP_SECRET to .env for Webull."
         ctx = Desk(ticker, DEMO_AT if preview else datetime.now(UTC), demo(ticker) if preview else store,
                    preview, paused, dte, bool(key), price_provider,
-                   w_state, w_quality, w_error, config_error)
+                   w_state, w_quality, w_error, config_error, journal, shared)
         symbol_bar(ctx)
         if page == "Overview":
             market_strip(ctx)

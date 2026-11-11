@@ -8,7 +8,7 @@ import base64
 import json
 import os
 import re
-from datetime import datetime, timezone
+import time
 from urllib.parse import quote
 import requests
 
@@ -37,6 +37,7 @@ class SharedStore:
         self.repo = (repo if repo is not None else os.getenv('MONITOR_GITHUB_REPO', '')).strip()
         self.token = (token if token is not None else os.getenv('MONITOR_GITHUB_TOKEN', '')).strip()
         self.branch = (branch if branch is not None else os.getenv('MONITOR_GITHUB_BRANCH', 'main')).strip()
+        self._verified_until = 0.0
         if self.repo and not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', self.repo):
             raise ValueError('MONITOR_GITHUB_REPO must be owner/repository')
         if not re.fullmatch(r'[A-Za-z0-9_./-]+', self.branch) or '..' in self.branch:
@@ -58,8 +59,14 @@ class SharedStore:
             return default, None
         response = requests.get(self._url(path), headers=self._headers(), params={'ref': self.branch}, timeout=12)
         if response.status_code == 404:
+            if time.monotonic() >= self._verified_until:
+                # GitHub also returns 404 for private repos without access.
+                root = requests.get(self._url(""), headers=self._headers(), params={'ref': self.branch}, timeout=12)
+                root.raise_for_status()
+                self._verified_until = time.monotonic() + 120
             return default, None
         response.raise_for_status()
+        self._verified_until = time.monotonic() + 120
         body = response.json()
         if body.get('encoding') != 'base64':
             raise ValueError('Unexpected GitHub Contents response')
@@ -98,7 +105,7 @@ class SharedStore:
         # GitHub writes are serialized by SHA. Retry conflicts without dropping events.
         for attempt in range(3):
             history, sha = self.history()
-            if any(item.get('id') == event['id'] for item in history):
+            if any(isinstance(item, dict) and item.get('id') == event['id'] for item in history):
                 return
             try:
                 self.write(LOG_PATH, (history + [event])[-500:], sha, 'Record Quant Desk signal')

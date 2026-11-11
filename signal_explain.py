@@ -33,16 +33,39 @@ def explain_evidence(plan):
 
 
 def discord_text(signal):
-    def fmt(value):
-        return 'Not available' if value is None else str(value)
-    lines = [f"**{signal['symbol']} | {signal['status']} | {signal['bias']}**",
-             f"**Signal time (UTC):** {signal['triggered_at_utc']}",
-             f"**Observed price:** {fmt(signal.get('price'))} | **5m completed bar:** {fmt(signal.get('bar'))}",
-             f"**Evidence score:** {fmt(signal.get('score'))}/100 (NOT win probability)",
-             f"**Trade Plan state:** {fmt(signal.get('state'))} | **Options scope:** {fmt(signal.get('scope'))}",
-             f"**Trigger:** {fmt(signal.get('trigger'))} | **Invalidation:** {fmt(signal.get('invalidation'))}",
-             f"**What it means:** {signal.get('explanation', '')}"]
-    if signal.get('evidence'):
-        lines.append('**Supporting checks:** ' + ' | '.join(signal['evidence'][:4]))
-    lines.append('**Safety:** Informational only. No order submitted. Verify quotes, spreads, and risk before trading.')
-    return '\n'.join(lines)[:1900]
+    from terminal_data import et_time
+    from terminal_style import amount, compact, ratio_pct
+
+    f = signal.get
+    flow = f("flow") or {}
+    model = f("model") or {}
+    lines = [f"**{signal['symbol']} · {signal['status']} · {signal['bias']}**",
+             f"Detected {et_time(f('triggered_at_utc'))} | 5m close {et_time(f('bar'), short=True)} | 1m close {et_time(f('entry_bar'), short=True)} ET",
+             f"Price {amount(f('price'))} | {f('scope', '—')} | {f('setup') or 'No directional setup'} | Evidence {f('score', '—')}/100"]
+    if f("trigger") is not None:
+        lines.extend([f"Trigger {amount(f('trigger'))} | Entry {amount(f('entry'))} | Stop {amount(f('stop'))} | Invalidation {amount(f('invalidation'))}",
+                      f"TP1 {amount(f('tp1'))} ({amount(f('rr'))}R) | TP2 {amount(f('tp2'))} ({amount(f('rr2'))}R) | Hold {f('hold', '—')}m"])
+    lines.append(f"{f('regime') or 'Regime unavailable'} | 15m net premium {compact(flow.get('recent_net'), currency=True, signed=True)} | "
+                 f"Flow acceleration {compact(flow.get('momentum'), currency=True, signed=True)}")
+    lines.append(f"GEX {compact(f('gex'), currency=True, signed=True)} per 1% · {f('dealer_note') or 'Dealer context unavailable'}")
+    lines.append(f"IV {ratio_pct(f('atm_iv'))} · {f('iv_valuation') or 'Unavailable'} | Data {f('confidence') or '—'}")
+    if f("validation", "").startswith("Prospectively") and model.get("p_tp1") is not None:
+        sample = f("validation_sample", "—")
+        ev = f" | Estimated EV {model['ev_r']:+.2f}R" if f("expectancy_validation") and model.get("ev_r") is not None else ""
+        lines.append(f"Model TP1 first {model['p_tp1']:.1%} · TP1 comparison n={sample}{ev}")
+    else:
+        lines.append("Monte Carlo · comparable prospective validation pending.")
+    if f("outcome"):
+        result = signal["outcome"]
+        lines.append(f"Paper exit {result['state']} at {amount(result['price'])} · {result['r']:+.2f}R after modeled cost.")
+    if f("crossing"):
+        cross = signal["crossing"]
+        lines.append(f"5m close crossed {cross['direction']} {cross['level']} at {amount(cross['price'])}.")
+    action = f("trigger_text") if signal["status"] in ("ENTER LONG", "ENTER SHORT", "GET READY") else None
+    lines.append("Review · " + str(action or f("explanation") or "Follow the next completed price and flow observations.")[:230])
+    if f("evidence"):
+        lines.append("Agrees · " + " ".join(f("evidence")[:2])[:180])
+    conflicts = list(dict.fromkeys((f("blocks") or []) + (f("conflicts") or []) + (f("missing") or [])))
+    if conflicts:
+        lines.append("Caution · " + " ".join(conflicts[:2])[:220])
+    return "\n".join(lines)[:1900]
