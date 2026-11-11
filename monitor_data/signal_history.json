@@ -1049,5 +1049,29 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:NVDA:2026-11-11T16:00:00+00:00:0154b99a99",
     "explanation": "5m EMA 8/10 and price confirm a bullish trend."
+  },
+  {
+    "symbol": "SPX",
+    "status": "DATA QUALITY",
+    "bias": "Bullish",
+    "score": 95,
+    "bar": "2026-11-11T16:00:00+00:00",
+    "entry_bar": "2026-11-11T16:01:00+00:00",
+    "triggered_at_utc": "2026-11-11T16:02:01.890780+00:00",
+    "price": 7608.81,
+    "scope": "2026-11-11",
+    "setup": "Breakout close",
+    "entry": 7608.81,
+    "trigger": 7604.53,
+    "invalidation": 7604.53,
+    "stop": 7603.52,
+    "tp1": 7616.75,
+    "tp2": 7622.03,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "quality:SPX:2026-11-11:16:0",
+    "explanation": "Current regular-session quote."
   }
 ]
