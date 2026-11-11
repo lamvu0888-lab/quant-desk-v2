@@ -128,7 +128,12 @@ DARK_STYLE = """
 h1,h2,h3,.qd-panel-title,.qd-kpi-value,.qd-name {color:#e7edf7!important}
 p,[data-testid="stCaptionContainer"] p,.stCaption,.qd-page p,.qd-panel-sub,.qd-command p,.qd-kpi-sub,.qd-source,.qd-symbol-name,.qd-level,.qd-empty {color:#aebdd2!important}
 .qd-brand-sub,.qd-eyebrow,.qd-nav-label,.qd-kpi-label {color:#91a5c0!important}
-.qd-rule,.qd-level,.qd-market-strip {background:#2b3a54!important;border-color:#2b3a54!important}
+.qd-rule {background:#2b3a54!important}
+.qd-level,.qd-market-strip {background:transparent!important;border-color:#2b3a54!important;color:#bdcce0!important}
+.qd-level strong,.qd-market-strip b {color:#edf4ff!important}
+.qd-kpi:first-child,.qd-learn-hero {background:linear-gradient(115deg,#173d3c,#111c30 85%)!important;border-color:#28685f!important}
+.qd-learn-hero p,.qd-command p {color:#bdcce0!important}
+.qd-empty {border-color:#405474!important}
 .qd-tag {background:#1b2940!important;border-color:#405474!important;color:#c4d3e7!important}
 .qd-tag.good,.qd-status.long {background:#123e3a!important;color:#7ee0c2!important;border-color:#28685f!important}
 .qd-tag.warn,.qd-status.ready {background:#453515!important;color:#f4cc79!important;border-color:#73582a!important}
@@ -223,21 +228,42 @@ def empty(feed=None, message="No observations returned for these filters."):
 
 
 def style_chart(fig, height=320, *, hover="x unified", legend=True, revision=None):
+    dark = bool(st.session_state.get("desk_dark_mode", False))
+    panel = "#111c30" if dark else PANEL
+    grid = "#2c3d57" if dark else GRID
+    ink = "#edf4ff" if dark else INK
+    muted = "#b3c3d9" if dark else MUTED
+    if dark:
+        # The price and spot traces use the light theme's ink constant.
+        # Recolor these before applying the plot template.
+        for trace in fig.data:
+            line = getattr(trace, "line", None)
+            if line is not None and getattr(line, "color", None) == INK:
+                line.color = ink
+            textfont = getattr(trace, "textfont", None)
+            if textfont is not None and getattr(textfont, "color", None) == INK:
+                textfont.color = ink
     fig.update_layout(
-        template="plotly_white", paper_bgcolor=PANEL, plot_bgcolor=PANEL, height=height,
-        font=dict(family="Inter, system-ui, sans-serif", color=MUTED, size=11),
+        template="plotly_dark" if dark else "plotly_white", paper_bgcolor=panel, plot_bgcolor=panel, height=height,
+        font=dict(family="Inter, system-ui, sans-serif", color=muted, size=11),
         margin=dict(l=12, r=14, t=12, b=65 if legend else 20),
         legend=dict(orientation="h", y=-0.19, x=0, yanchor="top", xanchor="left",
-                    bgcolor="rgba(0,0,0,0)", font=dict(size=12, color=INK),
+                    bgcolor="rgba(0,0,0,0)", font=dict(size=12, color=ink),
                     itemclick="toggle", itemdoubleclick="toggleothers"),
         hovermode=hover, showlegend=legend, uirevision=revision,
-        hoverlabel=dict(bgcolor="#f2f6fc", font_color=INK, bordercolor="#aabdd0"),
+        hoverlabel=dict(bgcolor="#22324b" if dark else "#f2f6fc", font_color=ink, bordercolor="#526784" if dark else "#aabdd0"),
     )
-    fig.update_xaxes(gridcolor=GRID, linecolor=GRID, zeroline=False, tickfont=dict(color=MUTED))
-    fig.update_yaxes(gridcolor=GRID, linecolor=GRID, zerolinecolor="#9aacc1", tickfont=dict(color=MUTED))
+    fig.update_xaxes(gridcolor=grid, linecolor=grid, zeroline=False, tickfont=dict(color=muted), title_font=dict(color=muted))
+    fig.update_yaxes(gridcolor=grid, linecolor=grid, zerolinecolor="#526784" if dark else "#9aacc1", tickfont=dict(color=muted), title_font=dict(color=muted))
+    if dark:
+        for annotation in fig.layout.annotations or ():
+            if annotation.font and annotation.font.color == MUTED:
+                annotation.font.color = muted
+            if annotation.bgcolor == "rgba(255,255,255,.88)":
+                annotation.bgcolor = "#22324b"
     return fig
 
 
 def plot(fig, key):
     st.plotly_chart(fig, width="stretch", theme=None, key=key,
-                    config={"displaylogo": False, "scrollZoom": False, "modeBarButtonsToRemove": ["lasso2d", "select2d"]})
+                    config={"displaylogo": False, "displayModeBar": False, "scrollZoom": False})
