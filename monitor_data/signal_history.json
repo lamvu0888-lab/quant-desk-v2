@@ -1910,5 +1910,29 @@
     },
     "id": "level:Tradytics:0:SPY:2026-11-11T17:25:00+00:00:Put wall",
     "explanation": "A completed 5m close crossed a level recorded before this bar."
+  },
+  {
+    "symbol": "SPY",
+    "status": "GET READY",
+    "bias": "Bullish",
+    "score": 70,
+    "bar": "2026-11-11T17:25:00+00:00",
+    "entry_bar": "2026-11-11T17:28:00+00:00",
+    "triggered_at_utc": "2026-11-11T17:28:01.595106+00:00",
+    "price": 760.74,
+    "scope": "2026-11-11",
+    "setup": "Breakout watch",
+    "entry": 760.66,
+    "trigger": 760.61,
+    "invalidation": 760.61,
+    "stop": 760.53,
+    "tp1": 760.86,
+    "tp2": 760.98,
+    "rr": 1.54,
+    "rr2": 2.46,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "signal:Tradytics:0:SPY:2026-11-11T17:25:00+00:00:edff37b4f0",
+    "explanation": "Aligned 3m and 1m entry timing."
   }
 ]
