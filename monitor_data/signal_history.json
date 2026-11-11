@@ -2838,5 +2838,29 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:SPY:2026-11-11T19:20:00+00:00:dbda26b614",
     "explanation": "Aligned 3m and 1m entry timing."
+  },
+  {
+    "symbol": "SPY",
+    "status": "WAIT",
+    "bias": "Bearish",
+    "score": 70,
+    "bar": "2026-11-11T19:20:00+00:00",
+    "entry_bar": "2026-11-11T19:23:00+00:00",
+    "triggered_at_utc": "2026-11-11T19:23:01.658481+00:00",
+    "price": 759.89,
+    "scope": "2026-11-11",
+    "setup": "Breakout watch",
+    "entry": 760.1,
+    "trigger": 760.15,
+    "invalidation": 760.15,
+    "stop": 760.31,
+    "tp1": 759.79,
+    "tp2": 759.58,
+    "rr": 1.48,
+    "rr2": 2.48,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "signal:Tradytics:0:SPY:2026-11-11T19:20:00+00:00:ac1b0f03a4",
+    "explanation": "The recent breakout failed back through its range boundary."
   }
 ]
