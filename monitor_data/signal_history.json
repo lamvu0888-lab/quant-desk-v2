@@ -1220,5 +1220,34 @@
     },
     "id": "exit:candidate:Tradytics:0:SPY:2026-11-11T15:58:00+00:00",
     "explanation": "Tracked setup closed by time limit."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "LEVEL CROSSING",
+    "bias": "Neutral",
+    "score": 0,
+    "bar": "2026-11-11T16:20:00+00:00",
+    "entry_bar": "2026-11-11T16:20:00+00:00",
+    "triggered_at_utc": "2026-11-11T16:21:02.905545+00:00",
+    "price": 174.87,
+    "scope": "2026-11-11",
+    "setup": null,
+    "entry": null,
+    "trigger": null,
+    "invalidation": null,
+    "stop": null,
+    "tp1": null,
+    "tp2": null,
+    "rr": null,
+    "rr2": null,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "crossing": {
+      "level": "Call wall",
+      "price": 175.0,
+      "direction": "below"
+    },
+    "id": "level:Tradytics:0:NVDA:2026-11-11T16:20:00+00:00:Call wall",
+    "explanation": "A completed 5m close crossed a level recorded before this bar."
   }
 ]
