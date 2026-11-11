@@ -3074,5 +3074,34 @@
     "validation": "Unvalidated",
     "id": "quality:SPX:2026-11-11:20:0",
     "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "LEVEL CROSSING",
+    "bias": "Bearish",
+    "score": 30,
+    "bar": "2026-11-11T20:00:00+00:00",
+    "entry_bar": "2026-11-11T20:00:00+00:00",
+    "triggered_at_utc": "2026-11-11T20:01:32.017334+00:00",
+    "price": 175.64,
+    "scope": "2026-11-11",
+    "setup": "Breakout watch",
+    "entry": 174.81,
+    "trigger": 174.84,
+    "invalidation": 174.84,
+    "stop": 175.77,
+    "tp1": 174.65,
+    "tp2": 172.41,
+    "rr": 0.17,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "crossing": {
+      "level": "Gamma flip",
+      "price": 175.811,
+      "direction": "below"
+    },
+    "id": "level:Tradytics:0:NVDA:2026-11-11T20:00:00+00:00:Gamma flip",
+    "explanation": "A completed 5m close crossed a level recorded before this bar."
   }
 ]
