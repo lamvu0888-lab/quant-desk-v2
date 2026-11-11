@@ -1302,5 +1302,29 @@
     "validation": "Unvalidated",
     "id": "quality:SPX:2026-11-11:16:1",
     "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "GET READY",
+    "bias": "Bullish",
+    "score": 75,
+    "bar": "2026-11-11T16:30:00+00:00",
+    "entry_bar": "2026-11-11T16:30:00+00:00",
+    "triggered_at_utc": "2026-11-11T16:30:32.615944+00:00",
+    "price": 176.21,
+    "scope": "2026-11-11",
+    "setup": "Breakout watch",
+    "entry": 176.28,
+    "trigger": 176.22,
+    "invalidation": 176.22,
+    "stop": 175.59,
+    "tp1": 177.31,
+    "tp2": 178.0,
+    "rr": 1.49,
+    "rr2": 2.49,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "signal:Tradytics:0:NVDA:2026-11-11T16:30:00+00:00:edff37b4f0",
+    "explanation": "A completed candle confirming the entry trigger."
   }
 ]
