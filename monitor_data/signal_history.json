@@ -2790,5 +2790,29 @@
     },
     "id": "level:Tradytics:0:SPY:2026-11-11T19:20:00+00:00:Gamma flip",
     "explanation": "A completed 5m close crossed a level recorded before this bar."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "DATA QUALITY",
+    "bias": "Bearish",
+    "score": 0,
+    "bar": "2026-11-11T19:15:00+00:00",
+    "entry_bar": "2026-11-11T19:21:00+00:00",
+    "triggered_at_utc": "2026-11-11T19:21:02.604634+00:00",
+    "price": 175.5,
+    "scope": "2026-11-11",
+    "setup": null,
+    "entry": null,
+    "trigger": null,
+    "invalidation": null,
+    "stop": null,
+    "tp1": null,
+    "tp2": null,
+    "rr": null,
+    "rr2": null,
+    "regime": "Compressing",
+    "validation": "Unvalidated",
+    "id": "quality:NVDA:2026-11-11:19:0",
+    "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
   }
 ]
