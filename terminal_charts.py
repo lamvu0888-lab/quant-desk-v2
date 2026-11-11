@@ -269,6 +269,9 @@ def exposure_figure(rows, by, unit, spot=None, flip=None, *, split=False, compac
             focused = [row for row in data if abs(numeric(row["strike"]) - float(spot)) <= radius]
             if len(focused) >= 6:
                 data = focused
+            elif focused:
+                data = sorted(data, key=lambda row: abs(numeric(row["strike"]) - float(spot)))[:max(6, len(focused))]
+                data.sort(key=lambda row: numeric(row["strike"]))
     else:
         data.sort(key=lambda row: str(row[field]))
     if not data:
@@ -287,18 +290,19 @@ def exposure_figure(rows, by, unit, spot=None, flip=None, *, split=False, compac
             if value is not None and min(x) <= value <= max(x):
                 fig.add_vline(x=value, line_color=color, line_dash="dot",
                               annotation_text=f"{name} {amount(value)}", annotation_font_color=color,
-                              annotation_position="top left" if name == "Spot" else "top right", annotation_font_size=10)
+                              annotation_position="top right" if name == "Spot" else "bottom left", annotation_font_size=10)
         magnitudes = [abs(v) for v in y if v is not None]
         if len(magnitudes) >= 8:
             # A single strike can be much larger than the rest. Use a robust
             # default display scale so nearby structure remains visible;
             # hover still reports the unmodified exposure value.
-            robust = float(pd.Series(magnitudes).quantile(0.97))
+            core = sorted(magnitudes)[:-2]
+            robust = float(pd.Series(core).quantile(0.9))
             peak = max(magnitudes)
-            if robust > 0 and peak > robust * 2:
-                fig.update_yaxes(range=[-robust * 1.15, robust * 1.15])
+            if robust > 0 and peak > robust * 3:
+                fig.update_yaxes(range=[-robust * 1.35, robust * 1.35])
                 fig.add_annotation(x=0.01, y=0.98, xref="paper", yref="paper",
-                                   text="Display scale capped; hover for full value",
+                                   text="Largest bars clipped for readability; hover for exact values",
                                    showarrow=False, xanchor="left", yanchor="top",
                                    font=dict(size=10, color=MUTED), bgcolor="rgba(255,255,255,.88)")
     fig.update_xaxes(title=None if compact else field.title(), nticks=6 if compact or focus_radius_pct else 10)

@@ -131,7 +131,7 @@ def exact_timeline(upper, lower, session, now, interval):
             continue
         result.append({"time": row["time"], "date": row["date"], "price": row.get("price"), **values})
     delay = max(numeric(feed.snapshot.meta.get("delay_minutes")) or 0 for feed in (upper, lower))
-    return Feed(Snapshot(result, {"date": str(session), "matched_intervals": len(result), "delay_minutes": delay,
+    return Feed(Snapshot(result, {"date": str(session), "interval": interval, "matched_intervals": len(result), "delay_minutes": delay,
                                   "source_intervals": max(len(a), len(b))}, latest), loading=upper.loading or lower.loading)
 
 
@@ -145,7 +145,7 @@ def scope_timeline(fetch, now, dte, *, symbol=None, interval="5m", session=None)
         if symbol and feed.snapshot.meta.get("symbol") not in (None, symbol):
             return Feed(error=FeedError("CHECK SYMBOL", "Options flow response identified a different ticker."))
         rows = closed_flow_rows(same_ticker(feed.rows, symbol) if symbol else feed.rows, selected, now, interval)
-        return Feed(Snapshot(rows, feed.snapshot.meta, feed.snapshot.received_at, feed.snapshot.cursor), feed.error, feed.loading)
+        return Feed(Snapshot(rows, {**feed.snapshot.meta, "interval": interval}, feed.snapshot.received_at, feed.snapshot.cursor), feed.error, feed.loading)
     upper = fetch("timeline", dte=dte, **params)
     lower = fetch("timeline", dte=dte - 1, **params)
     if symbol and any(feed.snapshot and (feed.snapshot.meta.get("symbol") not in (None, symbol) or
@@ -201,7 +201,14 @@ def source_stamp(name, feed, ticker=None):
     if name in fields:
         stamps = [ts for row in feed.rows if (ts := time_or_none(field(row, *fields[name])))]
         if stamps:
-            return max(stamps)
+            stamp = max(stamps)
+            # Timeline rows are labeled by interval start; display the actual
+            # completed bar time so a 10:05-10:10 bar is not shown as 10:05.
+            if name == "timeline":
+                interval = feed.snapshot.meta.get("interval")
+                if interval in ("1m", "3m", "5m", "15m", "1h"):
+                    stamp += interval_length(interval)
+            return stamp
     days = [d for row in feed.rows if (d := valid_date(row.get("date")))]
     return max(days) if days else valid_date(field(feed.snapshot.meta, "date", "session"))
 
@@ -235,7 +242,7 @@ def status(name, feed, now, ticker=None, *, preview=False, paused=False):
         if name in ("flow", "dark_prints", "signals"):
             return "TAPE", display
         if name in ("quotes", "indices", "bars", "chain", "exposure", "timeline"):
-            threshold = 420 if name == "exposure" else 480 if name == "timeline" else 150
+            threshold = 120 if name == "exposure" else 90 if name == "timeline" else 150
             if name == "quotes" and quote_row(feed, ticker).get("stale") is True:
                 return "AGED", display
             return ("RECENT" if age <= threshold else "AGED"), display

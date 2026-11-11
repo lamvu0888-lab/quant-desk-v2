@@ -66,3 +66,9 @@
 - V1.8 migration fix: accept the legacy 90-second quote-age setting but cap the live forecast gate at 30 seconds.
 
 Earlier version notes are retained under `docs/history/`.
+# Feed timing and freshness update
+
+- The live workspace still redraws every four seconds. Tradytics flow is now checked every 15 seconds and dealer exposure every 30 seconds, subject to API limits and request completion.
+- A flow bar now displays its completed interval close instead of its interval start. The label also shows how long since the app received the latest API response, separately from the provider's source time.
+- Exposure older than two minutes and flow older than 90 seconds are labeled AGED instead of RECENT. Charts may still display an older observation with its timestamp; an API check does not create a newer provider observation.
+

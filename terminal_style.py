@@ -233,7 +233,12 @@ def feed_stamp(name, feed, ctx):
     label, time_label = status(name, feed, ctx.now, ctx.ticker, preview=ctx.preview, paused=ctx.paused)
     tone = "preview" if ctx.preview else "good" if label in ("RECENT", "TAPE", "SESSION DATA") else "warn" if label in ("CACHED", "AGED", "COOLDOWN", "SCOPE REQUIRED") else ""
     provider = "Illustrative data" if ctx.preview else "Tradytics"
-    st.markdown(f'<div class="qd-source">{tag(label, tone)}<span>{provider}</span><span class="sep">·</span><span>{esc(time_label)}</span></div>',
+    checked = ""
+    if not ctx.preview and feed.snapshot:
+        seconds = max(0, int((ctx.now - feed.snapshot.received_at).total_seconds()))
+        checked = f'<span class="sep">·</span><span>API checked {seconds // 60}m {seconds % 60}s ago</span>'
+    source_label = "Bar closed" if name == "timeline" else "Source"
+    st.markdown(f'<div class="qd-source">{tag(label, tone)}<span>{provider}</span><span class="sep">·</span><span>{source_label} {esc(time_label)}</span>{checked}</div>',
                 unsafe_allow_html=True)
     if feed.error and feed.snapshot:
         st.caption(f"Cached observation. {feed.error}")

@@ -408,7 +408,8 @@ def overview(ctx):
             feed_stamp("exposure", read["gamma_feed"], ctx)
         with st.container(border=True):
             panel_header("Session net flow", "net_flow", "overview_flow", "Cumulative directional premium")
-            render_chart(flow_figure(flow.rows, compact=True), "overview_flow_spark", flow)
+            render_chart(flow_figure(flow.rows, compact=True), "overview_flow_spark", flow,
+                         "No completed options-flow interval has arrived for the selected session and DTE yet.")
             feed_stamp("timeline", flow, ctx)
     # Independently request 0DTE; fall forward only when the current expiry
     # has no usable, fresh gamma data. Do not alter the workspace DTE setting.
@@ -440,10 +441,10 @@ def overview(ctx):
                        + ("0DTE available" if dte == 0 else "0DTE unavailable; nearest valid expiration"))
             chart = exposure_figure(zero_rows, "strike", display_exposure_unit(zero), spot,
                                     positive((zero.get("levels") or {}).get("flip")), split=False,
-                                    focus_radius_pct=0.0125)
+                                    focus_radius_pct=0.006)
             render_chart(chart, "overview_0dte_gex_chart", zero_feed)
-            st.caption("Net gamma exposure · provider model estimate, not observed dealer inventory. "
-                       "Zoom/pan using the chart toolbar.")
+            st.caption("Nearby strikes around spot (±0.6%). Net gamma exposure is a provider model estimate, "
+                       "not observed dealer inventory. Open Dealer Positioning for the wider view.")
             feed_stamp("exposure", zero_feed, ctx)
         else:
             st.info("No fresh gamma exposure found for 0DTE or the next seven calendar days.")
