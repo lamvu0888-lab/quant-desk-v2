@@ -1398,5 +1398,29 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:NVDA:2026-11-11T16:35:00+00:00:edff37b4f0",
     "explanation": "Aligned 3m and 1m entry timing."
+  },
+  {
+    "symbol": "SPY",
+    "status": "DATA QUALITY",
+    "bias": "Bullish",
+    "score": 55,
+    "bar": "2026-11-11T16:40:00+00:00",
+    "entry_bar": "2026-11-11T16:40:00+00:00",
+    "triggered_at_utc": "2026-11-11T16:40:01.620444+00:00",
+    "price": 759.01,
+    "scope": "2026-11-11",
+    "setup": "Breakout and retest",
+    "entry": 759.01,
+    "trigger": 758.91,
+    "invalidation": 758.91,
+    "stop": 758.83,
+    "tp1": 759.28,
+    "tp2": 759.46,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "quality:SPY:2026-11-11:16:1",
+    "explanation": "Current regular-session quote."
   }
 ]
