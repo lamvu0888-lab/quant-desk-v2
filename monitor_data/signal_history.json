@@ -1656,5 +1656,29 @@
     },
     "id": "exit:candidate:Tradytics:0:NVDA:2026-11-11T17:01:00+00:00",
     "explanation": "Tracked setup closed by invalidated."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "GET READY",
+    "bias": "Bullish",
+    "score": 65,
+    "bar": "2026-11-11T17:05:00+00:00",
+    "entry_bar": "2026-11-11T17:05:00+00:00",
+    "triggered_at_utc": "2026-11-11T17:05:02.783495+00:00",
+    "price": 176.28,
+    "scope": "2026-11-11",
+    "setup": "Breakout watch",
+    "entry": 176.46,
+    "trigger": 176.41,
+    "invalidation": 176.41,
+    "stop": 176.13,
+    "tp1": 176.96,
+    "tp2": 177.29,
+    "rr": 1.52,
+    "rr2": 2.52,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "signal:Tradytics:0:NVDA:2026-11-11T17:05:00+00:00:edff37b4f0",
+    "explanation": "Aligned 3m and 1m entry timing."
   }
 ]
