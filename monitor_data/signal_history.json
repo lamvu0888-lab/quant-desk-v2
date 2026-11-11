@@ -3021,5 +3021,34 @@
     },
     "id": "level:Tradytics:0:NVDA:2026-11-11T19:50:00+00:00:Gamma flip",
     "explanation": "A completed 5m close crossed a level recorded before this bar."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "LEVEL CROSSING",
+    "bias": "Neutral",
+    "score": 0,
+    "bar": "2026-11-11T19:55:00+00:00",
+    "entry_bar": "2026-11-11T19:55:00+00:00",
+    "triggered_at_utc": "2026-11-11T19:55:32.696363+00:00",
+    "price": 175.825,
+    "scope": "2026-11-11",
+    "setup": null,
+    "entry": null,
+    "trigger": null,
+    "invalidation": null,
+    "stop": null,
+    "tp1": null,
+    "tp2": null,
+    "rr": null,
+    "rr2": null,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "crossing": {
+      "level": "Gamma flip",
+      "price": 175.542,
+      "direction": "above"
+    },
+    "id": "level:Tradytics:0:NVDA:2026-11-11T19:55:00+00:00:Gamma flip",
+    "explanation": "A completed 5m close crossed a level recorded before this bar."
   }
 ]
