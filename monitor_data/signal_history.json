@@ -2213,5 +2213,34 @@
     },
     "id": "level:Tradytics:0:TSLA:2026-11-11T18:05:00+00:00:Put wall",
     "explanation": "A completed 5m close crossed a level recorded before this bar."
+  },
+  {
+    "symbol": "TSLA",
+    "status": "LEVEL CROSSING",
+    "bias": "Neutral",
+    "score": 0,
+    "bar": "2026-11-11T18:10:00+00:00",
+    "entry_bar": "2026-11-11T18:11:00+00:00",
+    "triggered_at_utc": "2026-11-11T18:11:02.016305+00:00",
+    "price": 392.45,
+    "scope": "2026-11-11",
+    "setup": null,
+    "entry": null,
+    "trigger": null,
+    "invalidation": null,
+    "stop": null,
+    "tp1": null,
+    "tp2": null,
+    "rr": null,
+    "rr2": null,
+    "regime": "Compressing",
+    "validation": "Unvalidated",
+    "crossing": {
+      "level": "Put wall",
+      "price": 392.5,
+      "direction": "above"
+    },
+    "id": "level:Tradytics:0:TSLA:2026-11-11T18:10:00+00:00:Put wall",
+    "explanation": "A completed 5m close crossed a level recorded before this bar."
   }
 ]
