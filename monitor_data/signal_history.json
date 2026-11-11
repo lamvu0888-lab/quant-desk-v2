@@ -75,5 +75,34 @@
     "validation": "Unvalidated",
     "id": "quality:SPX:2026-11-11:15:0",
     "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
+  },
+  {
+    "symbol": "TSLA",
+    "status": "LEVEL CROSSING",
+    "bias": "Bullish",
+    "score": 75,
+    "bar": "2026-11-11T15:10:00+00:00",
+    "entry_bar": "2026-11-11T15:10:00+00:00",
+    "triggered_at_utc": "2026-11-11T15:10:43.987614+00:00",
+    "price": 392.115,
+    "scope": "2026-11-11",
+    "setup": "Breakout watch",
+    "entry": 392.75,
+    "trigger": 392.56,
+    "invalidation": 392.56,
+    "stop": 390.46,
+    "tp1": 396.19,
+    "tp2": 398.48,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Expanding",
+    "validation": "Unvalidated",
+    "crossing": {
+      "level": "Call wall",
+      "price": 390.0,
+      "direction": "above"
+    },
+    "id": "level:Tradytics:0:TSLA:2026-11-11T15:10:00+00:00:Call wall",
+    "explanation": "A completed 5m close crossed a level recorded before this bar."
   }
 ]
