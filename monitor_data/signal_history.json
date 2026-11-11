@@ -133,5 +133,29 @@
     },
     "id": "level:Tradytics:0:NVDA:2026-11-11T15:10:00+00:00:Put wall",
     "explanation": "A completed 5m close crossed a level recorded before this bar."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "GET READY",
+    "bias": "Bearish",
+    "score": 85,
+    "bar": "2026-11-11T15:20:00+00:00",
+    "entry_bar": "2026-11-11T15:20:00+00:00",
+    "triggered_at_utc": "2026-11-11T15:20:03.020345+00:00",
+    "price": 172.62,
+    "scope": "2026-11-11",
+    "setup": "VWAP rejection",
+    "entry": 172.62,
+    "trigger": 172.99,
+    "invalidation": 172.99,
+    "stop": 173.18,
+    "tp1": 171.78,
+    "tp2": 171.22,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "signal:Tradytics:0:NVDA:2026-11-11T15:20:00+00:00:dda05b3ae4",
+    "explanation": "Aligned 3m and 1m entry timing."
   }
 ]
