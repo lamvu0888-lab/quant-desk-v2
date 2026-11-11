@@ -122,7 +122,27 @@ DARK_STYLE = """
 :root {color-scheme:dark}
 .stApp,[data-testid="stAppViewContainer"],[data-testid="stMain"] {background:#0b1220!important;color:#e7edf7!important}
 [data-testid="stHeader"] {background:#0b1220e8!important}
+[data-testid="stHeader"] button,
+[data-testid="stToolbar"] button,
+[data-testid="stSidebarCollapsedControl"] button,
+[data-testid="stSidebarCollapseButton"] button {
+  background:#243652!important;border:1px solid #526784!important;color:#f4f8ff!important
+}
+[data-testid="stHeader"] button svg,
+[data-testid="stToolbar"] button svg,
+[data-testid="stSidebarCollapsedControl"] svg,
+[data-testid="stSidebarCollapseButton"] svg {
+  color:#f4f8ff!important;fill:#f4f8ff!important
+}
+[data-testid="stHeader"] button:hover,
+[data-testid="stToolbar"] button:hover,
+[data-testid="stSidebarCollapsedControl"] button:hover,
+[data-testid="stSidebarCollapseButton"] button:hover {background:#354d70!important}
 [data-testid="stSidebar"],[data-testid="stSidebar"] > div:first-child {background:#0f1728!important;border-color:#2b3a54!important}
+[data-testid="stSidebar"] label,[data-testid="stSidebar"] label p,
+[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {color:#d7e3f3!important}
+[data-testid="stSidebar"] [data-testid="stWidgetLabel"] svg,
+[data-testid="stSidebar"] [data-testid="stTooltipIcon"] svg {color:#bed5f5!important;fill:#bed5f5!important}
 [data-testid="stMainBlockContainer"] [data-testid="stVerticalBlockBorderWrapper"],.qd-command,.qd-kpi,.qd-symbol-bar {background:#111c30!important;border-color:#34445f!important;color:#e7edf7!important}
 [data-testid="stVerticalBlockBorderWrapper"] {border-color:#34445f!important}
 h1,h2,h3,.qd-panel-title,.qd-kpi-value,.qd-name {color:#e7edf7!important}
