@@ -1187,5 +1187,38 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:NVDA:2026-11-11T16:05:00+00:00:ac1b0f03a4",
     "explanation": "Waiting for price and options flow from the same completed 5-minute bar."
+  },
+  {
+    "symbol": "SPY",
+    "status": "EXIT",
+    "bias": "Bullish",
+    "score": 90,
+    "bar": "2026-11-11T16:14:00+00:00",
+    "entry_bar": "2026-11-11T15:58:00+00:00",
+    "triggered_at_utc": "2026-11-11T16:14:31.598992+00:00",
+    "price": 758.23,
+    "scope": "2026-11-11",
+    "setup": "Breakout close",
+    "entry": 758.25,
+    "trigger": 757.64,
+    "invalidation": 757.64,
+    "stop": 757.53,
+    "tp1": 759.33,
+    "tp2": 760.05,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "outcome": {
+      "state": "TIME LIMIT",
+      "at": "2026-11-11T16:14:00+00:00",
+      "price": 758.23,
+      "tp1_first": false,
+      "tp2_first": false,
+      "minutes": 15,
+      "r": -0.13309027777774748
+    },
+    "id": "exit:candidate:Tradytics:0:SPY:2026-11-11T15:58:00+00:00",
+    "explanation": "Tracked setup closed by time limit."
   }
 ]
