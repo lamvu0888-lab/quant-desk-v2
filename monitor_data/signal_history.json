@@ -2674,5 +2674,34 @@
     "validation": "Unvalidated",
     "id": "quality:TSLA:2026-11-11:19:0",
     "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
+  },
+  {
+    "symbol": "SPY",
+    "status": "LEVEL CROSSING",
+    "bias": "Bearish",
+    "score": 50,
+    "bar": "2026-11-11T19:10:00+00:00",
+    "entry_bar": "2026-11-11T19:10:00+00:00",
+    "triggered_at_utc": "2026-11-11T19:10:31.434169+00:00",
+    "price": 760.59,
+    "scope": "2026-11-11",
+    "setup": "Breakout watch",
+    "entry": 760.56,
+    "trigger": 760.61,
+    "invalidation": 760.61,
+    "stop": 761.29,
+    "tp1": 759.46,
+    "tp2": 758.73,
+    "rr": 1.51,
+    "rr2": 2.51,
+    "regime": "Compressing",
+    "validation": "Unvalidated",
+    "crossing": {
+      "level": "Call wall",
+      "price": 761.0,
+      "direction": "below"
+    },
+    "id": "level:Tradytics:0:SPY:2026-11-11T19:10:00+00:00:Call wall",
+    "explanation": "A completed 5m close crossed a level recorded before this bar."
   }
 ]
