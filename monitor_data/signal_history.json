@@ -181,5 +181,29 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:SPY:2026-11-11T15:20:00+00:00:dda05b3ae4",
     "explanation": "Aligned 3m and 1m entry timing."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "WAIT",
+    "bias": "Bearish",
+    "score": 85,
+    "bar": "2026-11-11T15:15:00+00:00",
+    "entry_bar": "2026-11-11T15:19:00+00:00",
+    "triggered_at_utc": "2026-11-11T15:20:32.693408+00:00",
+    "price": 172.81,
+    "scope": "2026-11-11",
+    "setup": "VWAP rejection",
+    "entry": 172.81,
+    "trigger": 172.99,
+    "invalidation": 172.99,
+    "stop": 173.18,
+    "tp1": 172.25,
+    "tp2": 171.88,
+    "rr": 1.51,
+    "rr2": 2.51,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "signal:Tradytics:0:NVDA:2026-11-11T15:15:00+00:00:ac1b0f03a4",
+    "explanation": "Waiting for price and options flow from the same completed 5-minute bar."
   }
 ]
