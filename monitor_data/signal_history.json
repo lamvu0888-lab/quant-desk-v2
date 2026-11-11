@@ -1987,5 +1987,29 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:SPY:2026-11-11T17:30:00+00:00:9df679e4f7",
     "explanation": "Call wall is only 1.25R from entry."
+  },
+  {
+    "symbol": "SPX",
+    "status": "DATA QUALITY",
+    "bias": "Bullish",
+    "score": 55,
+    "bar": "2026-11-11T17:30:00+00:00",
+    "entry_bar": "2026-11-11T17:30:00+00:00",
+    "triggered_at_utc": "2026-11-11T17:30:01.736652+00:00",
+    "price": 7628.95,
+    "scope": "2026-11-11",
+    "setup": "Breakout and retest",
+    "entry": 7628.95,
+    "trigger": 7628.45,
+    "invalidation": 7628.45,
+    "stop": 7627.56,
+    "tp1": 7631.03,
+    "tp2": 7632.42,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "quality:SPX:2026-11-11:17:1",
+    "explanation": "Current regular-session quote."
   }
 ]
