@@ -3127,5 +3127,29 @@
     "validation": "Unvalidated",
     "id": "quality:NVDA:2026-11-11:20:0",
     "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
+  },
+  {
+    "symbol": "TSLA",
+    "status": "DATA QUALITY",
+    "bias": "Bearish",
+    "score": 45,
+    "bar": "2026-11-11T20:05:00+00:00",
+    "entry_bar": "2026-11-11T20:05:00+00:00",
+    "triggered_at_utc": "2026-11-11T20:06:02.391637+00:00",
+    "price": 391.35,
+    "scope": "2026-11-11",
+    "setup": "Breakout watch",
+    "entry": 391.27,
+    "trigger": 391.31,
+    "invalidation": 391.31,
+    "stop": 391.73,
+    "tp1": 390.58,
+    "tp2": 390.12,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "quality:TSLA:2026-11-11:20:0",
+    "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
   }
 ]
