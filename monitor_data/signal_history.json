@@ -2732,5 +2732,34 @@
     },
     "id": "level:Tradytics:0:SPY:2026-11-11T19:15:00+00:00:Gamma flip",
     "explanation": "A completed 5m close crossed a level recorded before this bar."
+  },
+  {
+    "symbol": "TSLA",
+    "status": "LEVEL CROSSING",
+    "bias": "Bearish",
+    "score": 65,
+    "bar": "2026-11-11T19:15:00+00:00",
+    "entry_bar": "2026-11-11T19:15:00+00:00",
+    "triggered_at_utc": "2026-11-11T19:15:32.217916+00:00",
+    "price": 392.2,
+    "scope": "2026-11-11",
+    "setup": "Breakout close",
+    "entry": 392.2,
+    "trigger": 392.45,
+    "invalidation": 392.45,
+    "stop": 393.11,
+    "tp1": 390.83,
+    "tp2": 389.92,
+    "rr": 1.51,
+    "rr2": 2.51,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "crossing": {
+      "level": "Put wall",
+      "price": 392.5,
+      "direction": "below"
+    },
+    "id": "level:Tradytics:0:TSLA:2026-11-11T19:15:00+00:00:Put wall",
+    "explanation": "A completed 5m close crossed a level recorded before this bar."
   }
 ]
