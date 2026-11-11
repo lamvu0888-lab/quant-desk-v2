@@ -1163,5 +1163,29 @@
     },
     "id": "exit:candidate:Tradytics:0:SPX:2026-11-11T16:00:00+00:00",
     "explanation": "Tracked setup closed by stop."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "WAIT",
+    "bias": "Bullish",
+    "score": 0,
+    "bar": "2026-11-11T16:05:00+00:00",
+    "entry_bar": "2026-11-11T16:10:00+00:00",
+    "triggered_at_utc": "2026-11-11T16:10:03.385256+00:00",
+    "price": 175.37,
+    "scope": "2026-11-11",
+    "setup": null,
+    "entry": null,
+    "trigger": null,
+    "invalidation": null,
+    "stop": null,
+    "tp1": null,
+    "tp2": null,
+    "rr": null,
+    "rr2": null,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "signal:Tradytics:0:NVDA:2026-11-11T16:05:00+00:00:ac1b0f03a4",
+    "explanation": "Waiting for price and options flow from the same completed 5-minute bar."
   }
 ]
