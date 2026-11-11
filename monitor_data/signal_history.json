@@ -1494,5 +1494,38 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:NVDA:2026-11-11T16:50:00+00:00:1501f3eb0f",
     "explanation": "5m EMA 8/10 and price confirm a bullish trend."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "EXIT",
+    "bias": "Bullish",
+    "score": 85,
+    "bar": "2026-11-11T16:59:00+00:00",
+    "entry_bar": "2026-11-11T16:54:00+00:00",
+    "triggered_at_utc": "2026-11-11T16:59:02.208742+00:00",
+    "price": 176.25,
+    "scope": "2026-11-11",
+    "setup": "EMA 8/10 pullback",
+    "entry": 175.77,
+    "trigger": 175.67,
+    "invalidation": 175.67,
+    "stop": 175.58,
+    "tp1": 176.06,
+    "tp2": 176.25,
+    "rr": 1.53,
+    "rr2": 2.53,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "outcome": {
+      "state": "TP2",
+      "at": "2026-11-11T16:59:00+00:00",
+      "price": 176.25,
+      "tp1_first": true,
+      "tp2_first": true,
+      "minutes": 4,
+      "r": 2.43380526315787
+    },
+    "id": "exit:candidate:Tradytics:0:NVDA:2026-11-11T16:54:00+00:00",
+    "explanation": "Tracked setup closed by tp2."
   }
 ]
