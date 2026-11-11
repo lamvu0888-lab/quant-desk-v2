@@ -675,5 +675,29 @@
     "validation": "Unvalidated",
     "id": "signal:Tradytics:0:SPY:2026-11-11T15:40:00+00:00:ac1b0f03a4",
     "explanation": "Current regular-session quote."
+  },
+  {
+    "symbol": "SPY",
+    "status": "ENTER LONG",
+    "bias": "Bullish",
+    "score": 95,
+    "bar": "2026-11-11T15:40:00+00:00",
+    "entry_bar": "2026-11-11T15:42:00+00:00",
+    "triggered_at_utc": "2026-11-11T15:42:31.460624+00:00",
+    "price": 757.22,
+    "scope": "2026-11-11",
+    "setup": "EMA 8/10 pullback",
+    "entry": 757.22,
+    "trigger": 756.79,
+    "invalidation": 756.79,
+    "stop": 756.6,
+    "tp1": 758.15,
+    "tp2": 758.77,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "id": "signal:Tradytics:0:SPY:2026-11-11T15:40:00+00:00:1501f3eb0f",
+    "explanation": "5m EMA 8/10 and price confirm a bullish trend."
   }
 ]
