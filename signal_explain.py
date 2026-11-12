@@ -39,10 +39,17 @@ def discord_text(signal):
     f = signal.get
     flow = f("flow") or {}
     model = f("model") or {}
+    if signal["status"] == "MOVE WATCH":
+        return (f"**{signal['symbol']} · PRICE MOVE WATCH · {f('direction')}**\n"
+                f"Completed 5m close {et_time(f('bar'), short=True)} ET | {f('window')} change "
+                f"{amount(f('previous_price'))} → {amount(f('price'))} ({f('change_pct'):+.2f}%)\n"
+                "Price candles only; current quote and options-flow confirmation not verified. "
+                "Check the live quote and Trade Plan before considering an entry.")
     if signal["status"] == "DATA QUALITY":
         return (f"**{signal['symbol']} · DATA QUALITY**\n"
                 f"Detected {et_time(f('triggered_at_utc'))} ET | {f('scope', '—')}\n"
-                f"Latest 5m close {et_time(f('bar'), short=True)} | Flow {et_time(f('flow_at'), short=True)} ET\n"
+                f"Quote {et_time(f('quote_at'), short=True)} | Latest 5m close {et_time(f('bar'), short=True)} | "
+                f"Flow {et_time(f('flow_at'), short=True)} ET\n"
                 + str(f("explanation") or "Waiting for synchronized feeds.")[:500])
     lines = [f"**{signal['symbol']} · {signal['status']} · {signal['bias']}**",
              f"Detected {et_time(f('triggered_at_utc'))} | 5m close {et_time(f('bar'), short=True)} | 1m close {et_time(f('entry_bar'), short=True)} ET",

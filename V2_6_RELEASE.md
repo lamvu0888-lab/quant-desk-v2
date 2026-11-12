@@ -1,5 +1,9 @@
 # Quant Desk 2.6
 
+## 2.6.3 Price move watch alerts
+
+Discord now sends a separate **PRICE MOVE WATCH** for SPY or SPX when a fresh completed 5-minute candle changes at least 0.25%, or when the completed ten-minute close change reaches 0.35%. It is limited to one watch per ticker every 15 minutes. The watch is based on completed, non-delayed price candles and clearly states that the current quote and options flow were not verified. It is a prompt to inspect the live quote, flow and Trade Plan, not a trade entry. Full entry alerts keep their existing synchronization and risk gates. The data-quality message now includes the quote observation time and repeats no more than hourly per symbol during a session.
+
 ## 2.6.2 Short-window options flow and IV
 
 Movement Detector now lets you select 1m, 3m or 5m net premium bars. The 3m chart is built only from three contiguous completed 1m source intervals. The Trade Plan's 15m context and two completed 5m confirmation checks remain separate, and the chart explicitly labels this distinction. The IV selector compares observed selected-expiry ATM IV (30-day ATM for All DTE) over 1, 3 or 5 minutes. The default +0.3 volatility-point expansion watch level is adjustable and exploratory: 14.1% to 14.4% is +0.3 points. Two actual surface snapshots spanning the chosen period are required. The chart cannot reconstruct IV changes from before the dashboard began collecting snapshots in that browser session, and source updates slower than the selected interval leave the comparison waiting.

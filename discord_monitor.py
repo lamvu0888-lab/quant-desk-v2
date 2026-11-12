@@ -193,9 +193,12 @@ def main():
                             state, notify = data_warning(state, critical and now - opened > timedelta(minutes=12))
                             unhealthy[symbol] = (ctx.session, state)
                             if notify:
-                                warning_id = event_id("quality", symbol, str(ctx.session), now.hour, now.minute // 30)
-                                warning = {**notification(plan, "DATA QUALITY"), "explanation": " ".join(critical)}
-                                alerts.append((warning_id, warning))
+                                prior_warnings = journal.records(symbol, "quality_warning", scope=str(ctx.session), limit=1)
+                                if not prior_warnings or now - time_or_none(prior_warnings[0]["origin"]) >= timedelta(minutes=60):
+                                    warning_id = event_id("quality", symbol, str(ctx.session), now.isoformat())
+                                    warning = {**notification(plan, "DATA QUALITY"), "explanation": " ".join(critical)}
+                                    if journal.insert(warning_id, symbol, "quality_warning", str(ctx.session), now, warning):
+                                        alerts.append((warning_id, warning))
                         for alert_id, alert in alerts:
                             retry.setdefault(alert_id, (alert, now + timedelta(minutes=3)))
                     except Exception as exc:

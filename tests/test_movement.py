@@ -87,7 +87,7 @@ def test_worker_keeps_watch_states_in_history_without_discord(tmp_path, monkeypa
     read = {**inputs, "bars": Feed(), "gamma_feed": Feed()}
     for status in ("GET READY", "WAIT", "AVOID"):
         plan["status"] = status
-        assert process_scan(journal, ctx, read)[0] == []
+        assert all(alert[1]["status"] == "MOVE WATCH" for alert in process_scan(journal, ctx, read)[0])
         ctx.now += timedelta(seconds=30)
     assert {row["payload"]["status"] for row in journal.records("SPY", "decision")} == {"GET READY", "WAIT", "AVOID"}
 

@@ -250,7 +250,7 @@ def test_worker_transitions_settlement_and_duplicate_suppression(tmp_path, monke
     })
     read = {**args, "bars": Feed(), "gamma_feed": Feed()}
     first, plan = process_scan(journal, ctx, read)
-    assert [event["status"] for _, event in first] == ["ENTER LONG"]
+    assert {event["status"] for _, event in first} == {"ENTER LONG", "MOVE WATCH"}
     ctx.now += timedelta(seconds=30)
     assert not process_scan(journal, ctx, read)[0]
     stop_bar = {"time_utc": now.isoformat(), "open": plan["entry"], "close": plan["stop"],

@@ -1,3 +1,8 @@
+# Quant Desk 2.6.3
+
+- Added a distinct SPY/SPX price-move watch alert on a fresh completed 5m candle moving at least 0.25%, or a completed 10m window moving at least 0.35%. It is labeled price-only, uses a 15-minute cooldown, and never implies a Trade Plan entry.
+- Data-quality notices now include quote observation time and repeat at most once an hour per symbol during the same session.
+
 # Quant Desk 2.6.2
 
 - Added 1m, 3m and 5m net-premium chart choices in Movement Detector. The 3m view aggregates three matching, completed 1m bins; Trade Plan confirmation remains on completed 5m bars.

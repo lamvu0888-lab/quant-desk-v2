@@ -41,6 +41,41 @@ def tracked_entry(payload):
         "entry_alert_id" not in payload or bool(payload["entry_alert_id"]))
 
 
+def price_move_watch(journal, ctx, read):
+    """Price-only watch on fresh completed candles, independent of options feeds."""
+    if ctx.ticker not in ("SPY", "SPX") or read["bars"].error or feed_has_delay(read["bars"]):
+        return None
+    bars = candles_on(read["buckets"], ctx.session)
+    if len(bars) < 3:
+        return None
+    last = utc(bars[-1]["time_utc"]) + FIVE_MINUTES
+    if not 0 <= (ctx.now - last).total_seconds() <= 120:
+        return None
+    # A meaningful 5-minute displacement relative to the price, with a
+    # lower absolute bound for the ten-minute opening burst.
+    current, previous = bars[-1]["close"], bars[-2]["close"]
+    change = current / previous - 1 if previous > 0 else 0
+    window = "5m"
+    if abs(change) < .0025:
+        previous = bars[-3]["close"]
+        change = current / previous - 1 if previous > 0 else 0
+        window = "10m"
+    if abs(change) < (.0025 if window == "5m" else .0035):
+        return None
+    recent = journal.records(ctx.ticker, "move_watch", scope=str(ctx.session), limit=1)
+    if recent and ctx.now - utc(recent[0]["origin"]) < timedelta(minutes=15):
+        return None
+    direction = "UP" if change > 0 else "DOWN"
+    ident = event_id("move", ctx.ticker, str(ctx.session), last.isoformat())
+    payload = {"symbol": ctx.ticker, "status": "MOVE WATCH", "direction": direction,
+               "price": current, "previous_price": previous, "change_pct": 100 * change,
+               "window": window,
+               "bar": last.isoformat(), "triggered_at_utc": ctx.now.isoformat(),
+               "scope": str(ctx.session), "quote_verified": False,
+               "explanation": "Fresh completed price candles only. Check live quote, option flow and Trade Plan before considering a trade."}
+    return (ident, payload) if journal.insert(ident, ctx.ticker, "move_watch", str(ctx.session), ctx.now, payload) else None
+
+
 def process_scan(journal, ctx, read):
     plan, _ = build_decision(ctx, read)
     scope, symbol, now = plan_scope(plan), ctx.ticker, ctx.now
@@ -67,6 +102,10 @@ def process_scan(journal, ctx, read):
         settle_hedges(journal, symbol, read["candles"], now)
     if not market_open:
         return alerts, plan
+
+    move_alert = price_move_watch(journal, ctx, read)
+    if move_alert:
+        alerts.append(move_alert)
 
     prev = journal.records(symbol, "decision", scope=scope, limit=1)
     prior = prev[0]["payload"] if prev and prev[0]["payload"].get("session") == str(ctx.session) else {}
