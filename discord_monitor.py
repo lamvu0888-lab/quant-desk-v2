@@ -85,6 +85,8 @@ def data_warning(state, critical):
 
 
 def deliver(journal, shared, webhook, alert_id, alert):
+    if alert["status"] == "DATA QUALITY":
+        return
     entry_id = alert.get("entry_alert_id")
     if alert["status"] == "EXIT" and entry_id and not journal.was_delivered(entry_id):
         return
@@ -149,7 +151,6 @@ def main():
     if bool(shared.repo) != bool(shared.token):
         raise SystemExit("Set both shared GitHub settings, or leave both empty for the default watchlist.")
     journal = None if args.dry_run else Journal(path=secret("MONITOR_JOURNAL_PATH"), dsn=secret("MONITOR_JOURNAL_DSN"))
-    unhealthy = {}
     retry = {}
     resume_sends = 0.
     next_snapshot = 0.
@@ -182,23 +183,6 @@ def main():
                             continue
                         alerts, plan = process_scan(journal, ctx, read)
                         print(f"{now.isoformat()} {symbol}: scan complete ({len(alerts)} candidate alerts)", flush=True)
-                        if session["status"] == "OPEN":
-                            quality_reasons = plan["data_reasons"]
-                            # Opening warmup and missing directional evidence are not feed outages.
-                            critical = [reason for reason in quality_reasons if not reason.startswith("Need 30 minutes")]
-                            opened = time_or_none(session["open_utc"])
-                            saved_session, state = unhealthy.get(symbol, (None, (0, 0, False)))
-                            if saved_session != ctx.session:
-                                state = (0, 0, False)
-                            state, notify = data_warning(state, critical and now - opened > timedelta(minutes=12))
-                            unhealthy[symbol] = (ctx.session, state)
-                            if notify:
-                                prior_warnings = journal.records(symbol, "quality_warning", scope=str(ctx.session), limit=1)
-                                if not prior_warnings or now - time_or_none(prior_warnings[0]["origin"]) >= timedelta(minutes=60):
-                                    warning_id = event_id("quality", symbol, str(ctx.session), now.isoformat())
-                                    warning = {**notification(plan, "DATA QUALITY"), "explanation": " ".join(critical)}
-                                    if journal.insert(warning_id, symbol, "quality_warning", str(ctx.session), now, warning):
-                                        alerts.append((warning_id, warning))
                         for alert_id, alert in alerts:
                             retry.setdefault(alert_id, (alert, now + timedelta(minutes=3)))
                     except Exception as exc:

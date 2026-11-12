@@ -13,6 +13,7 @@ from discord_monitor import data_warning, deliver
 from monitor_engine import process_scan
 from movement_detector import CHECKS, ENTRY_COOLDOWN, price_movement
 from research_journal import Journal
+from signal_explain import discord_text
 from terminal_demo import DEMO_AT
 from test_v25 import synthetic_inputs
 from tradytics_feed import Feed
@@ -104,6 +105,19 @@ def test_exit_delivery_requires_its_entry_to_have_been_sent(tmp_path, monkeypatc
     journal.delivery_state("entry", "sent")
     deliver(journal, shared, webhook, "exit", signal)
     send.assert_called_once_with(webhook, signal)
+
+
+def test_quality_is_never_delivered_and_move_message_is_brief(tmp_path, monkeypatch):
+    journal = Journal(tmp_path / "quiet.sqlite3", dsn="")
+    send = Mock()
+    monkeypatch.setattr("discord_monitor.send", send)
+    deliver(journal, Mock(configured=False), "https://discord.com/api/webhooks/123/test", "old-quality",
+            {"symbol": "SPY", "status": "DATA QUALITY"})
+    send.assert_not_called()
+    message = discord_text({"symbol": "SPY", "status": "MOVE WATCH", "direction": "UP", "window": "5m",
+                            "change_pct": .3, "previous_price": 750, "price": 752.25,
+                            "bar": DEMO_AT.isoformat()})
+    assert len(message.splitlines()) == 3 and "Price only" in message
 
 
 def test_warning_rearms_after_two_healthy_scans():

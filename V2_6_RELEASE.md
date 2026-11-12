@@ -1,5 +1,9 @@
 # Quant Desk 2.6
 
+## 2.6.4 Quieter Discord
+
+The worker sends no data-quality Discord messages. Stale quote and other feed checks still block confirmed Trade Plan entries and remain visible in the dashboard and logs. A price-only move watch is a separate, clearly labeled message. Discord move, entry and paper-exit messages are now concise. Deploy the updated worker to stop messages from a previously running version.
+
 ## 2.6.3 Price move watch alerts
 
 Discord now sends a separate **PRICE MOVE WATCH** for SPY or SPX when a fresh completed 5-minute candle changes at least 0.25%, or when the completed ten-minute close change reaches 0.35%. It is limited to one watch per ticker every 15 minutes. The watch is based on completed, non-delayed price candles and clearly states that the current quote and options flow were not verified. It is a prompt to inspect the live quote, flow and Trade Plan, not a trade entry. Full entry alerts keep their existing synchronization and risk gates. The data-quality message now includes the quote observation time and repeats no more than hourly per symbol during a session.

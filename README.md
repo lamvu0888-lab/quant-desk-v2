@@ -1,4 +1,4 @@
-# Quant Desk 2.6.3
+# Quant Desk 2.6.4
 
 Quant Desk combines Tradytics market data and optional Webull data with intraday entry rules, dealer hedge scenarios, volatility context and paper trade evaluation. Open any covered ticker in the command bar. The quick buttons open SPY, SPX and QQQ. The dashboard and Discord worker run in analysis and paper mode.
 

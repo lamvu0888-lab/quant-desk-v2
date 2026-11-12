@@ -1,3 +1,8 @@
+# Quant Desk 2.6.4
+
+- Removed Discord data-quality notifications; feed issues remain visible in the dashboard and worker logs.
+- Rewrote Discord move watches, entries and paper exits as short, readable messages. Old queued quality alerts are dropped by the updated worker.
+
 # Quant Desk 2.6.3
 
 - Added a distinct SPY/SPX price-move watch alert on a fresh completed 5m candle moving at least 0.25%, or a completed 10m window moving at least 0.35%. It is labeled price-only, uses a 15-minute cooldown, and never implies a Trade Plan entry.
