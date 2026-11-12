@@ -3593,5 +3593,30 @@
     "rule_version": "2.6.0",
     "id": "quality:SPY:2026-11-12:19:1",
     "explanation": "Current regular-session quote."
+  },
+  {
+    "symbol": "SPY",
+    "status": "DATA QUALITY",
+    "bias": "Bearish",
+    "score": 60,
+    "bar": "2026-11-12T20:05:00+00:00",
+    "entry_bar": "2026-11-12T20:05:00+00:00",
+    "triggered_at_utc": "2026-11-12T20:05:01.006667+00:00",
+    "price": 757.31,
+    "scope": "2026-11-12",
+    "setup": "Breakout close",
+    "entry": 757.31,
+    "trigger": 757.48,
+    "invalidation": 757.48,
+    "stop": 757.56,
+    "tp1": 757.0,
+    "tp2": 756.68,
+    "rr": 1.24,
+    "rr2": 2.52,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "rule_version": "2.6.0",
+    "id": "quality:SPY:2026-11-12:20:0",
+    "explanation": "Current regular-session quote."
   }
 ]
