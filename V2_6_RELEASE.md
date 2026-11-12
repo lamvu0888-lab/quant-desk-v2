@@ -1,5 +1,9 @@
 # Quant Desk 2.6
 
+## 2.6.1 Movement Detector charts
+
+Every check now includes a compact chart and a **Look next** cue tied to its current status. Market State shows completed 5m closes; Volatility shows recent 5m true range; Dealer Positioning shows current modeled net GEX by strike; Netflow shows completed 5m net premium; Structure shows 1m closes with range and VWAP levels; Momentum shows 5m price change and available native volume; Movement Decision shows completed price and flow checks plus the evidence score; Trade Trigger plots underlying stop, invalidation, trigger and targets; Data Quality shows quote, price, flow and GEX age against freshness limits. Missing or stale evidence does not become a synthetic chart. The charts explain current Trade Plan evidence; they do not change entry rules or backtest results.
+
 ## Start with Movement Detector
 
 Open **Movement Detector** from Overview or the workspace menu. Read the checks from top to bottom. **Movement Decision** describes the market move and **Trade Trigger** gives the current Trade Plan action.

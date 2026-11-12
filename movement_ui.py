@@ -11,9 +11,10 @@ import streamlit as st
 from dealer_hedging import hedge_scenarios
 from decision_flow import get_hedge
 from market_session import session_state
+from movement_charts import chart_for_stage, next_cue
 from movement_detector import CHECKS, DIRECTION, MIN_ENTRY_SCORE, PLAYBOOKS, cvd_context, movement_status
 from terminal_data import INDICES, et_time, feed_has_delay, positive, time_or_none
-from terminal_style import amount, compact, esc, ratio_pct
+from terminal_style import amount, compact, empty, esc, plot, ratio_pct
 
 AUDIT_PATH = Path(__file__).resolve().parent / "research" / "strategy_audit.json"
 LAB_MATCHES = {
@@ -29,19 +30,28 @@ def nav_button(label, page, key):
         st.rerun()
 
 
-def stage(number, value, detail):
+def stage(number, value, detail, ctx, read, plan, state):
     st.markdown(
         f'<section class="qd-movement-stage"><div class="qd-stage-number">{number}</div>'
         f'<div class="qd-stage-body"><h3>{esc(CHECKS[number - 1])}</h3>'
         f'<p>{esc(detail)}</p></div><div class="qd-stage-value">{esc(value)}</div></section>',
         unsafe_allow_html=True,
     )
+    chart = chart_for_stage(number, ctx, read, plan)
+    if chart is None:
+        empty(message="Chart waiting for the matching completed data or current exposure snapshot.")
+    else:
+        plot(chart, f"movement_stage_{number}_chart")
+    st.markdown(f'<div class="qd-next-cue"><b>Look next</b> · {esc(next_cue(number, ctx, plan, state))}</div>',
+                unsafe_allow_html=True)
 
 
 def detector_view(ctx, read, plan, iv):
     move, flow, two = plan["movement"], plan["flow"], plan["flow_confirmation"]
     direction = plan["direction"]
     state = movement_status(plan)
+    def show_stage(number, value, detail):
+        stage(number, value, detail, ctx, read, plan, state)
     reason = (plan["blocks"] or plan["missing"] or plan["evidence"] or ["Awaiting a completed price and flow read."])[0]
     tint = "long" if plan["status"] == "ENTER LONG" else "short" if plan["status"] == "ENTER SHORT" else (
         "avoid" if plan["status"] == "AVOID" else "ready" if state != "NO TRADE" else "")
@@ -55,7 +65,7 @@ def detector_view(ctx, read, plan, iv):
     nav_button("Open Trade Plan", "Trade Plan", "movement_open_trade")
 
     efficiency = ratio_pct(move["efficiency"])
-    stage(1, move["market"], f"5m bias {plan['bias'].lower()} · directional price efficiency {efficiency} · "
+    show_stage(1, move["market"], f"5m bias {plan['bias'].lower()} · directional price efficiency {efficiency} · "
                               f"same direction on {move['closed_bars']}/2 completed bars.")
     volatility = read["regime"]
     atr = positive(volatility.get("atr"))
@@ -64,7 +74,7 @@ def detector_view(ctx, read, plan, iv):
               f"{iv_label} {ratio_pct(iv['atm'])}.")
     if move["range_hold"]:
         detail += " Wait for a held range break with expanding activity."
-    stage(2, plan["regime"] or "Waiting for bars", detail)
+    show_stage(2, plan["regime"] or "Waiting for bars", detail)
 
     gamma = plan["gex"]
     if gamma is None:
@@ -81,7 +91,7 @@ def detector_view(ctx, read, plan, iv):
                  and cross["direction"] == ("above" if direction > 0 else "below")]
     if crossings:
         gamma_note += f" Closed price and flow agreed at {crossings[0]['level'].lower()}."
-    stage(3, gamma_label, gamma_note)
+    show_stage(3, gamma_label, gamma_note)
     if gamma is not None and atr and plan["price_context_ready"]:
         snapshot, _ = get_hedge(ctx, read["gamma_feed"])
         left = session_state(ctx.now)["minutes_left"] - 1
@@ -102,7 +112,7 @@ def detector_view(ctx, read, plan, iv):
             flow_note += " Estimated share CVD is moving against options flow."
     else:
         flow_note += f" {cvd['label']} is unavailable." if ctx.ticker not in INDICES else f" {cvd['label']}."
-    stage(4, ("Aligned" if two["confirmed"] else "Opposing" if direction * flow.get("direction", 0) < 0
+    show_stage(4, ("Aligned" if two["confirmed"] else "Opposing" if direction * flow.get("direction", 0) < 0
               else "Waiting for agreement"), flow_note)
     if two["intervals"]:
         pieces = " · ".join(f"{et_time(row['close'], short=True)} ET {compact(row['net'], currency=True, signed=True)}"
@@ -125,26 +135,26 @@ def detector_view(ctx, read, plan, iv):
         structure += " Price returned through the last breakout level."
     elif plan.get("break_level") is not None:
         structure += f" Recent break {amount(plan['break_level'])}."
-    stage(5, plan["setup"] or "Awaiting structure", structure)
+    show_stage(5, plan["setup"] or "Awaiting structure", structure)
 
     volume = (f"5m volume {move['volume']:.2f}× {move['volume_basis']} ({move['volume_sample']} comparisons)."
               if move["volume"] is not None else "Native 5m share-volume comparison unavailable.")
     momentum = DIRECTION[move["momentum"]]
-    stage(6, momentum + (" · accelerating" if move["accelerating"] else ""),
+    show_stage(6, momentum + (" · accelerating" if move["accelerating"] else ""),
           f"1m {DIRECTION[plan['ema']['1m']['direction']].lower()} · 3m {DIRECTION[plan['ema']['3m']['direction']].lower()}. {volume}")
 
-    stage(7, state, f"{move['playbook']} · {reason}")
+    show_stage(7, state, f"{move['playbook']} · {reason}")
     trigger = (f"Trigger {amount(plan['trigger'])} · invalidation {amount(plan['invalidation'])} · stop {amount(plan['stop'])} · "
                f"TP1 {amount(plan['tp1'])} ({amount(plan['rr'])}R) · TP2 {amount(plan['tp2'])}."
                if plan["trigger"] is not None else "Waiting for a directional price level and setup.")
     model = plan.get("model") or {}
     if model.get("p_tp1") is not None and model.get("ev_r") is not None:
         trigger += f" Monte Carlo estimate · TP1 first {ratio_pct(model['p_tp1'])} · {model['ev_r']:+.2f}R."
-    stage(8, plan["status"], f"{trigger} Evidence {plan['score']}/100 · entry minimum {MIN_ENTRY_SCORE}.")
+    show_stage(8, plan["status"], f"{trigger} Evidence {plan['score']}/100 · entry minimum {MIN_ENTRY_SCORE}.")
     stamps = (f"{plan['source']} quote {et_time(plan['quote_at'], short=True)} · "
               f"5m close {et_time(plan['bar'], short=True)} · Tradytics flow close {et_time(plan['flow_at'], short=True)} · "
               f"GEX {et_time(plan['gamma_at'], short=True)} ET.")
-    stage(9, "Preview" if ctx.preview else plan["confidence"], stamps)
+    show_stage(9, "Preview" if ctx.preview else plan["confidence"], stamps)
     if plan["data_reasons"]:
         st.caption(" ".join(plan["data_reasons"]))
     if plan.get("delay_status") and not ctx.preview:

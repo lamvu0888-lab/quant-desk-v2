@@ -100,6 +100,8 @@ h1,h2,h3 {color:#172b43;letter-spacing:-.035em}
 .qd-stage-body h3 {font-size:.89rem;font-weight:750;margin:0;padding:0 0 .17rem}
 .qd-stage-body p {color:#526780;margin:0;font-size:.82rem;line-height:1.46}
 .qd-stage-value {max-width:14rem;text-align:right;font-size:.75rem;font-weight:750;color:#304661;padding-top:.16rem;overflow-wrap:anywhere}
+.qd-next-cue {border-left:3px solid #087c68;background:#eaf5f2;color:#24475a;border-radius:0 7px 7px 0;padding:.46rem .65rem;font-size:.78rem;line-height:1.45;margin:-.35rem 0 .5rem}
+.qd-next-cue b {color:#095c4e}
 @media (max-width:620px) {
   .qd-movement-stage {grid-template-columns:1.6rem minmax(0,1fr);gap:.25rem .62rem}
   .qd-stage-value {grid-column:2;text-align:left;max-width:none}
@@ -156,6 +158,8 @@ DARK_STYLE = """
 .qd-movement-stage {background:#111c30;border-color:#34445f;color:#e7edf7}
 .qd-stage-number {background:#123e3a;color:#7ee0c2}
 .qd-stage-value {color:#c4d3e7}
+.qd-next-cue {background:#123e3a;color:#d5e8e4;border-color:#50c6aa}
+.qd-next-cue b {color:#9ee9d4}
 [data-testid="stVerticalBlockBorderWrapper"] {border-color:#34445f!important}
 h1,h2,h3,.qd-panel-title,.qd-kpi-value,.qd-name {color:#e7edf7!important}
 p,[data-testid="stCaptionContainer"] p,.stCaption,.qd-page p,.qd-panel-sub,.qd-command p,.qd-kpi-sub,.qd-source,.qd-symbol-name,.qd-level,.qd-empty {color:#aebdd2!important}

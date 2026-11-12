@@ -1,3 +1,9 @@
+# Quant Desk 2.6.1
+
+- Added a compact evidence chart and context-sensitive “Look next” cue below each of the nine Movement Detector checks.
+- Charts use the already loaded completed price bars, selected-expiry exposure, options flow and feed times. Missing observations display a waiting state; modeled dealer exposure and estimated share volume remain labeled separately.
+- Kept Trade Plan rules, Strategy Lab results and worker alerts unchanged in this display update.
+
 # Quant Desk 2.6
 
 - Added Movement Detector with nine ordered checks, native and proxy CVD labeling, modeled hedge pressure and synchronized feed times.
