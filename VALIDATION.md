@@ -1,4 +1,11 @@
-# Validation — Quant Desk 2.5
+# Validation — Quant Desk 2.6
+
+- 89 Quant Desk tests passed. They cover the complete workspace, ordered checks, the SPX CVD comparison, Trade Plan geometry, closed price and flow confirmation, the sideways guard, Discord cooldown and warning rearm, and paper exits.
+- A local browser verified the Overview shortcut, all nine Movement Detector sections, the SPX comparison, Trade Plan navigation and Strategy Lab search. The local Streamlit health endpoint returned HTTP 200.
+- The original Strategy Lab passed 65 tests and 315 subtests. The new walk-forward audit reports 100 strategy records, 64 completed historical runs and 56 strategies with a selected test fold. See [the release notes](V2_6_RELEASE.md) for the evidence and cost sensitivity.
+- Production deployment, provider authentication, actual Discord delivery, and PostgreSQL integration are pending verification with the configured services.
+
+## Prior validation — Quant Desk 2.5
 
 Verified on November 11, 2026 with Python 3.12, Streamlit 1.67.0 and Plotly 6.9.0.
 

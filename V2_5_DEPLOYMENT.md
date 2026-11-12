@@ -1,4 +1,4 @@
-# Deploy Quant Desk 2.5
+# Deploy Quant Desk 2.6
 
 Keep your existing repository, Streamlit URL and Render worker. The dashboard entry point remains `terminal.py`. The Render worker runs independently of the dashboard browser.
 
@@ -7,7 +7,7 @@ Keep your existing repository, Streamlit URL and Render worker. The dashboard en
 In Windows PowerShell, set `$src` to the folder containing the **new** `terminal.py` and set `$repo` to your existing Git checkout. The paths below use your previous checkout location and an example Downloads path.
 
 ```powershell
-$src = "$env:USERPROFILE\Downloads\Quant_Desk_V2_5"
+$src = "$env:USERPROFILE\Downloads\Quant_Desk_V2_6_Movement_Detector"
 $repo = "E:\Webull autotrade\github\quant_options_agent"
 Set-Location -LiteralPath $repo
 git remote -v
@@ -25,7 +25,7 @@ After the pull succeeds, copy the contents of the extracted folder into the repo
 ```powershell
 if (!(Test-Path -LiteralPath (Join-Path $src "terminal.py") -PathType Leaf) -or
     !(Test-Path -LiteralPath (Join-Path $src "decision_engine.py") -PathType Leaf)) {
-    throw "Set src to the extracted V2.5 folder containing terminal.py and decision_engine.py."
+    throw "Set src to the extracted V2.6 folder containing terminal.py and decision_engine.py."
 }
 robocopy $src $repo /E /R:2 /W:2 /XD ".git" ".venv" "__pycache__" ".pytest_cache" "monitor_data" /XF ".git" ".env" "secrets.toml" "*.sqlite3*"
 if ($LASTEXITCODE -ge 8) { throw "Folder copy failed. Check the Robocopy output." }
@@ -33,10 +33,10 @@ git add -A
 git diff --cached --name-status
 ```
 
-Confirm that the staged list includes `decision_engine.py`, `trade_probability.py`, `terminal.py` and `render.yaml`. Keep `.env`, `.streamlit/secrets.toml`, webhook URLs, and token values out of Git.
+Confirm that the staged list includes `movement_detector.py`, `movement_ui.py`, `research/strategy_audit.json`, `terminal.py` and `render.yaml`. Keep `.env`, `.streamlit/secrets.toml`, webhook URLs, and token values out of Git.
 
 ```powershell
-git commit -m "Upgrade Quant Desk to V2.5"
+git commit -m "Upgrade Quant Desk to V2.6"
 git push origin main
 git log -1 --format="%h %s"
 ```
@@ -45,7 +45,7 @@ If another worker commit lands before your push, rerun `git pull --rebase origin
 
 ## 2. Update the existing Streamlit app
 
-Use the existing app connected to branch `main` and `terminal.py`. After the repository update, look for **Options intelligence · 2.5** in the sidebar. If the app keeps displaying the old version, verify its connected repository, branch and main file in the Community Cloud workspace. Check its logs before restarting it.
+Use the existing app connected to branch `main` and `terminal.py`. After the repository update, look for **Options intelligence · 2.6** in the sidebar. If the app keeps displaying the old version, verify its connected repository, branch and main file in the Community Cloud workspace. Check its logs before restarting it.
 
 Keep your current **App settings → Secrets** values. Streamlit expects TOML. The following block shows the format. Replace the placeholder values only in the Streamlit settings.
 
@@ -85,12 +85,12 @@ The worker writes watchlist settings, delivered signal history and a bounded res
 
 - **Existing GitHub setup.** The worker keeps detailed observations in SQLite. The dashboard can read its latest bounded research snapshot through GitHub, usually refreshed within 15 minutes during observations. The delivered Discord history keeps its existing 500-event limit. The snapshot is a recent view of the journal and does not restore the worker's full database.
 - **Persistent SQLite.** For one Render worker with a persistent disk, set `MONITOR_JOURNAL_PATH` to a file on that disk, for example `/var/data/quant_desk.sqlite3` if the disk is mounted at `/var/data`. This keeps research data and delivery claims through restarts. The dashboard still reads the bounded GitHub snapshot.
-- **Shared PostgreSQL.** For longer validation history and shared delivery claims, set the same `MONITOR_JOURNAL_DSN` in Render and Streamlit. Both services need network access and the database role needs permission to create and update the Quant Desk tables. The watchlist and delivered Discord history still use GitHub. A fresh V2.5 SQLite journal can lose older observations on an ephemeral service restart.
+- **Shared PostgreSQL.** For longer validation history and shared delivery claims, set the same `MONITOR_JOURNAL_DSN` in Render and Streamlit. Both services need network access and the database role needs permission to create and update the Quant Desk tables. The watchlist and delivered Discord history still use GitHub. A fresh SQLite journal can lose older observations on an ephemeral service restart.
 
 ## 4. Verify the deployment
 
 1. Open **Live → Data Health** during regular U.S. market hours. Check **SPY** and **SPX** for recent price, bars, exact-expiry flow, exposure and IV. A missing scope or provider timestamp appears in the page's diagnostics.
-2. Set the dashboard expiration to **0 DTE** to compare its Tradytics plan with the worker's. Open **Trade Plan → Setup transitions and paper outcomes** and **Discord signal history (cloud)**. New worker observations appear as data and triggers arrive.
+2. Set the dashboard expiration to **0 DTE** to compare its Tradytics plan with the worker's. Review **Movement Detector** for aligned completed candles and premium intervals. Open **Trade Plan → Setup transitions and paper outcomes** and **Discord signal history (cloud)**. New worker observations appear as data and triggers arrive.
 3. Click **Feed controls → Send Discord test message** once and check the channel. This checks the dashboard webhook. Check Render's logs for worker scans and any data or delivery errors.
 4. Open **Monte Carlo → Trade probability**, select a usable plan and click **Evaluate trade plan**. For quoted option P&L, use an exact expiry with current quotes. In **Validation**, look for the prospective sample count.
 

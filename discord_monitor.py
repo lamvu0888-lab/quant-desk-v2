@@ -11,7 +11,9 @@ from urllib.parse import parse_qs, urlsplit
 
 import requests
 from dotenv import dotenv_values
+from decision_engine import ENTRY_STATES
 from market_session import session_state
+from movement_detector import ENTRY_COOLDOWN
 from terminal_views import Desk, read_workspace
 from tradytics_feed import TradyticsClient, FeedStore
 from monitor_storage import SharedStore
@@ -73,7 +75,19 @@ def send_test(webhook):
     post_message(webhook_url(webhook), "✅ Quant Desk Discord test successful. Webhook delivery is connected.")
 
 
+def data_warning(state, critical):
+    """Open one warning per sustained incident and rearm after two healthy scans."""
+    bad, good, warned = state
+    if not critical:
+        return (0, min(good + 1, 2), warned and good == 0), False
+    notify = bad == 2 and not warned
+    return (min(bad + 1, 3), 0, warned or notify), notify
+
+
 def deliver(journal, shared, webhook, alert_id, alert):
+    entry_id = alert.get("entry_alert_id")
+    if alert["status"] == "EXIT" and entry_id and not journal.was_delivered(entry_id):
+        return
     if not journal.claim_delivery(alert_id):
         return
     if shared.configured:
@@ -82,6 +96,16 @@ def deliver(journal, shared, webhook, alert_id, alert):
             if any(isinstance(item, dict) and item.get("id") == alert_id for item in history):
                 journal.delivery_state(alert_id, "sent")
                 return
+            alert_time = time_or_none(alert.get("triggered_at_utc"))
+            if alert["status"] in ENTRY_STATES and alert_time:
+                for item in history:
+                    if (not isinstance(item, dict) or item.get("symbol") != alert["symbol"]
+                            or item.get("setup") != alert.get("setup") or item.get("status") not in ENTRY_STATES):
+                        continue
+                    previous = time_or_none(item.get("triggered_at_utc"))
+                    if previous and timedelta(0) <= alert_time - previous < ENTRY_COOLDOWN:
+                        journal.delivery_state(alert_id, "suppressed")
+                        return
         except Exception:
             print(f"{alert['symbol']}: shared alert history unavailable. Using the local delivery claim.", flush=True)
     try:
@@ -97,7 +121,7 @@ def deliver(journal, shared, webhook, alert_id, alert):
         try:
             fields = ("symbol", "status", "bias", "score", "bar", "entry_bar", "triggered_at_utc", "price", "scope",
                       "setup", "entry", "trigger", "invalidation", "stop", "tp1", "tp2", "rr", "rr2",
-                      "regime", "validation", "outcome", "crossing")
+                      "regime", "validation", "outcome", "aligned_crossings", "rule_version")
             event = {key: alert[key] for key in fields if key in alert}
             shared.append_event({**event, "id": alert_id, "explanation": str(alert.get("explanation", ""))[:220]})
         except Exception:
@@ -163,14 +187,15 @@ def main():
                             # Opening warmup and missing directional evidence are not feed outages.
                             critical = [reason for reason in quality_reasons if not reason.startswith("Need 30 minutes")]
                             opened = time_or_none(session["open_utc"])
-                            if critical and now - opened > timedelta(minutes=12):
-                                unhealthy[symbol] = unhealthy.get(symbol, 0) + 1
-                                if unhealthy[symbol] >= 3:
-                                    warning_id = event_id("quality", symbol, str(ctx.session), now.hour, now.minute // 30)
-                                    warning = {**notification(plan, "DATA QUALITY"), "explanation": " ".join(critical)}
-                                    alerts.append((warning_id, warning))
-                            else:
-                                unhealthy[symbol] = 0
+                            saved_session, state = unhealthy.get(symbol, (None, (0, 0, False)))
+                            if saved_session != ctx.session:
+                                state = (0, 0, False)
+                            state, notify = data_warning(state, critical and now - opened > timedelta(minutes=12))
+                            unhealthy[symbol] = (ctx.session, state)
+                            if notify:
+                                warning_id = event_id("quality", symbol, str(ctx.session), now.hour, now.minute // 30)
+                                warning = {**notification(plan, "DATA QUALITY"), "explanation": " ".join(critical)}
+                                alerts.append((warning_id, warning))
                         for alert_id, alert in alerts:
                             retry.setdefault(alert_id, (alert, now + timedelta(minutes=3)))
                     except Exception as exc:

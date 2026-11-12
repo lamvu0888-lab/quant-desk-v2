@@ -16,6 +16,7 @@ from decision_ui import (command_panel, dashboard_decision, dealer_center, iv_ce
 from desk_analytics import (FIVE_MINUTES, MINUTE, candles_on, flow_read, mark_orders, order_rows, price_levels,
                             realized_regime, replay_setups, session_window, setup_read, share_cvd, signed_moves)
 from market_session import ET, active_session, rth_bounds, session_state
+from movement_ui import detector_view, nav_button, strategy_lab, strategy_panel
 from monte_carlo import forecast, walk_forward
 from terminal_charts import (bubble_figure, cvd_figure, dark_figure, exposure_figure, flow_desk_figure, flow_figure,
                              forecast_figure, money_map_figure, price_figure, series_figure)
@@ -185,6 +186,8 @@ def default_premium(ticker):
 
 def read_workspace(ctx, *, include_flow=True):
     candles, bars = ctx.history()
+    candles = [bar for bar in candles if bar.get("closed", True) and not bar.get("forming")
+               and utc(bar["time_utc"]) + MINUTE <= ctx.now]
     buckets = chart_buckets(candles, 5)
     gamma_feed = ctx.exposure()
     timeline = ctx.timeline() if include_flow else Feed()
@@ -382,6 +385,7 @@ def overview(ctx):
     read = read_workspace(ctx)
     decision, iv = dashboard_decision(ctx, read)
     command_panel(ctx, decision, iv, read["candles"], key="overview")
+    nav_button("Open Movement Detector", "Movement Detector", "overview_open_movement")
     quote = ctx.quote()
     flow, plan, regime = read["flow"], read["plan"], read["regime"]
     gamma, vol = read["gamma"], read["vol"]
@@ -1057,14 +1061,21 @@ def money_map(ctx):
         csv_export(data, ctx.title("money_map.csv"), "money_map_download")
 
 
+def movement_page(ctx):
+    read = read_workspace(ctx)
+    decision, iv = dashboard_decision(ctx, read)
+    detector_view(ctx, read, decision, iv)
+
+
 def trade_plan(ctx):
     read = read_workspace(ctx)
     decision, iv = dashboard_decision(ctx, read)
     shown = command_panel(ctx, decision, iv, read["candles"], key="trade", track=True,
                           bar_ok=not read["bars"].error and not feed_has_delay(read["bars"]) and not ctx.paused)
+    strategy_panel(decision)
     journal_panel(ctx, shown)
     st.download_button("Download current trade plan (JSON)", json.dumps(shown, indent=2, allow_nan=False),
-                       file_name=ctx.title("trade_plan_v25.json"), mime="application/json", key="qd25_plan_export")
+                       file_name=ctx.title("trade_plan_v26.json"), mime="application/json", key="qd25_plan_export")
     discord_history(ctx)
     with st.expander("Detailed setup and market context", on_change="rerun", key="qd25_legacy_trade") as advanced:
         if advanced.open:
@@ -1372,7 +1383,7 @@ def health_page(ctx):
         st.caption("Quotes and models use the provider source time. Tradytics quote snapshots typically update about every 30 seconds and positioning models about every five minutes.")
 
 
-PAGES = {"Overview": overview, "Options Flow": options_flow, "Money Map": money_map, "Positioning": positioning,
+PAGES = {"Overview": overview, "Movement Detector": movement_page, "Options Flow": options_flow, "Money Map": money_map, "Positioning": positioning,
          "Volatility": volatility_page, "Dark Pool": dark_pool, "Trade Plan": trade_plan, "Signals": signals_page,
          "Forecast": forecast_page, "Scanner": scanner, "History": history_page, "TradingView": tradingview_page,
-         "Data Health": health_page}
+         "Strategy Lab": strategy_lab, "Data Health": health_page}

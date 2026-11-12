@@ -1,7 +1,8 @@
-# Quant Desk 2.5
+# Quant Desk 2.6
 
 Quant Desk combines Tradytics market data and optional Webull data with intraday entry rules, dealer hedge scenarios, volatility context and paper trade evaluation. Open any covered ticker in the command bar. The quick buttons open SPY, SPX and QQQ. The dashboard and Discord worker run in analysis and paper mode.
 
+- [Read the Movement Detector rules and historical strategy audit](V2_6_RELEASE.md)
 - [Deploy to your existing GitHub, Streamlit and Render services](V2_5_DEPLOYMENT.md)
 - [Read the decision rules, model assumptions and limitations](V2_5_METHODS.md)
 - [See what changed](CHANGELOG.md) and [review verification](VALIDATION.md).
@@ -25,6 +26,7 @@ Use the PowerShell steps in the [deployment guide](V2_5_DEPLOYMENT.md) from your
 | Page | What you can do |
 | --- | --- |
 | Overview | Start with the Entry Command Center. See the current status, 1m/3m/5m alignment, nearby levels, price and large-order markers, 0DTE GEX, cumulative flow, momentum and estimated share CVD. |
+| Movement Detector | Read nine ordered checks from market state through data quality and open the current Trade Plan. |
 | Flow & Bubbles | Filter the executed options tape by dollars, call or put, trade side, kind, session and expiry. Compare premium bubbles, flow momentum and contract-volume delta. |
 | Money Map | Compare market leaders, sectors or a watchlist. Tile size represents absolute net options premium. |
 | Dealer Positioning | Review price, IV and time hedge scenarios, sensitive strikes, past price response, exposure profiles and the optional Webull comparison. |
@@ -37,6 +39,7 @@ Use the PowerShell steps in the [deployment guide](V2_5_DEPLOYMENT.md) from your
 | History & Replay | Review daily series and measure underlying returns after large prints, signals or closed-bar range breaks. |
 | TradingView | Generate a Pine indicator or JSON snapshot of GEX strikes, gamma levels, dark-pool levels and support or resistance. |
 | Learn | Choose a topic for the definition, reading guide and worked example. Use its button to open the corresponding page. |
+| Strategy Lab | Review all 100 strategies, data requirements and selected walk-forward folds for the saved SPY sample. |
 | Data Health | Inspect source time, API receipt time, errors and required scopes. Download diagnostics for troubleshooting. |
 
 Click **?** beside a title for a quick explanation. Click outside or press Esc to close it. **Learn** has examples. Preview downloads carry a demo label.
@@ -57,7 +60,7 @@ The lines extend forward from the export time. Generate a new snapshot after lev
 
 ## Reading the setup and CVD
 
-The price regime measures recent five-minute price swings. It can read Compressing, Normal or Expanding. The Entry Command Center checks the five-minute trend and signed options flow, then uses completed one- and three-minute candles for timing. The evidence score summarizes rule agreement. The Monte Carlo page reports scenario probabilities separately.
+The price regime measures recent five-minute price swings. It can read Compressing, Normal or Expanding. The Entry Command Center checks the five-minute trend and signed options flow, then uses completed one- and three-minute candles for timing. Entry also requires two agreeing completed 5m price checks and two aligned 5m premium intervals. The evidence score summarizes rule agreement. The Monte Carlo page reports scenario probabilities separately.
 
 Open **Trade Plan → Evidence and entry conditions** for supporting checks, missing information, conflicting evidence and reasons to stand aside. **History & Replay → Event replay** retains the earlier 15, 30 and 60 minute underlying comparisons. **Monte Carlo → Validation** includes the new setup replay and forward paper outcomes.
 
@@ -95,4 +98,4 @@ The forecast uses completed regular-session candles and a recent quote from the 
 
 ## Discord monitoring
 
-Open **Feed controls → Discord ticker monitoring** to edit the watchlist. The default is SPY and SPX. The worker monitors Tradytics 0DTE at a 30-second target cadence with the same entry rules used in the dashboard. **Trade Plan** shows setup transitions, paper outcomes and delivered messages. **Feed controls → Send Discord test message** checks webhook connectivity. See the [deployment guide](V2_5_DEPLOYMENT.md) for the required environment variables, journal storage and the worker's dry run.
+Open **Feed controls → Discord ticker monitoring** to edit the watchlist. The default is SPY and SPX. The worker monitors Tradytics 0DTE at a 30-second target cadence with the same entry rules used in the dashboard. **Trade Plan** shows setup transitions, paper outcomes and delivered messages. Discord sends confirmed entries, tracked exits and sustained data warnings. A 10-minute cooldown applies per ticker and setup. **Feed controls → Send Discord test message** checks webhook connectivity. See the [deployment guide](V2_5_DEPLOYMENT.md) for the required environment variables, journal storage and the worker's dry run.

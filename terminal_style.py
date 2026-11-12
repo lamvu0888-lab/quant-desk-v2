@@ -95,6 +95,15 @@ h1,h2,h3 {color:#172b43;letter-spacing:-.035em}
 .qd-status.short,.qd-status.avoid {background:#fcecef;color:#a42f47}
 .qd-status.ready {background:#fff2d7;color:#80550f}
 .qd-status.exit {background:#eee9fa;color:#613aa5}
+.qd-movement-stage {display:grid;grid-template-columns:1.7rem minmax(0,1fr) auto;gap:.75rem;align-items:start;background:#fff;border:1px solid #dce4ee;border-radius:9px;padding:.69rem .8rem}
+.qd-stage-number {display:grid;place-items:center;width:1.6rem;height:1.6rem;background:#e6f3f0;color:#116454;border-radius:6px;font-weight:750;font-size:.73rem}
+.qd-stage-body h3 {font-size:.89rem;font-weight:750;margin:0;padding:0 0 .17rem}
+.qd-stage-body p {color:#526780;margin:0;font-size:.82rem;line-height:1.46}
+.qd-stage-value {max-width:14rem;text-align:right;font-size:.75rem;font-weight:750;color:#304661;padding-top:.16rem;overflow-wrap:anywhere}
+@media (max-width:620px) {
+  .qd-movement-stage {grid-template-columns:1.6rem minmax(0,1fr);gap:.25rem .62rem}
+  .qd-stage-value {grid-column:2;text-align:left;max-width:none}
+}
 .qd-timeframes {display:flex;flex-wrap:wrap;gap:.55rem;margin-top:.8rem}
 .qd-timeframes span {border-radius:6px;background:#f1f5fa;padding:.27rem .48rem;font-size:.75rem;color:#405773}
 @media (min-width:1000px) {
@@ -144,6 +153,9 @@ DARK_STYLE = """
 [data-testid="stSidebar"] [data-testid="stWidgetLabel"] svg,
 [data-testid="stSidebar"] [data-testid="stTooltipIcon"] svg {color:#bed5f5!important;fill:#bed5f5!important}
 [data-testid="stMainBlockContainer"] [data-testid="stVerticalBlockBorderWrapper"],.qd-command,.qd-kpi,.qd-symbol-bar {background:#111c30!important;border-color:#34445f!important;color:#e7edf7!important}
+.qd-movement-stage {background:#111c30;border-color:#34445f;color:#e7edf7}
+.qd-stage-number {background:#123e3a;color:#7ee0c2}
+.qd-stage-value {color:#c4d3e7}
 [data-testid="stVerticalBlockBorderWrapper"] {border-color:#34445f!important}
 h1,h2,h3,.qd-panel-title,.qd-kpi-value,.qd-name {color:#e7edf7!important}
 p,[data-testid="stCaptionContainer"] p,.stCaption,.qd-page p,.qd-panel-sub,.qd-command p,.qd-kpi-sub,.qd-source,.qd-symbol-name,.qd-level,.qd-empty {color:#aebdd2!important}

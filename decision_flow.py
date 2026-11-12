@@ -9,6 +9,7 @@ from decision_engine import ENTRY_STATES, make_trade_plan
 from desk_analytics import FIVE_MINUTES, MINUTE, candles_on
 from iv_decision import iv_read
 from market_session import ET, session_state
+from movement_detector import cvd_context
 from terminal_data import (INDICES, exposure_obj, feed_has_delay, numeric, positive, same_ticker,
                            source_stamp, time_or_none)
 from trade_probability import evaluate_plan
@@ -81,6 +82,13 @@ def build_decision(ctx, read):
     plan["underlying_cost_bps"] = 1.0
     plan["data_reasons"] = quality
     bar_at = time_or_none(plan["bar"])
+    gamma_at = source_stamp("exposure", read["gamma_feed"], ctx.ticker) if gamma else None
+    plan["flow_at"] = plan["flow"].get("stamp")
+    plan["gamma_at"] = gamma_at.isoformat() if gamma_at else None
+    plan["cvd"] = cvd_context(read["candles"], ctx.session, time_or_none(plan["entry_bar"]),
+                              f"{ctx.ticker} estimated share CVD")
+    if ctx.ticker in INDICES:
+        plan["cvd"] = {"label": "Native share CVD unavailable for this index", "delta": None, "close": None}
     plan["price_context_ready"] = bool(not quote_issues and not ctx.paused and not read["bars"].error and
                                        not feed_has_delay(read["bars"]) and bar_at and
                                        0 <= (ctx.now - bar_at).total_seconds() <= (FIVE_MINUTES + 2 * MINUTE).total_seconds())
@@ -104,7 +112,8 @@ def build_decision(ctx, read):
             delay = numeric(quote_feed.snapshot.meta.get("delay_minutes"))
         plan["delay_status"] = "Provider reports zero delay" if delay == 0 else "Provider did not specify quote delay" if delay is None else "Provider reports delay"
     day = candles_on(read["buckets"], ctx.session)
-    plan["crossings"] = level_crossings(day[-2]["close"], day[-1]["close"], plan["gamma_levels"]) if len(day) >= 2 and not quality else []
+    plan["crossings"] = (level_crossings(day[-2]["close"], day[-1]["close"], plan["gamma_levels"])
+                         if len(day) >= 2 and not quality and gamma_at and gamma_at <= utc(day[-1]["time_utc"]) else [])
     return plan, iv
 
 

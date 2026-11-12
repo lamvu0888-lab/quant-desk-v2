@@ -4,6 +4,7 @@ from __future__ import annotations
 import math
 import zlib
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 
 import numpy as np
 
@@ -18,6 +19,11 @@ NAMES = {"SPY": "SPDR S&P 500 ETF Trust", "SPX": "S&P 500 Index", "QQQ": "Invesc
 PRICES = {"SPY": 760, "SPX": 7610, "QQQ": 678, "IWM": 248, "NVDA": 185, "TSLA": 425,
           "AVGO": 335, "NDX": 25120, "RUT": 2435, "DJI": 47352, "VIX": 17.5}
 GREEKS = {"gamma": "usd_per_1pct_move", "delta": "shares", "vanna": "usd_per_vol_point", "charm": "shares_per_day"}
+
+
+@lru_cache(maxsize=12)
+def comparison_store(ticker):
+    return DemoStore(ticker)
 
 
 class DemoStore:
@@ -146,6 +152,9 @@ class DemoStore:
         elif name == "indices":
             data = [self.quote(symbol) for symbol in ("SPX", "NDX", "RUT", "DJI", "VIX")]
         elif name == "bars":
+            symbol = params.get("symbol") or self.ticker
+            if symbol != self.ticker:
+                return comparison_store(symbol).get(name, **params)
             if params.get("timeframe") == "1d":
                 data = []
                 for i, d in enumerate(calendar().sessions_in_range("2026-08-05", "2026-11-05")):

@@ -1,3 +1,10 @@
+# Quant Desk 2.6
+
+- Added Movement Detector with nine ordered checks, native and proxy CVD labeling, modeled hedge pressure and synchronized feed times.
+- Connected Trade Plan to regime-specific setup priority and shared closed-bar, flow and momentum checks.
+- Added a Strategy Lab audit of the 100 supplied strategies, with previous-session selection, unchanged baselines and doubled-cost tests.
+- Limited Discord notifications to confirmed entries, associated exits and sustained data warnings. Added an atomic ticker/setup cooldown and kept alert evidence in the journal.
+
 # 2.5 — Quant Desk
 
 ## Entry Command Center and Trade Plan

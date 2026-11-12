@@ -27,17 +27,19 @@ from research_journal import Journal
 UTC = timezone.utc
 PAGES_LABEL = {
     "Overview": ("Market overview", "Entry timing, market direction, flow and nearby levels.", "◈"),
+    "Movement Detector": ("Movement Detector", "Follow the checks in order before acting on a setup.", "⇥"),
+    "Trade Plan": ("Trade plan", "A checklist for the next price level, with supporting and conflicting evidence.", "▷"),
     "Options Flow": ("Flow & bubbles", "See how options flow builds, then look at the largest trades.", "≋"),
     "Money Map": ("Money map", "See which stocks, sectors or watchlist names lead in net options premium.", "▦"),
     "Positioning": ("Dealer positioning", "Hedge sensitivity, projected pressure and exposure by strike or expiration.", "▥"),
     "Volatility": ("IV Decision Center", "Compare selected-expiry premium with realized price movement.", "∿"),
     "Dark Pool": ("Dark pool", "Reported off-exchange share prints and their price concentrations.", "◉"),
-    "Trade Plan": ("Trade plan", "A checklist for the next price level, with supporting and conflicting evidence.", "▷"),
     "Signals": ("Tradytics signals", "Flow pattern alerts, contract marks and provider performance.", "◇"),
     "Forecast": ("Monte Carlo", "Compare timing, target and stop odds, and modeled P&L after costs.", "⋰"),
     "Scanner": ("Stock scanner", "Find names with active options, high relative volume or large off-exchange prints.", "⌕"),
     "History": ("History & replay", "Review previous sessions and see what happened after large prints or a range break.", "◷"),
     "TradingView": ("TradingView levels", "Export the current price levels as a Pine indicator.", "↗"),
+    "Strategy Lab": ("Strategy Lab", "Review strategy inputs, historical results and walk-forward settings.", "⊞"),
     "Learn": ("Learn", "A practical guide to the tools on your desk.", "▤"),
     "Data Health": ("Data health", "Connection, permissions and source timing across the desk.", "⊙"),
 }
@@ -272,7 +274,7 @@ def main():
     ticker = st.session_state["desk_ticker"]
     with st.sidebar:
         st.markdown('<div class="qd-brand"><div class="qd-mark">◈</div><div><div class="qd-name">Quant Desk</div>'
-                    '<div class="qd-brand-sub">Options intelligence · 2.5</div></div></div>', unsafe_allow_html=True)
+                    '<div class="qd-brand-sub">Options intelligence · 2.6</div></div></div>', unsafe_allow_html=True)
         st.toggle("Dark mode", key="desk_dark_mode", help="Switch between the light and dark dashboard themes.")
         for col, symbol in zip(st.columns(3, gap="small"), ("SPY", "SPX", "QQQ")):
             col.button(symbol, key=f"watch_{symbol}", width="stretch", on_click=choose_ticker, args=(symbol,))
@@ -327,7 +329,7 @@ def main():
             if not discord_webhook:
                 st.caption("Add DISCORD_WEBHOOK_URL to .env or Streamlit Secrets to enable the test button.")
             st.caption("Tradytics key configured" if key else "Set your Tradytics key in .env")
-        st.caption("Quant Options Agent · 2.5")
+        st.caption("Quant Options Agent · 2.6")
     preview = mode == "Preview"
     price_provider = "Tradytics" if preview else selected_provider
     paused = bool(paused and not preview)
@@ -344,10 +346,10 @@ def main():
     if not preview and not key and price_provider == "Tradytics":
         st.info("Set TRADYTICS_API_KEY in the local .env file. Use Preview to explore every chart while you set up the feeds.")
     journal = None
-    if not preview and page in ("Overview", "Trade Plan", "Forecast", "Positioning"):
+    if not preview and page in ("Overview", "Movement Detector", "Trade Plan", "Forecast", "Positioning"):
         journal = journal_resource(config_value(local, "MONITOR_JOURNAL_PATH"), config_value(local, "MONITOR_JOURNAL_DSN"))
 
-    @st.fragment(run_every="4s" if not preview and not paused else None)
+    @st.fragment(run_every="4s" if not preview and not paused and page != "Strategy Lab" else None)
     def workspace():
         wanted = not preview and webull_configured and (comparison or price_provider == "Webull")
         w_state, w_quality, w_error = webull_snapshot(ticker, enabled=wanted, paused=paused)

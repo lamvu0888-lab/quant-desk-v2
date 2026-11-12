@@ -6,9 +6,11 @@ from statistics import median
 
 from data_utils import utc
 from desk_analytics import FIVE_MINUTES, MINUTE, candles_on, flow_read, sign
-from terminal_data import chart_buckets, numeric, positive, time_or_none
+from movement_detector import (MIN_ENTRY_SCORE, MIN_RELATIVE_VOLUME, SETUP_ORDER,
+                               price_movement, signed_flow_confirmation)
+from terminal_data import chart_buckets, closed_flow_rows, numeric, positive, time_or_none
 
-RULES_VERSION = "2.5.0"
+RULES_VERSION = "2.6.0"
 MIN_REWARD_R = 1.35
 ENTRY_STATES = ("ENTER LONG", "ENTER SHORT")
 
@@ -61,11 +63,14 @@ def range_break(bars, tolerance):
 def make_trade_plan(*, candles, buckets, flow_rows, levels, now, session, expiry, dte,
                     spot, regime, iv, gamma, quality_reasons, quote_at, minutes_left, source, preview=False):
     """Use completed bars only. Quote drift and structural room are separate gates."""
-    today = candles_on(candles, session)
-    bars5 = contiguous_tail(candles_on(buckets, session), FIVE_MINUTES)
+    today = [bar for bar in candles_on(candles, session) if bar.get("closed", True)
+             and not bar.get("forming") and utc(bar["time_utc"]) + MINUTE <= now]
+    history = [bar for bar in buckets if bar.get("closed", True) and utc(bar["time_utc"]) + FIVE_MINUTES <= now]
+    bars5 = contiguous_tail(candles_on(history, session), FIVE_MINUTES)
     bars3 = contiguous_tail(chart_buckets(today, 3), 3 * MINUTE)
     bars1 = contiguous_tail(chart_buckets(today, 1), MINUTE)
     atr = positive(regime.get("atr"))
+    flow_rows = closed_flow_rows(flow_rows, session, now, "5m")
     flow = flow_read(flow_rows)
     flow_dir = flow.get("direction", 0)
     stamp5 = utc(bars5[-1]["time_utc"]) + FIVE_MINUTES if bars5 else None
@@ -75,6 +80,15 @@ def make_trade_plan(*, candles, buckets, flow_rows, levels, now, session, expiry
     noise = max((price or 1) * .00006, (atr or 0) * .07)
     tf = {"5m": timing(bars5, 2 * noise), "3m": timing(bars3, noise), "1m": timing(bars1, .6 * noise)}
     trend, align3, align1 = (tf[period]["direction"] for period in ("5m", "3m", "1m"))
+    prior_noise = (max(bars5[-2]["close"] * .00006, .07 * median(
+        bar["high"] - bar["low"] for bar in bars5[-16:-1])) if len(bars5) >= 2 else noise)
+    prior_trend = timing(bars5[:-1], 2 * prior_noise)["direction"] if len(bars5) >= 11 else 0
+    break_dir, break_level, break_at = range_break(bars5, noise)
+    movement = price_movement(bars5, history, trend, prior_trend, atr, noise, regime.get("label"), break_dir, break_level)
+    flow_confirmation = signed_flow_confirmation(flow_rows, flow, trend, stamp5)
+    levels_by_name = {level.label: level.price for level in levels}
+    hi, lo = levels_by_name.get("Range high"), levels_by_name.get("Range low")
+    near_boundary = bool(price and atr and any(abs(price - boundary) <= .45 * atr for boundary in (hi, lo) if boundary))
     bias = {1: "Bullish", -1: "Bearish", 0: "Neutral"}[trend]
     if trend * flow_dir < 0:
         bias = "Mixed"
@@ -88,12 +102,18 @@ def make_trade_plan(*, candles, buckets, flow_rows, levels, now, session, expiry
               "entry_bar": stamp1.isoformat() if stamp1 else None, "quote_at": quote_at,
               "regime": regime.get("label"), "iv_valuation": iv["valuation"], "atm_iv": iv["atm"],
               "iv_ratio": iv["ratio"], "gex": numeric(gamma.get("total")), "flow": flow, "ema": tf,
+              "flow_confirmation": flow_confirmation, "movement": movement, "near_boundary": near_boundary,
+              "range": (lo, hi), "vwap": positive(bars1[-1].get("session_vwap")) if bars1 else None,
+              "volume_ratio": movement["volume"], "break_level": break_level, "break_direction": break_dir,
+              "break_at": break_at.isoformat() if break_at else None,
               "evidence": checks, "missing": missing, "conflicts": conflicts, "blocks": stops, "score": 0,
               "demo": preview, "rule_version": RULES_VERSION, "validation": "Unvalidated"}
     if not stamp1 or not 0 <= (now - stamp1).total_seconds() <= 120:
         missing.append("Recent completed 1-minute candles.")
     if not stamp3 or not 0 <= (now - stamp3).total_seconds() <= 240:
         missing.append("Recent completed 3-minute candles.")
+    if not stamp5 or not 0 <= (now - stamp5).total_seconds() <= 420:
+        missing.append("Recent completed 5-minute candles.")
     if len(bars5) < 10 or not atr:
         missing.append("Ten contiguous 5-minute bars and a readable price regime.")
     if result["hold"] < 5:
@@ -113,6 +133,18 @@ def make_trade_plan(*, candles, buckets, flow_rows, levels, now, session, expiry
         stops.append("Price and options flow disagree.")
     else:
         missing.append("Directional options-flow confirmation.")
+    if trend and movement["price_confirmed"]:
+        checks.append("Two consecutive completed 5m bars agree on direction.")
+    elif trend:
+        missing.append("Same direction on two consecutive completed 5m bars.")
+    if trend and flow_confirmation["confirmed"]:
+        checks.append("Two consecutive completed 5m options-flow intervals agree.")
+    elif trend:
+        missing.append("Two consecutive completed 5m options-flow intervals in the setup direction.")
+    if trend and movement["momentum"] != trend:
+        missing.append("Directional price momentum on the completed 5m candles.")
+    if movement["range_hold"]:
+        missing.append("A directional move or a held break with expanding activity.")
     accel = bool(trend and flow.get("accelerating") and trend * flow["momentum"] > 0)
     if accel:
         checks.append("Options flow strengthened in the setup direction.")
@@ -127,25 +159,14 @@ def make_trade_plan(*, candles, buckets, flow_rows, levels, now, session, expiry
         if trend * align3 < 0 or trend * align1 < 0:
             conflicts.append("At least one entry timeframe is moving against the trend.")
     last, prior = bars1[-1], bars1[-2]
-    volumes = [positive(row.get("volume")) for row in bars5[-21:-1]]
-    relative_volume = positive(bars5[-1].get("volume"))
-    relative_volume = (relative_volume / median(volumes) if relative_volume and len(volumes) >= 8
-                       and all(value is not None for value in volumes) else None)
-    result["volume_ratio"] = relative_volume
-    if relative_volume is not None and relative_volume >= 1.25:
-        checks.append(f"5m volume expanded to {relative_volume:.2f}× its recent median.")
+    relative_volume = movement["volume"]
+    volume_expanded = relative_volume is not None and relative_volume >= MIN_RELATIVE_VOLUME
+    if volume_expanded:
+        checks.append(f"5m volume expanded to {relative_volume:.2f}× its baseline.")
     elif relative_volume is None:
-        result["volume_note"] = "Native share volume unavailable."
-    levels_by_name = {level.label: level.price for level in levels}
-    hi, lo = levels_by_name.get("Range high"), levels_by_name.get("Range low")
-    result["range"] = (lo, hi)
+        result["volume_note"] = "Native share-volume comparison unavailable."
     level = hi if trend > 0 else lo if trend < 0 else None
-    vwap = positive(last.get("session_vwap"))
-    result["vwap"] = vwap
-    break_dir, break_level, break_at = range_break(bars5, noise)
-    result["break_level"] = break_level
-    result["break_at"] = break_at.isoformat() if break_at else None
-    result["break_direction"] = break_dir
+    vwap = result["vwap"]
     failed_break = bool(trend and break_dir == trend and trend * (price - break_level) < -noise)
     sweep_side = 0
     if hi and last["high"] > hi + noise and price < hi - noise:
@@ -160,6 +181,8 @@ def make_trade_plan(*, candles, buckets, flow_rows, levels, now, session, expiry
         stops.append("The recent breakout failed back through its range boundary.")
     if sweep_side and sweep_side == -trend:
         stops.append("Price rejected the range edge against the proposed direction.")
+    result["sweep_direction"] = sweep_side
+    result["failed_break"] = failed_break
     if not trend or level is None:
         if core_ready and stops:
             result["status"] = "AVOID"
@@ -180,18 +203,21 @@ def make_trade_plan(*, candles, buckets, flow_rows, levels, now, session, expiry
                      and (trend * (prior["close"] - prior_vwap) <= 0 or abs(last[extreme] - prior_vwap) <= retest_pad))
     if vwap and trend * (price - vwap) < -retest_pad:
         conflicts.append("Price is on the opposing side of session VWAP.")
-    if retest:
-        setup, trigger, confirmed = "Breakout and retest", break_level, True
-    elif break_dir == trend and break_at == stamp5 and trend * (price - break_level) >= noise:
-        setup, trigger, confirmed = "Breakout close", break_level, True
-    elif ema_retest:
-        setup, trigger, confirmed = "EMA 8/10 pullback", fast, True
-    elif vwap_test:
-        setup, trigger, confirmed = "VWAP reclaim" if trend > 0 else "VWAP rejection", vwap, True
-    elif sweep_side == trend:
-        setup, trigger, confirmed = "Liquidity sweep reclaim" if trend > 0 else "Liquidity sweep rejection", lo if trend > 0 else hi, True
-    else:
-        setup, trigger, confirmed = "Breakout watch", level, False
+    breakout_close = (break_level if break_dir == trend and break_at == stamp5 and
+                      trend * (price - break_level) >= noise else None)
+    if regime.get("label") == "Compressing" and movement["released"]:
+        breakout_close = movement["hold_level"]
+    candidates = {
+        "retest": ("Breakout and retest", break_level if retest else None),
+        "break": ("Breakout close", breakout_close),
+        "ema": ("EMA 8/10 pullback", fast if ema_retest else None),
+        "vwap": ("VWAP reclaim" if trend > 0 else "VWAP rejection", vwap if vwap_test else None),
+        "sweep": ("Liquidity sweep reclaim" if trend > 0 else "Liquidity sweep rejection",
+                  (lo if trend > 0 else hi) if sweep_side == trend else None),
+    }
+    setup, trigger = next((candidates[key] for key in SETUP_ORDER[movement["playbook"]] if candidates[key][1] is not None),
+                          ("Breakout watch", level))
+    confirmed = setup != "Breakout watch"
     # Pending geometry is anchored to the trigger plus its confirmation buffer.
     # Confirmed geometry uses a fresh quote and a distinct protective stop.
     entry = (spot or price) if confirmed else trigger + trend * noise
@@ -237,13 +263,15 @@ def make_trade_plan(*, candles, buckets, flow_rows, levels, now, session, expiry
     if iv["valuation"] == "Rich vs trailing RV":
         conflicts.append("Selected IV is rich versus trailing realized volatility. Check quoted premium and execution costs.")
     result["score"] = (20 + 20 * (flow_dir == trend) + 10 * aligned3 + 10 * aligned1 + 20 * confirmed
-                       + 10 * accel + 5 * (relative_volume is not None and relative_volume >= 1.25)
+                       + 10 * accel + 5 * volume_expanded
                        + 5 * bool(result["rr"] and result["rr"] >= MIN_REWARD_R))
     if not core_ready:
         result["status"] = "WAIT"
     elif stops:
         result["status"] = "AVOID"
-    elif confirmed and aligned3 and aligned1 and flow_dir == trend and result["score"] >= 75:
+    elif (confirmed and aligned3 and aligned1 and flow_dir == trend and result["score"] >= MIN_ENTRY_SCORE
+          and movement["price_confirmed"] and flow_confirmation["confirmed"]
+          and movement["momentum"] == trend and not movement["range_hold"]):
         result["status"] = "ENTER LONG" if trend > 0 else "ENTER SHORT"
     elif flow_dir == trend and abs(price - trigger) <= .8 * atr:
         result["status"] = "GET READY"
