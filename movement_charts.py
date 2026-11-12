@@ -15,7 +15,7 @@ from data_utils import utc
 from desk_analytics import candles_on
 from market_session import ET
 from terminal_charts import exposure_figure
-from terminal_data import display_exposure_unit, numeric, time_or_none
+from terminal_data import chart_buckets, display_exposure_unit, numeric, time_or_none
 from terminal_style import AMBER, BLUE, INK, RED, TEAL, VIOLET, style_chart
 from movement_detector import MIN_ENTRY_SCORE, MIN_RELATIVE_VOLUME
 
@@ -29,15 +29,21 @@ def _clock(bars, minutes):
             for bar in bars]
 
 
-def _price(ctx, read, plan, *, structure=False):
-    bars = _session_bars(ctx, read, "candles" if structure else "buckets", 36 if structure else 24)
+def _price(ctx, read, plan, *, structure_minutes=None):
+    minutes = structure_minutes or 5
+    if structure_minutes is None or minutes == 5:
+        bars = _session_bars(ctx, read, "buckets", 24)
+    elif minutes == 3:
+        bars = chart_buckets(_session_bars(ctx, read, "candles", 111), 3)[-36:]
+    else:
+        bars = _session_bars(ctx, read, "candles", 36)
     if not bars:
         return None
-    x = _clock(bars, 1 if structure else 5)
+    x = _clock(bars, minutes)
     fig = go.Figure()
     fig.add_scatter(x=x, y=[bar["close"] for bar in bars], name="Completed close",
                     line=dict(color=INK, width=2), hovertemplate="%{x|%H:%M} ET · %{y:,.2f}<extra>Close</extra>")
-    if structure:
+    if structure_minutes is not None:
         for label, value, color in (("Range high", plan["range"][1], TEAL),
                                     ("Range low", plan["range"][0], RED),
                                     ("VWAP", plan["vwap"], VIOLET)):
@@ -200,13 +206,13 @@ def _quality(ctx, plan):
     return style_chart(fig, 182, legend=False, hover="closest")
 
 
-def chart_for_stage(number, ctx, read, plan, *, flow_interval="5m", flow_feed=None):
+def chart_for_stage(number, ctx, read, plan, *, flow_interval="5m", flow_feed=None, structure_minutes=3):
     """Return a chart or None when its input is unavailable."""
     return {1: lambda: _price(ctx, read, plan),
             2: lambda: _volatility(ctx, read),
             3: lambda: _gamma(read, plan),
             4: lambda: _flow(ctx, read, plan, flow_interval, flow_feed),
-            5: lambda: _price(ctx, read, plan, structure=True),
+            5: lambda: _price(ctx, read, plan, structure_minutes=structure_minutes),
             6: lambda: _momentum(ctx, read, plan),
             7: lambda: _decision(plan),
             8: lambda: _trigger(plan),

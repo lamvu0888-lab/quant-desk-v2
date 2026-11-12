@@ -40,7 +40,7 @@ def discord_text(signal):
     if signal["status"] == "MOVE WATCH":
         return (f"**{signal['symbol']} · {'📈' if f('direction') == 'UP' else '📉'} Move watch**\n"
                 f"{f('window')} move {f('change_pct'):+.2f}% · {amount(f('previous_price'))} → {amount(f('price'))}\n"
-                f"{et_time(f('bar'), short=True)} ET · Price only. Check live quote and Trade Plan.")
+                f"{et_time(f('bar'), short=True)} ET · {f('source', 'Market')} candles · Price only")
     if signal["status"] == "EXIT":
         outcome = f("outcome") or {}
         return (f"**{signal['symbol']} · Paper setup closed**\n"
@@ -49,8 +49,11 @@ def discord_text(signal):
                 "Paper tracking only; no order was placed.")
     if signal["status"] in ("ENTER LONG", "ENTER SHORT"):
         side = "📈 Long setup" if signal["status"] == "ENTER LONG" else "📉 Short setup"
+        quote = f("option_quote") or {}
+        confirmation = (f"{quote['source']} {amount(quote['strike'])} {quote['right']} · "
+                        f"{amount(quote['bid'])} bid / {amount(quote['ask'])} ask · Flow confirmed") if quote.get("ready") else "Price and flow confirmed"
         return (f"**{signal['symbol']} · {side}**\n"
                 f"Price {amount(f('price'))} · Trigger {amount(f('trigger'))} · {et_time(f('triggered_at_utc'), short=True)} ET\n"
                 f"Stop {amount(f('stop'))} · Target {amount(f('tp1'))}\n"
-                f"{f('setup') or 'Trade Plan'} · Review live option quote and risk before acting.")
+                f"{confirmation}")
     return f"**{signal['symbol']} · {signal['status']}**\nCheck the dashboard for details."

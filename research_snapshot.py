@@ -15,7 +15,7 @@ LIMITS = {"decision": 28, "candidate": 190, "hedge": 44}
 
 
 def publish_snapshot(journal, shared, symbols, now):
-    data = {symbol: {kind: journal.records(symbol, kind, scope="Tradytics:0", limit=limit)
+    data = {symbol: {kind: journal.records(symbol, kind, limit=limit)
                      for kind, limit in LIMITS.items()} for symbol in symbols}
     if not any(rows for symbol in data.values() for rows in symbol.values()):
         return False

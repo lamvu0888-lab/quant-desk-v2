@@ -135,7 +135,7 @@ def test_terminal_preview_pages_and_index_switch(monkeypatch):
     app.button(key="watch_SPX").click().run()
     assert app.session_state["desk_ticker"] == "SPX"
     assert not app.exception
-    for page in ("Options Flow", "Positioning", "Volatility", "Dark Pool", "Signals", "Forecast", "History", "Data Health", "Learn"):
+    for page in ("Options Flow", "Positioning", "Volatility", "Dark Pool", "Signals", "Forecast", "Data Health", "Learn"):
         app.radio(key="desk_page").set_value(page).run()
         assert not app.exception, page
     app.button(key="learn_open_page").click().run()

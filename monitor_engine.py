@@ -10,7 +10,7 @@ from decision_engine import ENTRY_STATES
 from decision_flow import apply_model_gate, build_decision, get_hedge, model_summary
 from desk_analytics import FIVE_MINUTES, MINUTE, candles_on
 from market_session import ET, session_state
-from movement_detector import ENTRY_COOLDOWN, MIN_ENTRY_SCORE
+from movement_detector import ENTRY_COOLDOWN, MIN_ENTRY_SCORE, early_price_move
 from research_journal import plan_scope
 from terminal_data import feed_has_delay, positive
 from trade_validation import paper_records, performance, settle_candidates, settle_hedges
@@ -43,47 +43,32 @@ def tracked_entry(payload):
 
 def price_move_watch(journal, ctx, read):
     """Price-only watch on fresh completed candles, independent of options feeds."""
-    if ctx.ticker not in ("SPY", "SPX") or read["bars"].error or feed_has_delay(read["bars"]):
+    if (not read.get("bars_ready", True) or read["bars"].error or feed_has_delay(read["bars"])
+            or session_state(ctx.now)["status"] != "OPEN"):
         return None
-    bars = candles_on(read["buckets"], ctx.session)
-    if len(bars) < 3:
-        return None
-    last = utc(bars[-1]["time_utc"]) + FIVE_MINUTES
-    if not 0 <= (ctx.now - last).total_seconds() <= 120:
-        return None
-    # A meaningful 5-minute displacement relative to the price, with a
-    # lower absolute bound for the ten-minute opening burst.
-    current, previous = bars[-1]["close"], bars[-2]["close"]
-    change = current / previous - 1 if previous > 0 else 0
-    window = "5m"
-    if abs(change) < .0025:
-        previous = bars[-3]["close"]
-        change = current / previous - 1 if previous > 0 else 0
-        window = "10m"
-    if abs(change) < (.0025 if window == "5m" else .0035):
+    move = early_price_move(read["candles"], ctx.session, ctx.now)
+    if not move:
         return None
     recent = journal.records(ctx.ticker, "move_watch", scope=str(ctx.session), limit=1)
     if recent and ctx.now - utc(recent[0]["origin"]) < timedelta(minutes=15):
         return None
-    direction = "UP" if change > 0 else "DOWN"
-    ident = event_id("move", ctx.ticker, str(ctx.session), last.isoformat())
-    payload = {"symbol": ctx.ticker, "status": "MOVE WATCH", "direction": direction,
-               "price": current, "previous_price": previous, "change_pct": 100 * change,
-               "window": window,
-               "bar": last.isoformat(), "triggered_at_utc": ctx.now.isoformat(),
+    ident = event_id("move", ctx.ticker, str(ctx.session), move["bar"])
+    payload = {**move, "symbol": ctx.ticker, "status": "MOVE WATCH", "source": getattr(ctx, "price_provider", "Tradytics"),
+               "triggered_at_utc": ctx.now.isoformat(),
                "scope": str(ctx.session), "quote_verified": False,
-               "explanation": "Fresh completed price candles only. Check live quote, option flow and Trade Plan before considering a trade."}
+               "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."}
     return (ident, payload) if journal.insert(ident, ctx.ticker, "move_watch", str(ctx.session), ctx.now, payload) else None
 
 
-def process_scan(journal, ctx, read):
-    plan, _ = build_decision(ctx, read)
+def process_scan(journal, ctx, read, *, check_move=True):
+    plan, _ = build_decision(ctx, read, warm_options=False)
     scope, symbol, now = plan_scope(plan), ctx.ticker, ctx.now
     market_open = session_state(now)["status"] == "OPEN"
     alerts = []
     entry_alert = None
     # Candles must be usable for outcomes even when options flow is missing.
-    if not read["bars"].error and not feed_has_delay(read["bars"]) and read["candles"]:
+    if (not read["bars"].error and not feed_has_delay(read["bars"]) and read["candles"]
+            and not (read["bars"].snapshot and read["bars"].snapshot.meta.get("sandbox"))):
         for event, outcome in settle_candidates(journal, symbol, read["candles"], now):
             payload = event["payload"]
             if tracked_entry(payload) and outcome.get("r") is not None:
@@ -103,7 +88,7 @@ def process_scan(journal, ctx, read):
     if not market_open:
         return alerts, plan
 
-    move_alert = price_move_watch(journal, ctx, read)
+    move_alert = price_move_watch(journal, ctx, read) if check_move else None
     if move_alert:
         alerts.append(move_alert)
 

@@ -33,17 +33,19 @@ def normalize_quote(payload, ticker, *, now=None):
         raise DataError('Stock snapshot ticker mismatch')
     row = rows[0]
     price = number(row.get('price'), 'Webull last price', minimum=.000001)
-    trade_time = utc(field(row, 'last_trade_time', 'quote_time'))
-    quote_time = utc(field(row, 'quote_time', 'last_trade_time'))
-    if min((now-trade_time).total_seconds(), (now-quote_time).total_seconds()) < -5:
+    trade_time = utc(row['last_trade_time']) if row.get('last_trade_time') else None
+    quote_time = utc(row['quote_time']) if row.get('quote_time') else None
+    if not (trade_time or quote_time):
+        raise DataError('Webull snapshot has no trade or quote timestamp')
+    if any((now-stamp).total_seconds() < -5 for stamp in (trade_time, quote_time) if stamp):
         raise DataError('Snapshot timestamp is in the future; check the PC clock')
     def optional(key):
         return number(row[key], key, minimum=0) if row.get(key) not in (None,'') else None
     bid, ask = optional('bid'), optional('ask')
     midpoint = (bid+ask)/2 if bid and ask and ask >= bid else None
     return {'ticker':ticker,'spot':price,'last_price':price,'bid':bid,'ask':ask,'midpoint':midpoint,
-            'spread':ask-bid if midpoint is not None else None,'price_time_utc':trade_time.isoformat(),
-            'quote_time_utc':quote_time.isoformat(),'received_utc':now.isoformat(),
+            'spread':ask-bid if midpoint is not None else None,'price_time_utc':trade_time.isoformat() if trade_time else None,
+            'quote_time_utc':quote_time.isoformat() if quote_time else None,'received_utc':now.isoformat(),
             'delay_minutes':reported_delay(payload,ticker),'pre_close':optional('pre_close'),
             'change':number(row['change'],'price change') if row.get('change') not in (None,'') else None,
             'trade_status':row.get('trade_status'),'source':'WEBULL_OPENAPI'}
@@ -59,6 +61,8 @@ def normalize_candles(payload,ticker,*,interval_minutes=1,now=None):
     parsed=[]
     for row in records(payload,ticker):
         if not isinstance(row,dict): raise DataError('Invalid candle record')
+        if row.get('closed') is False or row.get('forming') is True or row.get('trading_sessions') not in (None, 'RTH'):
+            continue
         ts=utc(field(row,'time','timestamp','time_utc'))
         if ts.second or ts.microsecond: raise DataError('Bar timestamp is not a whole minute')
         values={k:number(row.get(k),k,minimum=0) for k in ('open','high','low','close','volume')}
@@ -67,6 +71,9 @@ def normalize_candles(payload,ticker,*,interval_minutes=1,now=None):
         bounds=_bounds(ts.astimezone(ET).date().isoformat())
         if not bounds or ts < bounds[0] or ts+timedelta(minutes=interval_minutes) > bounds[1]: continue
         if ts+timedelta(minutes=interval_minutes) > now: continue
+        vwap = row.get('vwap')
+        if vwap not in (None, ''):
+            values['vwap'] = number(vwap, 'bar VWAP', minimum=.000001)
         parsed.append({'time_utc':ts.isoformat(),**values,'closed':True})
     parsed.sort(key=lambda x:x['time_utc'])
     if len({r['time_utc'] for r in parsed}) != len(parsed): raise DataError('Duplicate Webull candles')
@@ -97,13 +104,14 @@ def aggregate_candles(candles,minutes):
 
 
 class WebullSDKAdapter:
-    def __init__(self,settings=None,*,data=None):
+    def __init__(self,settings=None,*,data=None,app_key=None,app_secret=None,region=None):
         self.settings=settings or Settings.load()
         if data is not None: self.data=data;return
-        key,secret=os.getenv('WEBULL_APP_KEY'),os.getenv('WEBULL_APP_SECRET')
+        key = app_key if app_key is not None else os.getenv('WEBULL_APP_KEY')
+        secret = app_secret if app_secret is not None else os.getenv('WEBULL_APP_SECRET')
         if not key or not secret or 'your_' in key.lower() or 'your_' in secret.lower():
             raise DataError('Add your existing WEBULL_APP_KEY and WEBULL_APP_SECRET to the local .env, then reconnect.')
-        if os.getenv('WEBULL_REGION','us')!='us': raise DataError('This adapter supports the Webull US region')
+        if (region or os.getenv('WEBULL_REGION','us'))!='us': raise DataError('This adapter supports the Webull US region')
         from webull.core.client import ApiClient
         from webull.data.data_client import DataClient
         api=ApiClient(key,secret,'us',connect_timeout=3,timeout=8,auto_retry=False,
@@ -116,8 +124,11 @@ class WebullSDKAdapter:
         api.set_logger(logger)
         self.data=DataClient(api)
 
-    def request(self,label,method,limiter,**kwargs):
-        limiter.acquire()
+    def request(self,label,method,limiter,*,budget_reserve=0,**kwargs):
+        if budget_reserve:
+            limiter.acquire(reserve=budget_reserve)
+        else:
+            limiter.acquire()
         response=None
         try:
             response=method(**kwargs);status=getattr(response,'status_code',None)
@@ -138,16 +149,23 @@ class WebullSDKAdapter:
         try: return response.json()
         except (ValueError,TypeError) as exc: raise DataError(f'{label}: invalid JSON') from exc
 
+    def quote_batch(self, symbols, category, limiter):
+        return self.request('Stock snapshot', self.data.market_data.get_snapshot, limiter, symbols=list(symbols),
+                            category=category, extend_hour_required=False, overnight_required=False)
+
+    def history_batch(self, symbols, category, count, limiter):
+        return self.request('One-minute candles', self.data.market_data.get_batch_history_bar, limiter,
+                            symbols=list(symbols), category=category, timespan='M1', count=str(count),
+                            real_time_required=True, trading_sessions='RTH')
+
     def fetch_quote(self,ticker,limiter):
-        raw=self.request('Stock snapshot',self.data.market_data.get_snapshot,limiter,symbols=[ticker],
-                         category=category_for(ticker,self.settings.category),extend_hour_required=False,overnight_required=False)
+        raw=self.quote_batch([ticker], category_for(ticker,self.settings.category), limiter)
         return normalize_quote(raw,ticker)
 
     def fetch_history(self,ticker,limiter):
-        raw=self.request('One-minute candles',self.data.market_data.get_batch_history_bar,limiter,symbols=[ticker],
-                         category=category_for(ticker,self.settings.category),timespan='M1',count=str(self.settings.history_count),
-                         real_time_required=False,trading_sessions='RTH')
-        return normalize_candles(raw,ticker)
+        started = datetime.now(UTC)
+        raw=self.history_batch([ticker], category_for(ticker,self.settings.category), self.settings.history_count, limiter)
+        return normalize_candles(raw,ticker,now=started)
 
     def fetch(self,ticker,limiter):
         return {**self.fetch_quote(ticker,limiter),'data_status':'PRICE_ONLY',

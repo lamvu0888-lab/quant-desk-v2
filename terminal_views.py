@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict, deque
-from dataclasses import dataclass, field as default_field
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from functools import cached_property
 
@@ -11,17 +11,19 @@ import pandas as pd
 import streamlit as st
 
 from data_utils import DataError, field, utc
-from decision_ui import (command_panel, dashboard_decision, dealer_center, iv_center, journal_panel,
+from decision_ui import (command_panel, dashboard_decision, dealer_center, iv_center, journal_panel, option_entry_panel,
                          probability_center, validation_view)
 from desk_analytics import (FIVE_MINUTES, MINUTE, candles_on, flow_read, mark_orders, order_rows, price_levels,
                             realized_regime, replay_setups, session_window, setup_read, share_cvd, signed_moves)
 from market_session import ET, active_session, rth_bounds, session_state
-from movement_ui import detector_view, nav_button, strategy_lab, strategy_panel
+from movement_detector import early_price_move
+from movement_ui import detector_view, nav_button
 from monte_carlo import forecast, walk_forward
+from option_quotes import age_text, option_rows, quote_age, quote_status, sample_exposure, spread_fraction
 from terminal_charts import (bubble_figure, cvd_figure, dark_figure, exposure_figure, flow_desk_figure, flow_figure,
                              forecast_figure, money_map_figure, price_figure, series_figure)
-from terminal_data import (INDICES, chart_buckets, display_exposure_unit, et_time, expiration_date, exposure_obj,
-                           feed_has_delay, filter_expiration, interval_length, numeric, positive, price_bars, quote_row,
+from terminal_data import (INDICES, chart_buckets, completed_boundary, display_exposure_unit, et_time, expiration_date, exposure_obj,
+                           feed_has_delay, filter_expiration, first_listed_dte, interval_length, numeric, positive, price_bars, quote_row,
                            same_ticker, scope_timeline, session_rows, snapshot_forecast_gate, source_stamp, status,
                            ticker_symbol, time_or_none)
 from terminal_style import (AMBER, BLUE, RED, TEAL, VIOLET, amount, compact, empty, esc, feed_stamp, kpis,
@@ -30,6 +32,7 @@ from tradytics_feed import ENDPOINTS, Feed, FeedError
 from monitor_storage import SharedStore
 from signal_explain import describe
 from tradingview_levels import (PINE_COLORS, dark_levels, dealer_levels, expected_levels, export_payload, pine_script)
+from webull_feed import INDEX_SYMBOLS, supports_options, webull_price_quality
 
 LEVELS = (("put_wall", "Put wall", "down", RED), ("flip", "Gamma flip", "gold", AMBER),
           ("call_wall", "Call wall", "up", TEAL), ("max_pain", "Max pain", "purple", VIOLET))
@@ -46,12 +49,12 @@ class Desk:
     dte: int | None
     configured: bool
     price_provider: str = "Tradytics"
-    webull: dict = default_field(default_factory=dict)
-    webull_quality: dict = default_field(default_factory=dict)
-    webull_error: str | None = None
     config_error: str | None = None
     journal: object | None = None
     shared: object | None = None
+    webull_store: object | None = None
+    webull_prices: dict | None = None
+    expiry_waiting: bool = False
 
     def get(self, name, **params):
         params = {key: value for key, value in params.items() if value is not None}
@@ -75,41 +78,91 @@ class Desk:
 
     @property
     def scope(self):
+        if self.expiry_waiting:
+            return "Waiting for listed expiry"
         return f"{self.dte} DTE · {self.expiry}" if self.expiry else "All DTE"
 
     @property
     def quote_endpoint(self):
-        return "indices" if self.ticker in INDICES else "quotes"
+        return "indices" if self.ticker in INDEX_SYMBOLS else "quotes"
 
     @cached_property
     def _quote_feed(self):
-        return self.get("indices") if self.ticker in INDICES else self.get("quotes", symbol=self.ticker, limit=10)
+        return self.get("indices") if self.quote_endpoint == "indices" else self.get("quotes", symbol=self.ticker, limit=10)
 
     def quote_feed(self):
         return self._quote_feed
 
+    @cached_property
+    def webull_quality(self):
+        if not self.webull_store or self.ticker in INDEX_SYMBOLS:
+            return {}
+        return webull_price_quality(self.webull_price_feed("quote"), self.webull_price_feed("history"),
+                                    self.webull_store.settings, self.now, paused=self.paused)
+
+    def webull_price_feed(self, kind):
+        return (self.webull_prices or {}).get(kind, Feed())
+
     def quote(self):
         if self.price_provider == "Webull":
-            q = self.webull.get("quote") or {}
+            q = self.webull_price_feed("quote").obj
+            price = self.webull_quality.get("price")
+            previous = positive(q.get("pre_close"))
             return {"price": self.webull_quality.get("price"), "name": self.ticker,
-                    "previous_close": q.get("pre_close"), "price_at": self.webull_quality.get("price_time_utc")}
+                    "previous_close": previous, "price_at": self.webull_quality.get("price_time_utc"),
+                    "change_pct": 100 * (price / previous - 1) if price and previous else None}
         return quote_row(self.quote_feed(), self.ticker)
 
+    @cached_property
+    def _current_history(self):
+        if self.price_provider == "Webull":
+            feed = self.webull_price_feed("history")
+            return feed.obj.get("candles", []), feed
+        return self._tradytics_history()
+
     def history(self, daily=False, *, session=None, symbol=None):
-        if self.price_provider == "Webull" and not daily and session is None and symbol is None:
-            return (self.webull.get("history") or {}).get("candles", []), Feed()
+        if not daily and session is None and symbol is None:
+            return self._current_history
+        return self._tradytics_history(daily=daily, session=session, symbol=symbol)
+
+    def _tradytics_history(self, daily=False, *, session=None, symbol=None):
         ticker = symbol or self.ticker
         result = self.get("bars", symbol=ticker, timeframe="1d" if daily else "1m", limit=180 if daily else 5000,
                           to=str(session) if session else None,
                           **{"from": str((session or self.day) - timedelta(days=280 if daily else 8))})
         return price_bars(result, ticker, self.now, daily=daily), result
 
+    @property
+    def has_webull_options(self):
+        return not self.preview and bool(self.webull_store) and supports_options(self.ticker)
+
+    @property
+    def option_max_age(self):
+        return min(120, self.webull_store.settings.option_max_age) if self.webull_store else 120
+
+    def option_chain(self, expiry, *, provider=None, right=None, near=True):
+        spot = positive(self.quote().get("price"))
+        if provider == "Webull" or (provider is None and expiry and self.has_webull_options):
+            feed = self.webull_store.options(self.ticker, expiry, spot, self.now, paused=self.paused) if self.has_webull_options else Feed()
+            return feed, "Webull"
+        # Stable query bounds preserve the cache while price moves within a small range.
+        anchor = None
+        if near and spot:
+            step = max(.25, 10 ** (len(str(int(spot))) - 2) / 2)
+            anchor = max(step, step * round(spot / step))
+        return self.get("chain", symbol=self.ticker, limit=250, expiry=expiry, type=right,
+                        min_strike=round(anchor * .97, 3) if anchor else None,
+                        max_strike=round(anchor * 1.03, 3) if anchor else None), "Preview" if self.preview else "Tradytics"
+
     def exposure(self, greek="gamma", by="strike"):
         return self.get("exposure", symbol=self.ticker, greek=greek, by=by, expiry=self.expiry)
 
     def timeline(self, *, interval="5m", session=None, market=False, symbol=None):
+        first = None
+        if self.dte and session is None and not market and symbol in (None, self.ticker):
+            first = first_listed_dte(self.get("expirations", symbol=self.ticker), self.ticker, self.session, self.now)
         return scope_timeline(self.get, self.now, self.dte, symbol=None if market else symbol or self.ticker,
-                              interval=interval, session=session)
+                              interval=interval, session=session, first_dte=first)
 
     def tape(self, *, session=None, limit=250, **filters):
         day = session or self.session
@@ -184,37 +237,74 @@ def default_premium(ticker):
     return 100_000
 
 
-def read_workspace(ctx, *, include_flow=True):
+def read_price(ctx):
     candles, bars = ctx.history()
-    candles = [bar for bar in candles if bar.get("closed", True) and not bar.get("forming")
-               and utc(bar["time_utc"]) + MINUTE <= ctx.now]
-    buckets = chart_buckets(candles, 5)
+    # Both adapters normalize completed RTH candles. Trim a newer cache update
+    # if it arrived after this scan's evaluation time.
+    end = len(candles)
+    while end and utc(candles[end - 1]["time_utc"]) + MINUTE > ctx.now:
+        end -= 1
+    if end < len(candles):
+        candles = candles[:end]
+    close = utc(candles[-1]["time_utc"]) + MINUTE if candles else None
+    usable = bool(not ctx.paused and not bars.error and not feed_has_delay(bars) and candles
+                  and not (bars.snapshot and bars.snapshot.meta.get("sandbox")))
+    ready = bool(usable and close
+                 and close.astimezone(ET).date() == ctx.session and 0 <= (ctx.now - close).total_seconds() <= 120)
+    if ctx.price_provider == "Webull":
+        ready = ready and ctx.webull_quality.get("bars_ready", False)
+    return {"candles": candles, "bars": bars, "minute_close": close, "bars_ready": ready, "bars_usable": usable}
+
+
+def read_workspace(ctx, *, include_flow=True, prices=None, timeline=None):
+    # Start independent provider reads before working on the candles.
+    timeline = timeline if timeline is not None else ctx.timeline() if include_flow else Feed()
     gamma_feed = ctx.exposure()
-    timeline = ctx.timeline() if include_flow else Feed()
     vol_feed = ctx.get("volatility", symbol=ctx.ticker)
+    prices = read_price(ctx) if prices is None else prices
+    candles, bars = prices["candles"], prices["bars"]
+    buckets = chart_buckets(candles, 5)
     gamma = exposure_obj(gamma_feed, ctx.ticker, "gamma")
     day_bars = candles_on(buckets, ctx.session)
     regime = realized_regime(buckets)
     price_stamp = utc(day_bars[-1]["time_utc"]) + FIVE_MINUTES if day_bars else None
     flow_stamp = utc(timeline.rows[-1]["time"]) + FIVE_MINUTES if timeline.rows else None
+    expected_close = completed_boundary(ctx.now, ctx.session, FIVE_MINUTES)
     gamma_stamp = source_stamp("exposure", gamma_feed, ctx.ticker)
     recent_gamma = isinstance(gamma_stamp, datetime) and 0 <= (ctx.now - gamma_stamp).total_seconds() <= 420
     gex = numeric(gamma.get("total")) if recent_gamma and not gamma_feed.error and not feed_has_delay(gamma_feed) else None
     reasons = []
-    if session_state(ctx.now)["status"] != "OPEN":
+    regular = session_state(ctx.now)["status"] == "OPEN"
+    if not regular:
         reasons.append("Regular session is closed.")
-    if ctx.paused or bars.error or timeline.error or feed_has_delay(bars) or feed_has_delay(timeline):
-        reasons.append("Waiting for the price and flow feeds.")
-    if ctx.price_provider == "Webull" and not ctx.webull_quality.get("forecast_ready"):
-        reasons.append("Waiting for Webull's verified price and candles.")
-    if price_stamp is None or price_stamp != flow_stamp or not timedelta(0) <= ctx.now - price_stamp <= timedelta(minutes=7):
-        reasons.append("Waiting for price and options flow from the same completed 5-minute bar.")
+    if not prices["bars_ready"]:
+        reasons.append(f"Waiting for fresh completed {ctx.price_provider} candles.")
+    if ctx.expiry_waiting:
+        reasons.append("Waiting for the nearest listed expiration.")
+    if ctx.paused:
+        flow_state = "Paused"
+    elif not regular:
+        flow_state = "Session closed"
+    elif timeline.error or feed_has_delay(timeline):
+        flow_state = "Feed unavailable" if timeline.error else "Reported delay"
+    elif not flow_stamp:
+        flow_state = "Waiting for flow"
+    elif expected_close and flow_stamp < expected_close:
+        flow_state = "Flow late"
+    elif price_stamp != expected_close or price_stamp != flow_stamp:
+        flow_state = "Waiting for matching price close"
+    else:
+        flow_state = "Aligned"
+    if flow_state != "Aligned":
+        reasons.append(f"Tradytics flow: {flow_state.lower()}. A matching completed 5-minute close is required.")
     if not flow_read(timeline.rows) or not regime.get("atr"):
         reasons.append("Need 30 minutes of session flow and enough recent candles.")
     levels = price_levels(buckets, ctx.session)
     plan = setup_read(buckets, timeline.rows, ctx.session, regime, levels, gex=gex, ready=not reasons)
-    return {"candles": candles, "bars": bars, "buckets": buckets, "gamma_feed": gamma_feed,
+    price_watch = early_price_move(candles, ctx.session, ctx.now) if regular and prices["bars_ready"] else None
+    return {**prices, "buckets": buckets, "gamma_feed": gamma_feed,
             "gamma": gamma, "flow": timeline, "vol": vol_feed, "price_stamp": price_stamp,
+            "flow_stamp": flow_stamp, "flow_state": flow_state, "price_watch": price_watch,
             "regime": regime, "plan": plan, "levels": levels, "reasons": reasons}
 
 
@@ -274,7 +364,9 @@ def price_panel(ctx, read):
             labels = a.toggle("Show strike and premium labels", key="price_order_labels", disabled=daily)
             more_levels = b.toggle("Show more levels", key="price_more_levels", disabled=daily)
         candles, feed = ctx.history(daily=True) if daily else (read["candles"], read["bars"])
-        rows = candles if daily else chart_buckets(candles, {"1m": 1, "3m": 3, "5m": 5, "15m": 15, "1h": 60}[timeframe])
+        using_webull = ctx.price_provider == "Webull" and not daily
+        rows = candles if daily else chart_buckets(candles, {"1m": 1, "3m": 3, "5m": 5, "15m": 15, "1h": 60}[timeframe],
+                                                   estimate_vwap=using_webull)
         levels, _ = level_inputs(ctx, read, show_expected=more_levels) if overlays and not daily else ([], Feed())
         prints, prints_feed = ([], Feed())
         if show_orders and not daily:
@@ -288,11 +380,10 @@ def price_panel(ctx, read):
                                 candles_on(candles, ctx.session), 14 if labels else 32)
         fig = (price_figure(rows, ctx.ticker, timeframe, levels=nearest_chart_levels(levels, rows, more_levels),
                             overlays=overlays and not daily, orders=marks, order_labels=labels) if rows else None)
-        using_webull = ctx.price_provider == "Webull" and not daily
-        render_chart(fig, "price_action_chart", None if using_webull else feed,
-                     ctx.webull_error or "Waiting for completed candles in this timeframe.")
+        render_chart(fig, "price_action_chart", feed, "Waiting for completed candles in this timeframe.")
         if using_webull:
-            st.caption(f"Webull · {et_time((ctx.webull.get('history') or {}).get('last_bar_utc'))}")
+            close = read["minute_close"]
+            st.caption(f"Webull · latest completed minute {et_time(close)} · {age_text(quote_age(close, ctx.now))} old.")
         else:
             feed_stamp("bars", feed, ctx)
         if show_orders and not daily:
@@ -311,14 +402,15 @@ def show_session_changes(ctx, read, prints, prints_feed):
     snap = {}
     timeline, gamma_feed, vol = read["flow"], read["gamma_feed"], read["vol"]
     if timeline.rows and not timeline.error:
-        snap["Net premium"] = (timeline.snapshot.received_at.isoformat(), net_sum(timeline.rows, "net_premium_usd"), True)
+        snap["Net premium"] = (read["flow_stamp"].isoformat(), net_sum(timeline.rows, "net_premium_usd"), True)
     gamma_stamp = source_stamp("exposure", gamma_feed, ctx.ticker)
     if isinstance(gamma_stamp, datetime) and gamma_stamp.astimezone(ET).date() == ctx.session and not gamma_feed.error:
         for key, label, _, _ in LEVELS[:3]:
             snap[label] = (gamma_stamp.isoformat(), positive(option_levels(read["gamma"]).get(key)), False)
         snap["Net GEX"] = (gamma_stamp.isoformat(), numeric(read["gamma"].get("total")), True)
-    if vol.snapshot and not vol.error and source_stamp("volatility", vol, ctx.ticker) == ctx.session:
-        snap["30D IV"] = (vol.snapshot.received_at.isoformat(), numeric(vol.obj.get("atm_iv_30d")), False)
+    iv_stamp = time_or_none(field(vol.obj, "time", "updated_at"))
+    if iv_stamp and iv_stamp <= ctx.now and not vol.error and source_stamp("volatility", vol, ctx.ticker) == ctx.session:
+        snap["30D IV"] = (iv_stamp.isoformat(), numeric(vol.obj.get("atm_iv_30d")), False)
     state_key = "qd_last_observation"
     previous_key, prior, previous_changes = st.session_state.get(state_key, (None, {}, []))
     if session_key != previous_key:
@@ -611,20 +703,31 @@ def options_flow(ctx):
 
 def chain_panel(ctx):
     with st.container(border=True):
-        panel_header("Option chain", "chain", "chain", "First 250 contracts ordered by expiry and strike. Use filters for a narrower view.")
+        panel_header("Option chain", "chain", "chain", "Bid and ask with the age of each contract quote.")
+        provider = None
+        if ctx.expiry and ctx.has_webull_options:
+            provider = st.segmented_control("Option quote source", ["Webull", "Tradytics"], default="Webull",
+                                            key="chain_source") or "Webull"
+        elif ctx.has_webull_options:
+            st.caption("Choose an exact expiration in the sidebar for Webull quotes.")
         a, c = st.columns(2)
         right = a.selectbox("Contract type", ["Both", "Call", "Put"], key="chain_type")
-        near = c.toggle("Within 3% of spot", value=True, key="chain_near")
-        spot = positive(ctx.quote().get("price"))
-        chain = ctx.get("chain", symbol=ctx.ticker, limit=250, expiry=ctx.expiry,
-                        type=None if right == "Both" else right.lower(),
-                        min_strike=round(spot*.97, 3) if near and spot else None, max_strike=round(spot*1.03, 3) if near and spot else None)
+        near = c.toggle("Within 3% of spot", value=True, key="chain_near", disabled=provider == "Webull")
+        chain, source = ctx.option_chain(ctx.expiry, provider=provider, right=None if right == "Both" else right.lower(), near=near)
         display = [{"Contract": row.get("contract"), "Type": row.get("type"), "Expiry": row.get("expiry"), "Strike": numeric(row.get("strike")),
-                    "Bid": numeric(row.get("bid")), "Ask": numeric(row.get("ask")), "Volume": numeric(row.get("volume")),
+                    "Bid": numeric(row.get("bid")), "Ask": numeric(row.get("ask")), "Spread": ratio_pct(spread_fraction(row)),
+                    "Quote age": age_text(quote_age(row.get("updated_at"), ctx.now)),
+                    "Status": quote_status(row, chain, ctx.now, max_age=ctx.option_max_age, paused=ctx.paused),
+                    "Volume": numeric(row.get("volume")),
                     "OI": numeric(row.get("open_interest")), "IV": ratio_pct(row.get("iv")), "Delta": numeric(row.get("delta")),
                     "Gamma": numeric(row.get("gamma")), "Vega": numeric(row.get("vega")), "Theta": numeric(row.get("theta")),
                     "Quote (ET)": et_time(row.get("updated_at"))}
-                   for row in filter_expiration(same_ticker(chain.rows, ctx.ticker), ctx.session, ctx.dte)]
+                   for row in option_rows(chain, ctx.ticker, ctx.expiry) if right == "Both" or row.get("type") == right.lower()]
+        if source == "Webull":
+            root = chain.snapshot.meta.get("root") if chain.snapshot else "SPXW" if ctx.ticker == "SPX" else ctx.ticker
+            st.caption(f"Webull · {root} · {ctx.expiry} · up to 20 near-spot contracts.")
+        else:
+            st.caption(f"{source} · up to 250 matching contracts.")
         if display:
             table(display, height=440)
             csv_export(display, ctx.title("option_chain.csv"), "export_chain")
@@ -635,7 +738,9 @@ def chain_panel(ctx):
 
 def comparison_panel(ctx, greek, feed):
     obj = exposure_obj(feed, ctx.ticker, greek)
-    webull_exp = ctx.webull.get("exposure") or {}
+    chain, _ = ctx.option_chain(ctx.expiry, provider="Webull") if ctx.has_webull_options and ctx.expiry else (Feed(), None)
+    webull_exp = sample_exposure(chain, ctx.ticker, ctx.expiry, positive(ctx.quote().get("price")), ctx.now,
+                                 ctx.webull_store.settings, paused=ctx.paused) if chain.snapshot else {}
     coverage = webull_exp.get("coverage") or {}
     field_name, local_unit = {
         "gamma": ("net_gex_usd_per_1pct", "$ per 1% spot move"),
@@ -645,17 +750,20 @@ def comparison_panel(ctx, greek, feed):
     }[greek]
     with st.container(border=True):
         panel_header("Source comparison", "compare", "compare", "Each source keeps its own model scope and units")
-        webull_scope = f"{coverage.get('contracts_modeled', 0)} contracts · ≤{coverage.get('dte_days', '—')} DTE · ±{coverage.get('strike_width_pct', '—')}%"
+        webull_scope = (f"{coverage['root']} · {coverage['expiry']} · {coverage['contracts_modeled']} contracts · "
+                        f"strikes {amount(coverage['lowest_strike'])}–{amount(coverage['highest_strike'])}") if coverage else "—"
         dealer_stamp = status("exposure", feed, ctx.now, ctx.ticker, preview=ctx.preview, paused=ctx.paused)
         rows = [{"Source": "Illustrative data" if ctx.preview else "Tradytics", "Exposure": compact(obj.get("total"), signed=True),
                  "Unit": display_exposure_unit(obj), "Scope": ctx.scope, "As of": dealer_stamp[1], "Status": dealer_stamp[0]},
-                {"Source": "Webull local model", "Exposure": compact(webull_exp.get(field_name), signed=True), "Unit": local_unit,
+                {"Source": "Webull sample model", "Exposure": compact(webull_exp.get(field_name), signed=True), "Unit": local_unit,
                  "Scope": webull_scope if coverage else "—", "As of": et_time(coverage.get("oldest_option_quote_utc")),
-                 "Status": "CURRENT" if ctx.webull_quality.get("options_live") else "AGED / UNVERIFIED" if webull_exp else "UNAVAILABLE"}]
+                 "Status": "FRESH SAMPLE" if webull_exp else "UNAVAILABLE"}]
         table(rows, height=143)
-        if ctx.webull_error or not webull_exp:
-            st.caption(ctx.webull_error or "Enable Webull comparison under Feed controls and add your local Webull credentials.")
-        st.caption("Webull scope comes from its configured strike and expiry window. Tradytics uses the current workspace expiry filter.")
+        if not webull_exp:
+            st.caption(str(chain.error or ("Choose an exact expiration and configure Webull OpenAPI for this comparison."
+                       if not ctx.expiry or not ctx.has_webull_options else
+                       "Waiting for enough fresh calls and puts with IV and open interest across spot.")))
+        st.caption("Webull totals cover the quoted strike sample. Tradytics totals cover its selected expiry scope. Both use modeled exposure and Webull’s open interest timestamp is unavailable.")
     if webull_exp.get("by_strike"):
         with st.container(border=True):
             panel_header(f"Webull modeled {greek.title()} by strike", "compare", "webull_profile", local_unit)
@@ -896,7 +1004,7 @@ def price_forecast_page(ctx):
     candles, bar_feed = ctx.history()
     if ctx.price_provider == "Webull":
         session = session_state(ctx.now)
-        reasons = [] if ctx.webull_quality.get("forecast_ready") and not ctx.paused else ctx.webull_quality.get("reasons") or [ctx.webull_error or "Waiting for a verified Webull quote and candles."]
+        reasons = [] if ctx.webull_quality.get("forecast_ready") else ctx.webull_quality.get("reasons") or ["Waiting for a fresh Webull quote and candles."]
     else:
         session, reasons = snapshot_forecast_gate(quote, candles, ctx.quote_feed(), bar_feed, ctx.now, ctx.paused)
     with st.container(border=True):
@@ -922,12 +1030,6 @@ def price_forecast_page(ctx):
         reported = option_levels(exposure_obj(gamma, ctx.ticker, "gamma"))
         levels.update({f"{label} · {'demo' if ctx.preview else 'Tradytics'}": val for key, label, _, _ in LEVELS[:3]
                        if (val := positive(reported.get(key)))})
-    if ctx.price_provider == "Webull" and ctx.webull_quality.get("options_live"):
-        webull_model = ctx.webull.get("exposure") or {}
-        for label, field_name in (("Call OI wall", "call_oi_wall"), ("Put OI wall", "put_oi_wall"),
-                                  ("Gamma flip", "nearest_gamma_flip")):
-            if (value := positive(webull_model.get(field_name))) is not None:
-                levels[f"{label} · Webull model"] = value
     if upper:
         levels["Custom upper"] = upper
     if lower:
@@ -1071,8 +1173,9 @@ def trade_plan(ctx):
     read = read_workspace(ctx)
     decision, iv = dashboard_decision(ctx, read)
     shown = command_panel(ctx, decision, iv, read["candles"], key="trade", track=True,
-                          bar_ok=not read["bars"].error and not feed_has_delay(read["bars"]) and not ctx.paused)
-    strategy_panel(decision)
+                          bar_ok=read["bars_usable"])
+    option_entry_panel(ctx, decision)
+    nav_button("Open Movement Detector", "Movement Detector", "trade_open_movement")
     journal_panel(ctx, shown)
     st.download_button("Download current trade plan (JSON)", json.dumps(shown, indent=2, allow_nan=False),
                        file_name=ctx.title("trade_plan_v26.json"), mime="application/json", key="qd25_plan_export")
@@ -1348,14 +1451,52 @@ def history_page(ctx):
 
 
 def health_page(ctx):
+    read = read_workspace(ctx)
     with st.container(border=True):
-        panel_header("Feed diagnostics", "health", "health", "Provider timestamps, access scopes and HTTP receipt times")
+        panel_header("Price source comparison", "health", "price_source_compare", f"{ctx.ticker} · {ctx.price_provider} drives price timing")
+        quote_feed = ctx.quote_feed()
+        trad = quote_row(quote_feed, ctx.ticker)
+        stamp = field(trad, "price_at", "time")
+        trad_age = quote_age(stamp, ctx.now)
+        trad_status, _ = status(ctx.quote_endpoint, quote_feed, ctx.now, ctx.ticker, preview=ctx.preview, paused=ctx.paused)
+        if trad_status == "RECENT" and trad_age is not None and trad_age > 120:
+            trad_status = "AGED"
+        if feed_has_delay(quote_feed) or (numeric(trad.get("delay_minutes")) or 0) > 0:
+            trad_status = "DELAYED"
+        q = ctx.webull_quality
+        webull_quote = ctx.webull_price_feed("quote")
+        webull_bars = ctx.webull_price_feed("history")
+        webull_error = webull_quote.error or webull_bars.error
+        webull_status = q.get("status", "Index price unavailable" if ctx.ticker in INDEX_SYMBOLS else "Webull not configured")
+        table([{"Source": "Preview" if ctx.preview else "Tradytics", "Price": positive(trad.get("price")),
+                "Quote time (ET)": et_time(stamp), "Age": age_text(trad_age), "Status": trad_status,
+                "Note": str(quote_feed.error or "")},
+               {"Source": "Webull", "Price": q.get("price"), "Quote time (ET)": et_time(q.get("price_time_utc")),
+                "Age": age_text(q.get("price_age_seconds")), "Status": webull_status,
+                "Note": str(webull_error or q.get("price_kind", ""))}], height=112)
+        if trad_age is not None and q.get("price_age_seconds") is not None:
+            difference = trad_age - q["price_age_seconds"]
+            newer = "Webull" if difference >= 0 else "Tradytics"
+            st.caption(f"{newer} quote timestamp is {age_text(abs(difference))} newer.")
+        st.caption(f"{ctx.price_provider} 1m close {et_time(read['minute_close'])} · "
+                   f"Tradytics 5m flow close {et_time(read['flow_stamp'])} · {read['flow_state']}.")
+        if q.get("reasons") and ctx.price_provider == "Webull":
+            st.caption(" ".join(q["reasons"]))
+        if ctx.has_webull_options and ctx.expiry:
+            chain, _ = ctx.option_chain(ctx.expiry, provider="Webull")
+            root = "SPXW" if ctx.ticker == "SPX" else ctx.ticker
+            rows = option_rows(chain, ctx.ticker, ctx.expiry)
+            fresh = sum(quote_status(row, chain, ctx.now, max_age=ctx.option_max_age, paused=ctx.paused) == "Fresh quote" for row in rows)
+            st.caption(f"Webull {root} options · {ctx.expiry} · {fresh}/{len(rows)} usable two-sided quotes. "
+                       f"{chain.error or ''}")
+    with st.container(border=True):
+        panel_header("Tradytics feed diagnostics", "health", "health", "Provider timestamps, access scopes and HTTP receipt times")
         queries = [
             (ctx.quote_endpoint, ctx.quote_feed()), ("bars", ctx.get("bars", symbol=ctx.ticker, timeframe="1m", limit=10)),
-            ("timeline", ctx.timeline()),
+            ("timeline", read["flow"]),
             ("flow", ctx.tape(limit=10)[1]),
             ("expirations", ctx.get("expirations", symbol=ctx.ticker)),
-            ("exposure", ctx.exposure("gamma")), ("volatility", ctx.get("volatility", symbol=ctx.ticker)),
+            ("exposure", read["gamma_feed"]), ("volatility", read["vol"]),
             ("dark_prints", ctx.get("dark_prints", symbol=ctx.ticker, venue="dark_pool", limit=10)),
             ("signals", ctx.get("signals", symbol=ctx.ticker, limit=10)),
         ]
@@ -1372,8 +1513,9 @@ def health_page(ctx):
         if ctx.store and not ctx.preview:
             budget = ctx.store.client.budget()
             st.caption(f"Tradytics local budget {budget['calls_last_minute']} / {budget['local_limit']} calls in the past minute · cooldown {budget['cooldown_seconds']}s.")
-        if ctx.webull or ctx.webull_error:
-            st.caption(f"Webull · {ctx.webull.get('connection', 'Unavailable')} · {ctx.webull_error or ctx.webull_quality.get('status', 'Waiting')}")
+        if ctx.webull_store:
+            budget = ctx.webull_store.budget.status()
+            st.caption(f"Webull local budget {budget['requests_last_minute']}/{budget['limit']} requests in the past minute · cooldown {budget['cooldown_seconds']:g}s.")
         st.download_button("Download diagnostics", json.dumps({"ticker": ctx.ticker, "preview": ctx.preview, "feeds": rows}, indent=2),
                            file_name=ctx.title("data_health.json"), mime="application/json", key="download_health")
     with st.container(border=True):
@@ -1385,5 +1527,4 @@ def health_page(ctx):
 
 PAGES = {"Overview": overview, "Movement Detector": movement_page, "Options Flow": options_flow, "Money Map": money_map, "Positioning": positioning,
          "Volatility": volatility_page, "Dark Pool": dark_pool, "Trade Plan": trade_plan, "Signals": signals_page,
-         "Forecast": forecast_page, "Scanner": scanner, "History": history_page, "TradingView": tradingview_page,
-         "Strategy Lab": strategy_lab, "Data Health": health_page}
+         "Forecast": forecast_page, "Scanner": scanner, "TradingView": tradingview_page, "Data Health": health_page}

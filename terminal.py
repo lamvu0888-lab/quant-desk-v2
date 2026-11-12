@@ -11,10 +11,9 @@ import streamlit as st
 from dotenv import dotenv_values
 
 from data_utils import DataError
-from live_engine import LiveEngine, data_quality
 from market_session import active_session, session_state
 from settings import ROOT, Settings
-from terminal_data import INDICES, et_time, expiration_date, listed_dtes, numeric, quote_row, status, ticker_symbol
+from terminal_data import et_time, expiration_date, first_listed_dte, listed_dtes, numeric, quote_row, status, ticker_symbol
 from terminal_demo import DEMO_AT, DemoStore
 from terminal_learn import learn_page
 from terminal_style import amount, esc, signed_pct, tag, theme_css
@@ -23,6 +22,8 @@ from tradytics_feed import Feed, FeedError, FeedStore, TradyticsClient
 from discord_monitor import send_test as send_discord_test
 from monitor_storage import SharedStore, normalize_symbols
 from research_journal import Journal
+from option_quotes import age_text, quote_age
+from webull_feed import INDEX_SYMBOLS, WebullFeedStore, price_source
 
 UTC = timezone.utc
 PAGES_LABEL = {
@@ -37,19 +38,18 @@ PAGES_LABEL = {
     "Signals": ("Tradytics signals", "Flow pattern alerts, contract marks and provider performance.", "◇"),
     "Forecast": ("Monte Carlo", "Compare timing, target and stop odds, and modeled P&L after costs.", "⋰"),
     "Scanner": ("Stock scanner", "Find names with active options, high relative volume or large off-exchange prints.", "⌕"),
-    "History": ("History & replay", "Review previous sessions and see what happened after large prints or a range break.", "◷"),
     "TradingView": ("TradingView levels", "Export the current price levels as a Pine indicator.", "↗"),
-    "Strategy Lab": ("Strategy Lab", "Review strategy inputs, historical results and walk-forward settings.", "⊞"),
     "Learn": ("Learn", "A practical guide to the tools on your desk.", "▤"),
     "Data Health": ("Data health", "Connection, permissions and source timing across the desk.", "⊙"),
 }
 NAV_LABELS = {"Options Flow": "Flow & Bubbles", "Positioning": "Dealer Positioning",
-              "Volatility": "IV Decision Center", "History": "History & Replay", "Forecast": "Monte Carlo"}
+              "Volatility": "IV Decision Center", "Forecast": "Monte Carlo"}
 
 
 @st.cache_resource
 def resources():
-    return {"lock": threading.RLock(), "store": None, "token": None, "webull": None, "discord_tests": {}}
+    return {"lock": threading.RLock(), "store": None, "token": None, "webull": None, "webull_config": None,
+            "discord_tests": {}}
 
 
 @st.cache_resource(ttl=90, max_entries=4, show_spinner=False)
@@ -99,43 +99,23 @@ def tradytics_store(key, auth):
         return registry["store"]
 
 
-def webull_snapshot(ticker, enabled, paused):
+def webull_store(local, key, secret):
     registry = resources()
+    settings = Settings.load(lambda name: config_value(local, name))
+    region = config_value(local, "WEBULL_REGION", "us")
+    identity = (hashlib.sha256(f"{key}\0{secret}".encode()).digest(), settings, region)
     with registry["lock"]:
-        worker = registry["webull"]
-        if not enabled:
-            if worker:
-                worker.stop()
-            return {}, {}, None
-        if ticker in INDICES:
-            if worker:
-                worker.stop()
-            return {}, {}, "Use the Tradytics price feed for this index."
-        try:
-            settings = Settings.load()
-            if worker and (worker.ticker != ticker or worker.settings != settings):
-                worker.stop()
-                if worker.alive():
-                    return {}, {}, "Switching Webull to the selected ticker…"
-                worker = None
-            if worker is None:
-                worker = LiveEngine(ticker, settings)
-                registry["webull"] = worker
-            if paused:
-                worker.stop()
-            elif not worker.alive() and worker.snapshot().get("connection") in ("DISCONNECTED", "STOPPED"):
-                worker.start()
-            state = worker.snapshot()
-            return state, data_quality(state, settings), state.get("quote_error")
-        except DataError as exc:
-            return {}, {}, str(exc)
+        if registry["webull_config"] != identity:
+            if registry["webull"]:
+                registry["webull"].close()
+            registry["webull"] = WebullFeedStore(settings, key, secret, region)
+            registry["webull_config"] = identity
+        return registry["webull"]
 
 
 def choose_ticker(symbol):
     st.session_state["desk_ticker"] = symbol
     st.session_state["desk_symbol_input"] = symbol
-    if symbol in INDICES:
-        st.session_state["desk_price_provider"] = "Tradytics"
 
 
 def open_symbol():
@@ -147,7 +127,8 @@ def open_symbol():
 
 
 def go_to(page):
-    st.session_state["desk_page"] = page
+    if page in PAGES_LABEL:
+        st.session_state["desk_page"] = page
 
 
 def refresh():
@@ -165,7 +146,7 @@ def api_expirations(ticker, session, credential_tag, _client):
 
 def expiration_picker(ticker, now, preview, paused, store):
     session = active_session(now)
-    mode = st.selectbox("Options expiration", ["All DTE", "0 DTE", "Listed expiration", "Enter exact DTE"],
+    mode = st.selectbox("Options expiration", ["All DTE", "Nearest listed", "0 DTE", "Listed expiration", "Enter exact DTE"],
                         key="desk_expiry_mode")
     dte = None
     if mode == "Listed expiration":
@@ -191,7 +172,7 @@ def expiration_picker(ticker, now, preview, paused, store):
         dte = 0
     if dte is not None:
         st.caption(f"Session {session} → expiry {expiration_date(session, dte)}")
-    return dte
+    return dte, mode
 
 
 def header(page):
@@ -211,17 +192,21 @@ def header(page):
 def symbol_bar(ctx):
     quote = ctx.quote()
     if ctx.price_provider == "Webull":
-        quote_badge = "VERIFIED QUOTE" if ctx.webull_quality.get("forecast_ready") else ctx.webull_quality.get("status", "UNAVAILABLE")
-        stamp = et_time(quote.get("price_at"))
+        quote_badge = "FRESH QUOTE" if ctx.webull_quality.get("quote_ready") else ctx.webull_quality.get("status", "Waiting for quote")
     else:
         quote_badge, stamp = status(ctx.quote_endpoint, ctx.quote_feed(), ctx.now, ctx.ticker, preview=ctx.preview, paused=ctx.paused)
     session = session_state(ctx.now)["status"]
     mode = tag("DEMO · SYNTHETIC", "preview") if ctx.preview else tag("LIVE WORKSPACE")
     symbol = f'<span class="qd-ticker">{esc(ctx.ticker)}</span><span class="qd-symbol-name">{esc(quote.get("name") or ctx.ticker)}</span>'
     label = "REGULAR SESSION" if session == "OPEN" else "PREMARKET" if session == "PREMARKET" else "SESSION CLOSED"
-    q_tone = "preview" if ctx.preview else "good" if quote_badge in ("RECENT", "VERIFIED QUOTE") else "warn"
+    if ctx.price_provider == "Webull":
+        stamp = et_time(quote.get("price_at"))
+    age = age_text(quote_age(quote.get("price_at") or quote.get("time"), ctx.now))
+    basis = "Preview" if ctx.preview else ctx.price_provider
+    q_tone = "preview" if ctx.preview else "good" if quote_badge in ("RECENT", "FRESH QUOTE") else "warn"
     st.markdown('<div class="qd-symbol-bar">' + symbol + '<div class="qd-spacer"></div>' + mode +
-                tag(label) + tag(quote_badge, q_tone) + f'<span class="qd-symbol-name">{esc(stamp)}</span></div>',
+                tag(label) + tag(quote_badge, q_tone) + f'<span class="qd-symbol-name">{esc(basis)} · {esc(stamp)} · {esc(age)}</span>'
+                f'<span class="qd-symbol-name">{esc(ctx.scope)}</span></div>',
                 unsafe_allow_html=True)
 
 
@@ -251,7 +236,8 @@ def main():
     local = dotenv_values(ROOT / ".env")
     key = config_value(local, "TRADYTICS_API_KEY")
     auth = config_value(local, "TRADYTICS_AUTH_MODE", "query").lower()
-    webull_configured = bool(config_value(local, "WEBULL_APP_KEY") and config_value(local, "WEBULL_APP_SECRET"))
+    app_key, app_secret = config_value(local, "WEBULL_APP_KEY"), config_value(local, "WEBULL_APP_SECRET")
+    webull_configured = bool(app_key and app_secret)
     try:
         shared = SharedStore(repo=config_value(local, "MONITOR_GITHUB_REPO"),
                              token=config_value(local, "MONITOR_GITHUB_TOKEN"),
@@ -270,25 +256,30 @@ def main():
         except DataError:
             choose_ticker("SPY")
     st.session_state.setdefault("desk_mode", "Live" if key or webull_configured else "Preview")
-    st.session_state.setdefault("desk_price_provider", "Webull" if webull_configured and not key and st.session_state["desk_ticker"] not in INDICES else "Tradytics")
+    st.session_state.setdefault("desk_price_provider", "Auto")
+    st.session_state.setdefault("desk_expiry_mode", "Nearest listed" if key and webull_configured else "All DTE")
+    if st.session_state.get("desk_page") not in PAGES_LABEL:
+        st.session_state["desk_page"] = "Overview"
     ticker = st.session_state["desk_ticker"]
     with st.sidebar:
         st.markdown('<div class="qd-brand"><div class="qd-mark">◈</div><div><div class="qd-name">Quant Desk</div>'
-                    '<div class="qd-brand-sub">Options intelligence · 2.6.4</div></div></div>', unsafe_allow_html=True)
+                    '<div class="qd-brand-sub">Options intelligence · 2.7.0</div></div></div>', unsafe_allow_html=True)
         st.toggle("Dark mode", key="desk_dark_mode", help="Switch between the light and dark dashboard themes.")
         for col, symbol in zip(st.columns(3, gap="small"), ("SPY", "SPX", "QQQ")):
             col.button(symbol, key=f"watch_{symbol}", width="stretch", on_click=choose_ticker, args=(symbol,))
         mode = st.segmented_control("Workspace mode", ["Live", "Preview"], key="desk_mode") or "Live"
-        dte = expiration_picker(ticker, DEMO_AT if mode == "Preview" else datetime.now(UTC), mode == "Preview",
-                                st.session_state.get("desk_paused", False), store)
+        dte, expiry_mode = expiration_picker(ticker, DEMO_AT if mode == "Preview" else datetime.now(UTC), mode == "Preview",
+                                             st.session_state.get("desk_paused", False), store)
         st.markdown('<div class="qd-rule"></div><div class="qd-nav-label">Workspace</div>', unsafe_allow_html=True)
         page = st.radio("Workspace navigation", list(PAGES_LABEL),
                         format_func=lambda p: f"{PAGES_LABEL[p][2]}  {NAV_LABELS.get(p, p)}",
                         key="desk_page", label_visibility="collapsed", width="stretch")
         with st.expander("Feed controls"):
-            selected_provider = st.selectbox("Price and candle source", ["Tradytics", "Webull"], key="desk_price_provider",
-                                             disabled=mode == "Preview")
-            comparison = st.toggle("Enable Webull comparison", key="desk_webull_compare", disabled=mode == "Preview")
+            selected_provider = st.selectbox("Price and candle source", ["Auto", "Webull", "Tradytics"], key="desk_price_provider",
+                                             disabled=mode == "Preview",
+                                             help="Auto uses Webull for stocks and ETFs when configured, and Tradytics for indices.")
+            if ticker in INDEX_SYMBOLS and mode != "Preview":
+                st.caption("Index price uses Tradytics. Exact-expiry SPXW option quotes can use Webull.")
             paused = st.toggle("Pause requests", key="desk_paused", disabled=mode == "Preview")
             st.button("Refresh feeds", key="desk_refresh", on_click=refresh, disabled=mode == "Preview", width="stretch")
             with st.expander("Discord ticker monitoring", expanded=False, on_change="rerun", key="qd25_watchlist") as watch:
@@ -329,14 +320,13 @@ def main():
             if not discord_webhook:
                 st.caption("Add DISCORD_WEBHOOK_URL to .env or Streamlit Secrets to enable the test button.")
             st.caption("Tradytics key configured" if key else "Set your Tradytics key in .env")
-        st.caption("Quant Options Agent · 2.6.4")
+        st.caption("Quant Options Agent · 2.7.0")
     preview = mode == "Preview"
-    price_provider = "Tradytics" if preview else selected_provider
+    price_provider = "Tradytics" if preview else price_source(ticker, selected_provider, webull_configured)
     paused = bool(paused and not preview)
     if page == "Learn":
-        webull_snapshot(ticker, enabled=False, paused=True)
         header(page)
-        learn_page(go_to, NAV_LABELS)
+        learn_page(go_to, NAV_LABELS, PAGES_LABEL)
         return
     header(page)
     if config_error and not preview:
@@ -345,19 +335,29 @@ def main():
         st.caption("Preview uses illustrative data. Add your Tradytics key to .env and restart to load your live feeds.")
     if not preview and not key and price_provider == "Tradytics":
         st.info("Set TRADYTICS_API_KEY in the local .env file. Use Preview to explore every chart while you set up the feeds.")
+    webull = None
+    if not preview and webull_configured:
+        try:
+            webull = webull_store(local, app_key, app_secret)
+        except DataError as exc:
+            st.warning(str(exc))
+    if price_provider == "Webull" and webull is None and not webull_configured:
+        st.info("Add WEBULL_APP_KEY and WEBULL_APP_SECRET in .env or Streamlit Secrets.")
     journal = None
     if not preview and page in ("Overview", "Movement Detector", "Trade Plan", "Forecast", "Positioning"):
         journal = journal_resource(config_value(local, "MONITOR_JOURNAL_PATH"), config_value(local, "MONITOR_JOURNAL_DSN"))
 
-    @st.fragment(run_every="4s" if not preview and not paused and page != "Strategy Lab" else None)
+    @st.fragment(run_every="4s" if not preview and not paused else None)
     def workspace():
-        wanted = not preview and webull_configured and (comparison or price_provider == "Webull")
-        w_state, w_quality, w_error = webull_snapshot(ticker, enabled=wanted, paused=paused)
-        if not preview and (comparison or price_provider == "Webull") and not webull_configured:
-            w_error = "Add WEBULL_APP_KEY and WEBULL_APP_SECRET to .env for Webull."
+        prices = (webull.prices([ticker], paused=paused).get(ticker) if webull and
+                  (price_provider == "Webull" or page == "Data Health") else None)
         ctx = Desk(ticker, DEMO_AT if preview else datetime.now(UTC), demo(ticker) if preview else store,
-                   preview, paused, dte, bool(key), price_provider,
-                   w_state, w_quality, w_error, config_error, journal, shared)
+                   preview, paused, dte, bool(key), price_provider, config_error=config_error, journal=journal,
+                   shared=shared, webull_store=webull, webull_prices=prices)
+        if expiry_mode == "Nearest listed":
+            listing = ctx.get("expirations", symbol=ticker)
+            ctx.dte = first_listed_dte(listing, ticker, ctx.session, ctx.now)
+            ctx.expiry_waiting = ctx.dte is None
         symbol_bar(ctx)
         if page == "Overview":
             market_strip(ctx)

@@ -83,7 +83,7 @@ class Journal:
             return cur.rowcount == 1
 
     def records(self, symbol, kind, *, scope=None, limit=200, pending=False, settled=False):
-        query = "SELECT id,origin,payload,outcome FROM qd25_observation WHERE symbol = ? AND kind = ?"
+        query = "SELECT id,origin,payload,outcome,scope FROM qd25_observation WHERE symbol = ? AND kind = ?"
         args = [symbol, kind]
         if scope is not None:
             query += " AND scope = ?"
@@ -94,8 +94,8 @@ class Journal:
             query += " AND outcome IS NOT NULL"
         with self.connection() as db:
             rows = db.execute(self.sql(query + " ORDER BY origin DESC, id DESC LIMIT ?"), (*args, limit)).fetchall()
-        return [{"id": event_id, "origin": origin, "payload": json.loads(payload),
-                 "outcome": json.loads(outcome) if outcome else None} for event_id, origin, payload, outcome in rows]
+        return [{"id": event_id, "origin": origin, "scope": scope, "payload": json.loads(payload),
+                 "outcome": json.loads(outcome) if outcome else None} for event_id, origin, payload, outcome, scope in rows]
 
     def claim_delivery(self, event_id):
         """A single claimant sends. An ambiguous timeout retains its claim."""

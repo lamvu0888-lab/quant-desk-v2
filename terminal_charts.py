@@ -30,10 +30,12 @@ def price_figure(bars, ticker, timeframe, *, levels=None, overlays=True, orders=
         increasing=dict(line=dict(color=TEAL, width=1), fillcolor=TEAL),
         decreasing=dict(line=dict(color=RED, width=1), fillcolor=RED), name=ticker), row=1, col=1)
     if overlays:
-        vwaps = [row.get("session_vwap") for row in rows]
-        if any(v is not None for v in vwaps):
-            fig.add_trace(go.Scatter(x=positions, y=vwaps, name="Session VWAP", line=dict(color=VIOLET, width=1.4),
-                                     customdata=labels, hovertemplate="%{customdata}<br>%{y:,.2f}<extra>VWAP</extra>"), row=1, col=1)
+        for field, name, dash in (("session_vwap", "Session VWAP", "solid"),
+                                  ("estimated_session_vwap", "VWAP estimate from candles", "dot")):
+            vwaps = [row.get(field) for row in rows]
+            if any(v is not None for v in vwaps):
+                fig.add_trace(go.Scatter(x=positions, y=vwaps, name=name, line=dict(color=VIOLET, width=1.4, dash=dash),
+                                         customdata=labels, hovertemplate="%{customdata}<br>%{y:,.2f}<extra>%{fullData.name}</extra>"), row=1, col=1)
     if volume_present:
         fig.add_trace(go.Bar(x=positions, y=[r.get("volume") for r in rows],
                              marker_color=["#287d75" if r["close"] >= r["open"] else "#7c435a" for r in rows],

@@ -12,11 +12,11 @@ import streamlit as st
 from data_utils import DataError, utc
 from dealer_hedging import HORIZONS, hedge_change, hedge_scenarios
 from decision_engine import ENTRY_STATES, paper_outcome
-from decision_flow import apply_model_gate, build_decision, get_hedge, model_summary, surface_is_usable
+from decision_flow import apply_model_gate, build_decision, get_hedge, model_summary, read_iv
 from desk_analytics import MINUTE
-from iv_decision import iv_read
 from market_session import calendar, session_state
 from option_payoff import create_position, position_risk, quoted_legs
+from option_quotes import age_text, fresh_option_rows, option_review, quote_age
 from research_snapshot import shared_snapshot
 from terminal_charts import series_figure
 from terminal_data import et_time, feed_has_delay, listed_dtes, positive, time_or_none
@@ -66,11 +66,12 @@ def records(ctx, kind, limit=200):
             local = journal_rows(ctx.ticker, kind, current_scope(ctx), limit, identity, ctx.journal)
         except Exception:
             st.caption("The local research journal is temporarily unavailable.")
-    if current_scope(ctx) == "Tradytics:0" and ctx.shared and ctx.shared.configured and not (ctx.journal and ctx.journal.dsn):
+    if ctx.shared and ctx.shared.configured and not (ctx.journal and ctx.journal.dsn):
         try:
             cred = hashlib.sha256(ctx.shared.token.encode()).hexdigest()
             remote, _ = remote_rows(ctx.shared.repo, ctx.shared.branch, cred, ctx.shared)
-            combined = {row["id"]: row for row in remote.get(ctx.ticker, {}).get(kind, [])}
+            combined = {row["id"]: row for row in remote.get(ctx.ticker, {}).get(kind, [])
+                        if row.get("scope", "Tradytics:0") == current_scope(ctx)}
             combined.update({row["id"]: row for row in local})
             return sorted(combined.values(), key=lambda row: row["origin"], reverse=True)[:limit]
         except Exception:
@@ -171,6 +172,11 @@ def command_panel(ctx, plan, iv, candles, *, key, track=False, bar_ok=True):
                  "Confirms trend" if plan["direction"] and plan["flow"].get("direction") == plan["direction"] else
                  "Opposes trend" if plan["bias"] == "Mixed" else "Awaiting directional agreement", flow),
           metric("Data confidence", plan["confidence"], f"5m {et_time(plan['bar'], short=True)} · {plan['source']}")], small=True)
+    timing = plan["feed_timing"]
+    st.caption(f"{plan['source']} price {age_text(timing['quote_age'])} old · 1m close {age_text(timing['minute_age'])} old · "
+               f"Tradytics 5m flow {age_text(timing['flow_age'])} old · {timing['flow_state']}.")
+    if watch := plan.get("price_watch"):
+        st.caption(f"Price move watch · {watch['window']} {watch['change_pct']:+.2f}% · {et_time(watch['bar'])}.")
     st.caption(f"{plan['dealer_note']} · Option premium {iv['valuation'].lower()}.")
     if shown.get("trigger") is not None:
         kpis([metric("Trigger / entry", f"{amount(shown['trigger'])} / {amount(shown['entry'])}", f"{shown['hold']}m plan · {shown['scope']}"),
@@ -219,6 +225,29 @@ def command_panel(ctx, plan, iv, candles, *, key, track=False, bar_ok=True):
     return shown
 
 
+def option_entry_panel(ctx, plan):
+    with st.container(border=True):
+        st.markdown("**Option quote check**")
+        if not plan["expiry"]:
+            st.caption("Waiting for the nearest listed expiration." if ctx.expiry_waiting else
+                       "Choose an exact expiration in the sidebar to check a contract.")
+            return
+        review = plan.get("option_quote")
+        if review is None:
+            feed, source = ctx.option_chain(plan["expiry"])
+            review = option_review(feed, source, ctx.ticker, plan["expiry"], plan["price"], plan["direction"],
+                                   ctx.now, max_age=ctx.option_max_age, paused=ctx.paused)
+        if not review.get("contract"):
+            st.caption(f"{review['source']} · {plan['expiry']} · {review['status']}")
+            return
+        kpis([metric("Contract", f"{amount(review['strike'])} {review['right']}", review["contract"]),
+              metric("Bid / ask", f"{amount(review['bid'])} / {amount(review['ask'])}",
+                     f"Spread {ratio_pct(review['spread'])} of midpoint"),
+              metric("Quote", review["status"], f"{review['source']} · {age_text(quote_age(review['quote_at'], ctx.now))} old"),
+              metric("IV / delta", f"{ratio_pct(review['iv'])} / {amount(review['delta'], 3)}", f"Gamma {amount(review['gamma'], 4)}")],
+             small=True)
+
+
 def journal_panel(ctx, plan):
     scope_key = (ctx.ticker, current_scope(ctx), ctx.preview)
     history = st.session_state.setdefault("qd25_dashboard_changes", {})
@@ -246,7 +275,7 @@ def journal_panel(ctx, plan):
             download_json("Download worker journal", {"decisions": observed, "candidates": candidates},
                           "qd25_journal_export", ctx.title("research_journal.json"))
         if not observed:
-            st.caption("No worker transitions for this ticker, price source and DTE. The worker defaults to Tradytics 0DTE.")
+            st.caption("No worker transitions for this ticker, price source and expiration.")
         st.markdown("**This browser session**")
         show_table([{k: v for k, v in row.items() if k != "fingerprint"} for row in reversed(events)], 205)
 
@@ -268,12 +297,13 @@ def iv_center(ctx, vol, regime, spot):
             st.caption("No expiration list is available.")
     elif mode != options[0]:
         expiry = (ctx.session + timedelta(days=int(mode.split()[0]))).isoformat()
-    report = iv_read(vol.obj, expiry, ctx.now, spot, regime, usable=surface_is_usable(ctx, vol))
+    report = read_iv(ctx, vol, regime, spot, expiry)
     use_expiry = mode != "Dashboard scope" or expiry is not None
+    expiry_note = f"{expiry or '—'} · {report['atm_source']}" if use_expiry else "Tradytics 30-day ATM benchmark"
     kpis([metric("Option premium", report["valuation"], "Selected ATM IV ÷ trailing 20-session RV"),
           metric("Price volatility", report["regime"], "Completed 5-minute bars"),
           metric("ATM IV", ratio_pct(report["atm"] if expiry != "" else None),
-                 f"Exact expiry {expiry or '—'}" if use_expiry else "30-day ATM benchmark"),
+                 expiry_note),
           metric("IV / RV", f"{amount(report['ratio'])}×" if report["ratio"] is not None and expiry != "" else "—",
                  f"Trailing RV {ratio_pct(report['rv'])}")], small=True)
     kpis([metric("30-day IV rank", ratio_pct(report["rank30"]), "Position in the provider's 30-day IV range"),
@@ -288,6 +318,9 @@ def iv_center(ctx, vol, regime, spot):
                f"{amount(report['skew_points'])} IV points for the selected expiry.")
     if expiry and report["atm"] is None:
         st.info("The provider has no ATM IV for this exact date. Choose a listed expiration to review its data.")
+    if report["atm_sample"]:
+        sample = report["atm_sample"]
+        st.caption(f"Webull ATM estimate at {amount(sample['strike'])} from a matched call and put · {et_time(sample['as_of'])}.")
     feed_stamp("volatility", vol, ctx)
     with st.expander("How to read IV"):
         st.write("Short-dated ATM IV prices the selected expiry. The 30-day IV rank and percentile describe the longer-dated benchmark.")
@@ -486,13 +519,13 @@ def option_controls(ctx, plan):
         st.info("Choose an exact expiration in the sidebar to evaluate executable option quotes.")
         return None, None
     spot, asof = plan["price"], ctx.now
-    feed = ctx.get("chain", symbol=ctx.ticker, limit=250, expiry=plan["expiry"],
-                   min_strike=round(spot * .96, 2), max_strike=round(spot * 1.04, 2))
+    feed, source = ctx.option_chain(plan["expiry"])
     if (not feed.snapshot or feed.error or feed_has_delay(feed) or ctx.paused or
             feed.snapshot.meta.get("symbol") not in (None, ctx.ticker)):
-        st.info("Waiting for the selected expiration's current option chain.")
+        st.info(f"{source} · {feed.error or 'Waiting for the selected expiration’s current option chain.'}")
         return None, None
-    legs = quoted_legs(feed.rows, ctx.ticker, plan["expiry"], asof)
+    current_rows = fresh_option_rows(feed, ctx.ticker, plan["expiry"], asof, max_age=ctx.option_max_age, paused=ctx.paused)
+    legs = quoted_legs(current_rows, ctx.ticker, plan["expiry"], asof)
     direction = plan["direction"]
     right = ("call" if direction > 0 else "put") if structure != "Credit vertical" else ("put" if direction > 0 else "call")
     choices = sorted((leg for leg in legs if leg.right == right), key=lambda leg: abs(leg.strike - spot))
@@ -536,7 +569,7 @@ def option_controls(ctx, plan):
     kpis([metric("Quoted entry cash flow", f"USD {risk['entry_cash']:+,.2f}", "Includes bid/ask and extra slippage"),
           metric("Estimated expiration max loss", f"USD {risk['max_loss']:,.2f}", "One package · includes modeled round-trip costs"),
           metric("Round-trip fees", f"USD {risk['round_trip_fees']:.2f}", "Per selected package"),
-          metric("Quote filters", "Two-sided", "Up to 120 seconds old · ≤35% relative width")], small=True)
+          metric("Quote filters", source, f"Up to {ctx.option_max_age}s old · ≤35% relative width")], small=True)
     if budget and risk["max_loss"] > budget:
         st.warning("The quoted structure exceeds the entered loss budget.")
     feed_stamp("chain", feed, ctx)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from math import sqrt
 from statistics import median
 
 from data_utils import utc
@@ -13,6 +14,47 @@ MIN_ENTRY_SCORE = 80
 MIN_RELATIVE_VOLUME = 1.25
 ENTRY_COOLDOWN = 10 * MINUTE
 DIRECTION = {-1: "Down", 0: "Flat", 1: "Up"}
+
+
+def early_price_move(candles, session, now):
+    """Read completed contiguous 1m candles for a large move in this session."""
+    tail = []
+    for bar in reversed(candles[-33:]):
+        stamp = time_or_none(bar.get("time_utc"))
+        if not stamp or stamp.astimezone(ET).date() != session:
+            break
+        if stamp + MINUTE > now or bar.get("forming") or bar.get("closed") is False:
+            continue
+        if tail and tail[-1][0] - stamp != MINUTE:
+            break
+        if not all(positive(bar.get(key)) for key in ("open", "high", "low", "close")):
+            break
+        tail.append((stamp, bar))
+    if not tail:
+        return None
+    close = tail[0][0] + MINUTE
+    if not 0 <= (now - close).total_seconds() <= 75:
+        return None
+    rows = [bar for _, bar in reversed(tail)]
+    current = rows[-1]["close"]
+    for minutes, floor in ((1, .0010), (3, .0018), (5, .0025), (10, .0035)):
+        if len(rows) < minutes:
+            continue
+        prior = rows[:-minutes]
+        previous = prior[-1]["close"] if prior else rows[-minutes]["open"]
+        change = current / previous - 1
+        if minutes <= 3:
+            if len(prior) < 3:
+                continue
+            normal = median((bar["high"] - bar["low"]) / bar["close"] for bar in prior[-20:])
+            edge = max(bar["high"] for bar in prior[-3:]) if change > 0 else min(bar["low"] for bar in prior[-3:])
+            if (current - edge) * sign(change) <= 0:
+                continue
+            floor = max(floor, 2 * normal * sqrt(minutes))
+        if abs(change) + 1e-12 >= floor:
+            return {"direction": "UP" if change > 0 else "DOWN", "price": current, "previous_price": previous,
+                    "change_pct": 100 * change, "window": f"{minutes}m", "bar": close.isoformat()}
+    return None
 
 CHECKS = ("Market State", "Volatility", "GEX / Dealer Positioning", "Netflow / CVD",
           "Price Structure", "Momentum / Volume", "Movement Decision", "Trade Trigger", "Data Quality")

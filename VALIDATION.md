@@ -1,4 +1,11 @@
-# Validation — Quant Desk 2.6
+# Validation — Quant Desk 2.7.0
+
+- 97 automated checks passed. Streamlit interaction tests exercised the visible workspace, including Trade Plan and Movement Detector, and checked that Strategy Lab and History & Replay are hidden.
+- Webull and Tradytics fixtures tested one-minute candle completion, ticker identity, timestamp and delay checks, exact-expiry SPXW contract discovery, fresh bids and asks, and IV comparisons within the same strike pair.
+- The worker fixture generated an early NVDA price watch and held confirmation while matching flow or a current option quote was unavailable. It then confirmed after the required observations arrived. The suite also covered Discord formatting, cooldown and paper outcomes.
+- Browser rendering, authenticated provider entitlements, production alert latency and live Discord delivery require verification in the deployed environment. The [deployment guide](V2_5_DEPLOYMENT.md) includes the feed checks.
+
+## Prior validation — Quant Desk 2.6
 
 - 89 Quant Desk tests passed. They cover the complete workspace, ordered checks, the SPX CVD comparison, Trade Plan geometry, closed price and flow confirmation, the sideways guard, Discord cooldown and warning rearm, and paper exits.
 - A local browser verified the Overview shortcut, all nine Movement Detector sections, the SPX comparison, Trade Plan navigation and Strategy Lab search. The local Streamlit health endpoint returned HTTP 200.

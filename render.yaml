@@ -21,3 +21,5 @@ services:
         value: main
       - key: TRADYTICS_AUTH_MODE
         value: query
+      - key: MONITOR_PRICE_SOURCE
+        value: Auto

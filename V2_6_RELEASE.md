@@ -1,5 +1,9 @@
 # Quant Desk 2.6
 
+## 2.6.5 Strategy Lab market shortlist
+
+Trade Plan and Strategy Lab now show candidate studies matched to the current regime and playbook. The shortlist ranks related modules by the saved doubled-cost SPY underlying result and marks missing inputs. The audit has only two selected test folds per many strategies, and none of the directional settings was promoted. This panel is a research connection, not automatic strategy switching or an entry signal. Trade Plan's existing rules still determine entry status.
+
 ## 2.6.4 Quieter Discord
 
 The worker sends no data-quality Discord messages. Stale quote and other feed checks still block confirmed Trade Plan entries and remain visible in the dashboard and logs. A price-only move watch is a separate, clearly labeled message. Discord move, entry and paper-exit messages are now concise. Deploy the updated worker to stop messages from a previously running version.

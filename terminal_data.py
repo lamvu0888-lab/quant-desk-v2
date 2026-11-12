@@ -73,6 +73,14 @@ def listed_dtes(feed, session):
     return sorted((day - session).days for day in dates if day and day >= session)
 
 
+def first_listed_dte(feed, ticker, session, now):
+    if (not feed.snapshot or feed.error or feed_has_delay(feed) or feed.snapshot.meta.get("symbol") not in (None, ticker)
+            or not 0 <= (now - feed.snapshot.received_at).total_seconds() <= 600
+            or any(row.get("symbol") not in (None, ticker) for row in feed.rows)):
+        return None
+    return next(iter(listed_dtes(feed, session)), None)
+
+
 def filter_expiration(rows, session, dte):
     if dte is None:
         return rows
@@ -95,6 +103,8 @@ def closed_flow_rows(rows, session, now, interval):
     for row in rows:
         stamp = time_or_none(row.get("time"))
         if not stamp or not opened <= stamp or stamp + width > min(closed, now):
+            continue
+        if row.get("closed") is False or row.get("forming") is True:
             continue
         if (stamp - opened) % width or row.get("date") not in (None, session.isoformat()):
             continue
@@ -135,10 +145,12 @@ def exact_timeline(upper, lower, session, now, interval):
                                   "source_intervals": max(len(a), len(b))}, latest), loading=upper.loading or lower.loading)
 
 
-def scope_timeline(fetch, now, dte, *, symbol=None, interval="5m", session=None):
+def scope_timeline(fetch, now, dte, *, symbol=None, interval="5m", session=None, first_dte=None):
     selected = session or active_session(now)
     params = {"symbol": symbol, "interval": interval, "date": str(session) if session else None}
-    if dte is None or dte == 0:
+    # An up-to-DTE total covers exactly one expiry when a current listing
+    # verifies that no earlier expiry exists for this symbol.
+    if dte is None or dte == 0 or symbol and dte == first_dte:
         feed = fetch("timeline", dte=dte, **params)
         if not feed.snapshot:
             return feed
@@ -217,6 +229,14 @@ def feed_has_delay(feed):
     return bool(feed.snapshot and (numeric(feed.snapshot.meta.get("delay_minutes")) or 0) > 0)
 
 
+def completed_boundary(now, session, width):
+    bounds = _bounds(session.isoformat())
+    if not bounds or now < bounds[0] + width:
+        return None
+    opened, closed = bounds
+    return opened + ((min(now, closed) - opened) // width) * width
+
+
 def status(name, feed, now, ticker=None, *, preview=False, paused=False):
     stamp = source_stamp(name, feed, ticker)
     display = et_time(stamp) if isinstance(stamp, datetime) else stamp.isoformat() if stamp else "—"
@@ -228,6 +248,8 @@ def status(name, feed, now, ticker=None, *, preview=False, paused=False):
         return ("PAUSED" if paused else "LOADING"), display
     if paused:
         return "PAUSED", display
+    if feed_has_delay(feed):
+        return "DELAYED", display
     if name in ("quotes", "indices") and not quote_row(feed, ticker):
         return "NO QUOTE", display
     if not feed.rows and not feed.obj:
@@ -242,8 +264,11 @@ def status(name, feed, now, ticker=None, *, preview=False, paused=False):
         if name in ("flow", "dark_prints", "signals"):
             return "TAPE", display
         if name in ("quotes", "indices", "bars", "chain", "exposure", "timeline"):
-            threshold = 120 if name == "exposure" else 90 if name == "timeline" else 150
-            if name == "quotes" and quote_row(feed, ticker).get("stale") is True:
+            threshold = 420 if name == "exposure" else 120 if name in ("quotes", "indices") else 150
+            if name == "timeline":
+                interval = feed.snapshot.meta.get("interval", "5m")
+                threshold = interval_length(interval).total_seconds() + 60 if interval in ("1m", "3m", "5m", "15m", "1h") else 360
+            if name in ("quotes", "indices") and quote_row(feed, ticker).get("stale") is True:
                 return "AGED", display
             return ("RECENT" if age <= threshold else "AGED"), display
     elif isinstance(stamp, date):
@@ -284,12 +309,14 @@ def price_bars(feed, ticker, now, *, daily=False):
     return [parsed[stamp] for stamp in sorted(parsed)]
 
 
-def chart_buckets(bars, minutes):
+def chart_buckets(bars, minutes, *, estimate_vwap=False):
     """Aggregate complete RTH buckets and compute true session VWAP where supported."""
     groups = {}
     day = None
     total_volume = total_notional = 0
+    estimated_volume = estimated_notional = 0
     vwap_complete = False
+    estimate_complete = False
     expected = None
     for bar in bars:
         stamp = utc(bar["time_utc"])
@@ -300,7 +327,9 @@ def chart_buckets(bars, minutes):
         if local_day != day:
             day = local_day
             total_volume = total_notional = 0
+            estimated_volume = estimated_notional = 0
             vwap_complete = True
+            estimate_complete = estimate_vwap
             expected = bounds[0]
         volume, vwap = bar.get("volume"), bar.get("vwap")
         if expected != stamp or volume is None or (volume > 0 and vwap is None):
@@ -308,19 +337,27 @@ def chart_buckets(bars, minutes):
         if vwap_complete and volume > 0:
             total_volume += volume
             total_notional += vwap * volume
+        if estimate_complete:
+            estimate_complete = expected == stamp and volume is not None
+            if estimate_complete and volume > 0:
+                estimated_volume += volume
+                estimated_notional += volume * (bar["high"] + bar["low"] + bar["close"]) / 3
         expected = stamp + timedelta(minutes=1)
         offset = int((stamp - bounds[0]).total_seconds() // 60)
         bucket = bounds[0] + timedelta(minutes=minutes * (offset // minutes))
-        groups.setdefault(bucket, []).append((stamp, bar, total_notional / total_volume if vwap_complete and total_volume else None))
+        groups.setdefault(bucket, []).append((stamp, bar, total_notional / total_volume if vwap_complete and total_volume else None,
+                                              estimated_notional / estimated_volume if estimate_complete and estimated_volume else None))
     result = []
     for stamp, group in sorted(groups.items()):
-        if len(group) != minutes or any(ts != stamp + timedelta(minutes=i) for i, (ts, _, _) in enumerate(group)):
+        if len(group) != minutes or any(row[0] != stamp + timedelta(minutes=i) for i, row in enumerate(group)):
             continue
-        values = [bar for _, bar, _ in group]
+        values = [row[1] for row in group]
         volumes = [bar.get("volume") for bar in values]
         result.append({"time_utc": stamp.isoformat(), "open": values[0]["open"], "close": values[-1]["close"],
                        "high": max(row["high"] for row in values), "low": min(row["low"] for row in values),
                        "volume": sum(volumes) if None not in volumes else None, "session_vwap": group[-1][2]})
+        if estimate_vwap:
+            result[-1]["estimated_session_vwap"] = group[-1][3] if group[-1][2] is None else None
     return result
 
 

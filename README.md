@@ -1,8 +1,8 @@
-# Quant Desk 2.6.4
+# Quant Desk 2.7.0
 
-Quant Desk combines Tradytics market data and optional Webull data with intraday entry rules, dealer hedge scenarios, volatility context and paper trade evaluation. Open any covered ticker in the command bar. The quick buttons open SPY, SPX and QQQ. The dashboard and Discord worker run in analysis and paper mode.
+Quant Desk uses Webull for stock and ETF price timing when configured, and Tradytics for index prices, options flow and modeled dealer exposure. Open any covered ticker in the command bar. The quick buttons open SPY, SPX and QQQ. The dashboard and Discord worker run in analysis and paper mode.
 
-- [Read the Movement Detector rules and historical strategy audit](V2_6_RELEASE.md)
+- [Read the earlier Movement Detector rules](V2_6_RELEASE.md)
 - [Deploy to your existing GitHub, Streamlit and Render services](V2_5_DEPLOYMENT.md)
 - [Read the decision rules, model assumptions and limitations](V2_5_METHODS.md)
 - [See what changed](CHANGELOG.md) and [review verification](VALIDATION.md).
@@ -11,7 +11,7 @@ Quant Desk combines Tradytics market data and optional Webull data with intraday
 
 1. Extract the full ZIP to a new folder. Install Python 3.12 if needed.
 2. Double-click **START_QUANT_DASHBOARD.cmd**. It creates a local environment, installs dependencies on first run, and starts the dashboard at **http://localhost:8501**.
-3. Open the newly created `.env` next to the launcher and set `TRADYTICS_API_KEY` to your existing key. Save it and restart the launcher. Enable **market**, **options**, **darkpool**, **signals**, and **scanner** for the feeds you use.
+3. Open the newly created `.env` next to the launcher and set your existing `TRADYTICS_API_KEY`, `WEBULL_APP_KEY` and `WEBULL_APP_SECRET`. Save it and restart the launcher. Enable the Tradytics scopes for the feeds you use.
 
 The first launch opens the labeled Preview workspace when no keys are configured. Preview includes illustrative values for each page so you can learn the controls. Select **Live** to use your configured feed. The application runs locally and keeps the key in its server process.
 
@@ -32,23 +32,21 @@ Use the PowerShell steps in the [deployment guide](V2_5_DEPLOYMENT.md) from your
 | Dealer Positioning | Review price, IV and time hedge scenarios, sensitive strikes, past price response, exposure profiles and the optional Webull comparison. |
 | IV Decision Center | Compare exact-expiry ATM IV, realized volatility, the 30-day benchmark, skew, and matching expected-move room. Advanced Analysis contains the detailed charts. |
 | Dark Pool | See reported off-exchange stock prints and price bins by notional. Choose a lookback and minimum print size. |
-| Trade Plan | Review the trigger, separate invalidation and stop, targets, risk/reward, evidence, transitions, paper outcomes and Discord history. |
+| Trade Plan | Review the trigger, stop, targets, contract bid and ask, quote age, evidence and Discord alerts. |
 | Signals | Filter Tradytics patterns for a ticker, inspect the chosen contract and marks, and view provider-wide pattern performance. |
 | Monte Carlo | Compare four entry methods with fill odds, target/stop odds and net modeled P&L. Open Validation for paper outcomes or replay. Price forecast contains the earlier range models. |
 | Scanner | Rank stocks or ETFs by provider premium, volume, IV or dark-pool activity. |
-| History & Replay | Review daily series and measure underlying returns after large prints, signals or closed-bar range breaks. |
 | TradingView | Generate a Pine indicator or JSON snapshot of GEX strikes, gamma levels, dark-pool levels and support or resistance. |
 | Learn | Choose a topic for the definition, reading guide and worked example. Use its button to open the corresponding page. |
-| Strategy Lab | Review all 100 strategies, data requirements and selected walk-forward folds for the saved SPY sample. |
-| Data Health | Inspect source time, API receipt time, errors and required scopes. Download diagnostics for troubleshooting. |
+| Data Health | Compare provider quote timestamps and inspect the latest candle, flow interval and SPXW quote coverage. |
 
 Click **?** beside a title for a quick explanation. Click outside or press Esc to close it. **Learn** has examples. Preview downloads carry a demo label.
 
 ## Exact DTE
 
-The sidebar offers **All DTE**, **0 DTE**, **Listed expiration** and **Enter exact DTE**. The number means calendar days from the displayed regular session. An exact value of 3 targets contracts expiring three calendar days after that session. The chart shows an empty state when there is no matching data. Historical flow and tape use the selected session as their date reference.
+The sidebar offers **All DTE**, **Nearest listed**, **0 DTE**, **Listed expiration** and **Enter exact DTE**. Nearest listed uses 0 DTE when listed and otherwise uses the next listed date. It is the default for a new browser session with both feeds configured. DTE means calendar days from the displayed session. Historical flow and tape use the selected session as their date reference.
 
-The tape, option chain and exposure model query the exact date. Tradytics documents a maximum-DTE filter for the aggregate timeline. For an exact value above zero, Quant Desk subtracts the two adjacent DTE totals for matching completed intervals. The chart skips intervals that cannot be matched. The Flow page can show a separate premium chart based on the loaded tape. Market-wide leader and sector tiles, scanner rankings, and daily exposure history use the provider's all-DTE datasets. Watchlist tiles use the selected expiry when comparable intervals are available.
+The tape, option chain and exposure model query the exact date. Tradytics uses a maximum DTE filter for the aggregate timeline. The maximum DTE total already covers one expiration when the current listing verifies it as the first date. For other exact values above zero, Quant Desk subtracts adjacent DTE totals for matching completed intervals. The chart skips intervals that cannot be matched. Market-wide leader and sector tiles, scanner rankings, and daily exposure history use the provider's all-DTE datasets.
 
 ## TradingView levels
 
@@ -62,7 +60,7 @@ The lines extend forward from the export time. Generate a new snapshot after lev
 
 The price regime measures recent five-minute price swings. It can read Compressing, Normal or Expanding. The Entry Command Center checks the five-minute trend and signed options flow, then uses completed one- and three-minute candles for timing. Entry also requires two agreeing completed 5m price checks and two aligned 5m premium intervals. The evidence score summarizes rule agreement. The Monte Carlo page reports scenario probabilities separately.
 
-Open **Trade Plan → Evidence and entry conditions** for supporting checks, missing information, conflicting evidence and reasons to stand aside. **History & Replay → Event replay** retains the earlier 15, 30 and 60 minute underlying comparisons. **Monte Carlo → Validation** includes the new setup replay and forward paper outcomes.
+Open **Trade Plan → Evidence and entry conditions** for the evidence and the reason a setup is waiting. **Monte Carlo → Validation** includes paper outcomes and setup replay. Strategy Lab and History & Replay are hidden from the workspace navigation.
 
 Share CVD estimates signed volume from completed one-minute OHLCV bars. It adds volume from up minutes and subtracts volume from down minutes, then resets at the regular-session open. Flat minutes use the change from the previous close or the last known direction. Index charts can show a separately labeled SPY proxy. The optional contract-volume view counts classified buys minus sells in the loaded options tape. Share CVD, contract-volume delta and directional net premium have different units.
 
@@ -78,13 +76,13 @@ The Tradytics client uses the current public REST endpoints and API key query pa
 
 Quotes typically refresh at Tradytics about every 30 seconds. The workspace requests each panel on its own schedule and labels the observation time. The app keeps the latest successful snapshot through a transient failure and marks it cached. The shared client respects retry timing and a local request budget. Use **Feed controls** to pause or refresh.
 
-## Webull and forecasts
+## Webull and Tradytics together
 
-Webull is optional. If you want to compare exposure, add your existing `WEBULL_APP_KEY` and `WEBULL_APP_SECRET` to the new `.env`. Under **Feed controls**, enable **Webull comparison**, then open **Dealer Positioning → Compare sources**. You can also select Webull as the stock/ETF price and candle source. Tradytics supplies major index quotes and historical replay. Webull retains the V1.9 zero-delay forecast checks.
+Set **Feed controls → Price and candle source → Auto**. Auto uses configured Webull OpenAPI for supported stocks and ETFs and Tradytics for SPX and other indices. Webull requests a warm history, then fetches recent completed minutes after each close. Prices and candles carry their own market timestamps. An explicit provider delay, stale market timestamp or sandbox data holds the entry check. Webull OpenAPI needs its own data entitlement. See [Webull market data permissions](https://developer.webull.com/apis/docs/market-data-api/overview/).
 
-The comparison preserves each model's units and scope. Tradytics Vanna is dollars per IV point. The Webull model reports shares per IV point. The Webull collection settings and local reports follow the V1.9 model described in [the archived guide](docs/history/README_V1_9.md).
+Choose an exact expiry to see Webull bid, ask, spread, quote age and Greeks. The Webull view samples up to 20 near-spot contracts and requests PM-settled SPXW contracts for SPX. **Trade Plan** checks the nearest contract in the setup direction and waits on stale, wide or incomplete quotes. **IV Decision Center** uses a same-strike call and put to estimate exact-expiry ATM IV when both quotes are fresh. **Movement Detector** compares 1, 3 or 5 minute IV changes only within the same provider, expiry and strike pair. The Tradytics surface supplies the 30-day benchmark and rank.
 
-The forecast uses completed regular-session candles and a recent quote from the selected price feed. Tradytics forecast readiness uses source timestamps and checks any reported delay. Horizons stop at the session close. Market context and provider levels appear next to the simulation. The paths use historical price returns, and the levels are used for touch probabilities. The calibration button shows coverage on recent nonoverlapping observations.
+**Dealer Positioning → Compare sources** displays a bounded Webull model when enough fresh calls and puts span spot. The Tradytics model and Webull sample keep their own scope and units. Use **Data Health** to compare quote ages and test your account's SPXW access.
 
 ## References
 
@@ -98,4 +96,6 @@ The forecast uses completed regular-session candles and a recent quote from the 
 
 ## Discord monitoring
 
-Open **Feed controls → Discord ticker monitoring** to edit the watchlist. The default is SPY and SPX. The worker monitors Tradytics 0DTE at a 30-second target cadence with the same entry rules used in the dashboard. **Trade Plan** shows setup transitions, paper outcomes and delivered messages. Discord sends confirmed entries, tracked exits and sustained data warnings. A 10-minute cooldown applies per ticker and setup. **Feed controls → Send Discord test message** checks webhook connectivity. See the [deployment guide](V2_5_DEPLOYMENT.md) for the required environment variables, journal storage and the worker's dry run.
+Open **Feed controls → Discord ticker monitoring** to edit the watchlist. The default is SPY and SPX. The worker checks the feed cache every two seconds during the session and re-evaluates when completed price or flow changes. Provider refresh and network timing determine alert latency. The normal scan interval remains configurable and the worker uses the nearest listed expiry.
+
+**Move watch** uses completed price candles. A 1-minute move needs at least 0.10%, and a 3-minute move needs at least 0.18%. Both must break the recent range and exceed a threshold based on recent candle ranges. Rolling 5 and 10 minute moves can also qualify at 0.25% and 0.35%. The cooldown is 15 minutes per ticker. Confirmed setups require matching completed 5-minute price and flow, with the Webull contract check when configured. Discord sends short move, entry and paper exit messages. Feed issues appear in Data Health. See the [deployment guide](V2_5_DEPLOYMENT.md) for worker environment variables and the read-only check.

@@ -29,8 +29,10 @@ class Settings:
     dividend_yield: float = 0.0
 
     @classmethod
-    def load(cls):
-        load_dotenv(ROOT / '.env', override=True)
+    def load(cls, lookup=None):
+        if lookup is None:
+            load_dotenv(ROOT / '.env', override=True)
+            lookup = os.environ.get
         pairs = {
             'endpoint': ('WEBULL_ENDPOINT', str), 'quote_seconds': ('QUOTE_REFRESH_SECONDS', int),
             'candle_seconds': ('CANDLE_REFRESH_SECONDS', int), 'chain_seconds': ('CHAIN_REFRESH_SECONDS', int),
@@ -43,7 +45,7 @@ class Settings:
             'dividend_yield': ('DIVIDEND_YIELD', float),
         }
         try:
-            result = cls(**{k: cast(os.environ[name]) for k, (name, cast) in pairs.items() if os.environ.get(name)})
+            result = cls(**{key: cast(value) for key, (name, cast) in pairs.items() if (value := lookup(name))})
         except (ValueError, TypeError) as exc:
             raise DataError('Invalid numeric setting in .env') from exc
         # V1.8 shipped QUOTE_MAX_AGE_SECONDS=90. Accept that existing .env

@@ -161,7 +161,7 @@ def explanation(topic, key):
         st.caption("See Learn for an example.")
 
 
-def learn_page(go_to, nav_labels):
+def learn_page(go_to, nav_labels, pages):
     st.markdown(
         '<div class="qd-learn-hero"><div class="qd-eyebrow">FIELD GUIDE</div>'
         '<h2>Read the market with context.</h2><p>Understand what each chart measures, how to read it, and what to check next.</p></div>',
@@ -177,9 +177,10 @@ def learn_page(go_to, nav_labels):
         with column.container(border=True):
             st.markdown(f"**{title}**")
             st.caption(detail)
-    groups = list(dict.fromkeys(guide.group for guide in GUIDES.values()))
+    guides = {key: guide for key, guide in GUIDES.items() if guide.page in pages}
+    groups = list(dict.fromkeys(guide.group for guide in guides.values()))
     group = st.selectbox("Topic group", ["All tools", *groups], key="learn_group")
-    topics = [key for key, guide in GUIDES.items() if group in ("All tools", guide.group)]
+    topics = [key for key, guide in guides.items() if group in ("All tools", guide.group)]
     topic = st.selectbox("Tool or chart", topics, format_func=lambda key: GUIDES[key].title, key="learn_topic")
     guide = GUIDES[topic]
     with st.container(border=True):

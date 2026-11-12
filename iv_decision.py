@@ -19,7 +19,7 @@ def fraction(value):
     return val if val is not None and 0 <= val <= 1 else None
 
 
-def iv_read(surface, expiry, now, spot, regime, *, usable):
+def iv_read(surface, expiry, now, spot, regime, *, usable, atm_sample=None):
     """Use exact expiry IV when requested. The provider's rank is a 30D measure."""
     obj = surface if usable else {}
     term = obj.get("term") if isinstance(obj.get("term"), list) else []
@@ -27,7 +27,7 @@ def iv_read(surface, expiry, now, spot, regime, *, usable):
     term_by_expiry = {row["expiry"]: iv for row in term if isinstance(row, dict)
                       and valid_date(row.get("expiry")) and (iv := iv_value(row.get("atm_iv"))) is not None}
     atm30 = iv_value(obj.get("atm_iv_30d"))
-    atm = term_by_expiry.get(expiry) if expiry else atm30
+    atm = atm_sample["value"] if expiry and atm_sample else term_by_expiry.get(expiry) if expiry else atm30
     rank30, pct30 = fraction(obj.get("iv_rank")), fraction(obj.get("iv_percentile"))
     rv = iv_value(obj.get("realized_vol_20d"))
     ratio = atm / rv if atm is not None and rv is not None else None
@@ -72,6 +72,8 @@ def iv_read(surface, expiry, now, spot, regime, *, usable):
     else:
         guidance = "Compare a long option and a debit spread if direction confirms. Stand aside when costs or structure weaken the plan."
     return {"expiry": expiry, "atm": atm, "atm30": atm30, "rank30": rank30, "percentile30": pct30, "rv": rv,
+            "atm_source": atm_sample["source"] if expiry and atm_sample else "Tradytics",
+            "atm_sample": atm_sample,
             "ratio": ratio, "valuation": valuation, "regime": regime_label, "term": term_ordered,
             "term_shape": term_shape, "put_skew": put, "call_skew": call,
             "skew_points": 100 * (put - call) if put is not None and call is not None else None,

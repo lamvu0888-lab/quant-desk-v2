@@ -141,9 +141,9 @@ def test_upgrade_preview_pages_expiry_and_exports(monkeypatch):
         if page == "Options Flow":
             app.toggle(key="flow_contract_cvd").set_value(True).run()
             assert not app.exception and len(app.get("plotly_chart")) >= 3
-    app.radio(key="desk_page").set_value("History").run()
-    next(widget for widget in app.get("segmented_control") if widget.key == "history_workspace").set_value("Event replay").run()
-    assert not app.exception
-    assert app.selectbox(key="replay_type").value == "Large options prints"
-    app.selectbox(key="replay_type").set_value("Range-break triggers").run()
-    assert not app.exception
+    assert all("History" not in option for option in app.radio(key="desk_page").options)
+    reopened = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "terminal.py"), default_timeout=30)
+    reopened.session_state["desk_page"] = "History"
+    reopened.run()
+    assert reopened.session_state["desk_page"] == "Overview"
+    assert not reopened.exception

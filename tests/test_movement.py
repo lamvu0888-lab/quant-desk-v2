@@ -84,7 +84,7 @@ def test_worker_keeps_watch_states_in_history_without_discord(tmp_path, monkeypa
     plan = make_trade_plan(**inputs)
     plan.update(symbol="SPY", data_reasons=[], price_context_ready=False, dealer_note="Gamma unavailable")
     journal = Journal(tmp_path / "watch.sqlite3", dsn="")
-    monkeypatch.setattr("monitor_engine.build_decision", lambda *_: (plan, {}))
+    monkeypatch.setattr("monitor_engine.build_decision", lambda *_, **__: (plan, {}))
     read = {**inputs, "bars": Feed(), "gamma_feed": Feed()}
     for status in ("GET READY", "WAIT", "AVOID"):
         plan["status"] = status
@@ -149,7 +149,6 @@ def test_movement_navigation_and_spx_proxy(monkeypatch):
     app.toggle(key="movement_spy_cvd").set_value(True).run()
     assert any("SPY estimated 10m CVD" in row.value for row in app.caption)
     app.button(key="movement_open_trade").click().run()
-    app.button(key="trade_open_lab").click().run()
-    app.text_input(key="lab_search").set_value("TF02").run()
-    assert app.selectbox(key="lab_review").value == "TF02"
+    assert any("Option quote check" in row.value for row in app.markdown)
+    assert all("Strategy Lab" not in option and "History" not in option for option in app.radio(key="desk_page").options)
     assert not app.exception

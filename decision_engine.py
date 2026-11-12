@@ -10,7 +10,7 @@ from movement_detector import (MIN_ENTRY_SCORE, MIN_RELATIVE_VOLUME, SETUP_ORDER
                                price_movement, signed_flow_confirmation)
 from terminal_data import chart_buckets, closed_flow_rows, numeric, positive, time_or_none
 
-RULES_VERSION = "2.6.0"
+RULES_VERSION = "2.7.0"
 MIN_REWARD_R = 1.35
 ENTRY_STATES = ("ENTER LONG", "ENTER SHORT")
 
@@ -61,7 +61,8 @@ def range_break(bars, tolerance):
 
 
 def make_trade_plan(*, candles, buckets, flow_rows, levels, now, session, expiry, dte,
-                    spot, regime, iv, gamma, quality_reasons, quote_at, minutes_left, source, preview=False):
+                    spot, regime, iv, gamma, quality_reasons, quote_at, minutes_left, source, preview=False,
+                    flow_usable=True):
     """Use completed bars only. Quote drift and structural room are separate gates."""
     today = [bar for bar in candles_on(candles, session) if bar.get("closed", True)
              and not bar.get("forming") and utc(bar["time_utc"]) + MINUTE <= now]
@@ -72,7 +73,7 @@ def make_trade_plan(*, candles, buckets, flow_rows, levels, now, session, expiry
     atr = positive(regime.get("atr"))
     flow_rows = closed_flow_rows(flow_rows, session, now, "5m")
     flow = flow_read(flow_rows)
-    flow_dir = flow.get("direction", 0)
+    flow_dir = flow.get("direction", 0) if flow_usable else 0
     stamp5 = utc(bars5[-1]["time_utc"]) + FIVE_MINUTES if bars5 else None
     stamp3 = utc(bars3[-1]["time_utc"]) + 3 * MINUTE if bars3 else None
     stamp1 = utc(bars1[-1]["time_utc"]) + MINUTE if bars1 else None
@@ -85,7 +86,7 @@ def make_trade_plan(*, candles, buckets, flow_rows, levels, now, session, expiry
     prior_trend = timing(bars5[:-1], 2 * prior_noise)["direction"] if len(bars5) >= 11 else 0
     break_dir, break_level, break_at = range_break(bars5, noise)
     movement = price_movement(bars5, history, trend, prior_trend, atr, noise, regime.get("label"), break_dir, break_level)
-    flow_confirmation = signed_flow_confirmation(flow_rows, flow, trend, stamp5)
+    flow_confirmation = signed_flow_confirmation(flow_rows if flow_usable else [], flow, trend, stamp5)
     levels_by_name = {level.label: level.price for level in levels}
     hi, lo = levels_by_name.get("Range high"), levels_by_name.get("Range low")
     near_boundary = bool(price and atr and any(abs(price - boundary) <= .45 * atr for boundary in (hi, lo) if boundary))
@@ -145,10 +146,10 @@ def make_trade_plan(*, candles, buckets, flow_rows, levels, now, session, expiry
         missing.append("Directional price momentum on the completed 5m candles.")
     if movement["range_hold"]:
         missing.append("A directional move or a held break with expanding activity.")
-    accel = bool(trend and flow.get("accelerating") and trend * flow["momentum"] > 0)
+    accel = bool(flow_usable and trend and flow.get("accelerating") and trend * flow["momentum"] > 0)
     if accel:
         checks.append("Options flow strengthened in the setup direction.")
-    elif trend and flow.get("accelerating") and trend * flow["momentum"] < 0:
+    elif flow_usable and trend and flow.get("accelerating") and trend * flow["momentum"] < 0:
         conflicts.append("Options-flow acceleration opposes the setup.")
     aligned3 = bool(trend and align3 == trend)
     aligned1 = bool(trend and align1 == trend)

@@ -237,7 +237,7 @@ def test_worker_transitions_settlement_and_duplicate_suppression(tmp_path, monke
     ctx = SimpleNamespace(now=now, ticker="SPY", session=args["session"])
     journal = Journal(tmp_path / "worker.sqlite3", dsn="")
 
-    def assembled(context, _read):
+    def assembled(context, _read, **_):
         plan = make_trade_plan(**{**args, "now": context.now})
         plan.update(symbol=context.ticker, data_reasons=[], price_context_ready=True, dealer_note="Gamma snapshot unavailable")
         return plan, {}

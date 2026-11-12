@@ -1,3 +1,14 @@
+# Quant Desk 2.7.0
+
+- Both the dashboard and worker can use Webull stock and ETF quotes and completed candles alongside Tradytics flow, index prices and modeled positioning. Batched background requests update prices and candles independently of options.
+- Added nearest listed expiry, Webull exact-expiry quotes and Greeks, SPXW contract coverage checks, same-strike ATM IV tracking, and provider quote timing in Data Health.
+- Added quicker move watches for supported watchlist symbols and prompt rechecks when new price or flow arrives. Confirmed hybrid setups require current price, aligned flow and a fresh matching contract quote.
+- Hid Strategy Lab and History & Replay from the workspace navigation.
+
+# Quant Desk 2.6.5
+
+- Connected current market playbook to a clearly labeled Strategy Lab research shortlist in Trade Plan and Strategy Lab. Candidates are ranked by the saved doubled-cost SPY test, with no claim of a validated live winner or change to entry rules.
+
 # Quant Desk 2.6.4
 
 - Removed Discord data-quality notifications; feed issues remain visible in the dashboard and worker logs.
