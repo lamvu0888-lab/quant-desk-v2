@@ -3618,5 +3618,30 @@
     "rule_version": "2.6.0",
     "id": "quality:SPY:2026-11-12:20:0",
     "explanation": "Current regular-session quote."
+  },
+  {
+    "symbol": "SPX",
+    "status": "DATA QUALITY",
+    "bias": "Bearish",
+    "score": 65,
+    "bar": "2026-11-12T20:05:00+00:00",
+    "entry_bar": "2026-11-12T20:07:00+00:00",
+    "triggered_at_utc": "2026-11-12T20:07:46.791385+00:00",
+    "price": 7597.04,
+    "scope": "2026-11-12",
+    "setup": "Breakout watch",
+    "entry": 7596.35,
+    "trigger": 7596.81,
+    "invalidation": 7596.81,
+    "stop": 7599.54,
+    "tp1": 7591.57,
+    "tp2": 7588.38,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "rule_version": "2.6.0",
+    "id": "quality:SPX:2026-11-12:2026-11-12T20:07:46.791385+00:00",
+    "explanation": "Current regular-session quote."
   }
 ]
