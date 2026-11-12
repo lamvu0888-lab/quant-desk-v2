@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from pathlib import Path
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 from dealer_hedging import hedge_scenarios
@@ -14,7 +16,7 @@ from market_session import session_state
 from movement_charts import chart_for_stage, next_cue
 from movement_detector import CHECKS, DIRECTION, MIN_ENTRY_SCORE, PLAYBOOKS, cvd_context, movement_status
 from terminal_data import INDICES, et_time, feed_has_delay, positive, time_or_none
-from terminal_style import amount, compact, empty, esc, plot, ratio_pct
+from terminal_style import AMBER, amount, compact, empty, esc, plot, ratio_pct, style_chart
 
 AUDIT_PATH = Path(__file__).resolve().parent / "research" / "strategy_audit.json"
 LAB_MATCHES = {
@@ -30,14 +32,14 @@ def nav_button(label, page, key):
         st.rerun()
 
 
-def stage(number, value, detail, ctx, read, plan, state):
+def stage(number, value, detail, ctx, read, plan, state, *, flow_interval="5m", flow_feed=None):
     st.markdown(
         f'<section class="qd-movement-stage"><div class="qd-stage-number">{number}</div>'
         f'<div class="qd-stage-body"><h3>{esc(CHECKS[number - 1])}</h3>'
         f'<p>{esc(detail)}</p></div><div class="qd-stage-value">{esc(value)}</div></section>',
         unsafe_allow_html=True,
     )
-    chart = chart_for_stage(number, ctx, read, plan)
+    chart = chart_for_stage(number, ctx, read, plan, flow_interval=flow_interval, flow_feed=flow_feed)
     if chart is None:
         empty(message="Chart waiting for the matching completed data or current exposure snapshot.")
     else:
@@ -46,12 +48,40 @@ def stage(number, value, detail, ctx, read, plan, state):
                 unsafe_allow_html=True)
 
 
+def intraday_iv(ctx, read, iv, minutes):
+    """Session-local observed surface snapshots; never invent intervening IV."""
+    key = f"movement_iv_samples_{ctx.ticker}_{ctx.expiry or '30d'}_{ctx.session}"
+    samples = st.session_state.setdefault(key, [])
+    feed = read["vol"]
+    observed = feed.snapshot.received_at if feed.snapshot else None
+    if iv["atm"] is not None and observed and not feed.error and not feed_has_delay(feed):
+        if observed.astimezone(ctx.now.tzinfo).date() == ctx.now.date() and not any(t == observed for t, _ in samples):
+            samples.append((observed, iv["atm"]))
+    samples[:] = sorted(samples, key=lambda item: item[0])[-480:]
+    current = samples[-1] if samples else None
+    target = current[0] - timedelta(minutes=minutes) if current else None
+    previous = min((sample for sample in samples if sample[0] <= target),
+                   key=lambda sample: target - sample[0], default=None) if target else None
+    # A sparse provider update cannot establish a short-window comparison.
+    if previous and target - previous[0] > timedelta(seconds=75):
+        previous = None
+    delta = (current[1] - previous[1]) * 100 if previous else None
+    fig = None
+    if samples:
+        fig = go.Figure(go.Scatter(x=[t for t, _ in samples], y=[100*v for _, v in samples],
+                                   mode="lines+markers", line=dict(color=AMBER, width=2), name="Observed ATM IV"))
+        fig.update_xaxes(tickformat="%H:%M", nticks=5)
+        fig.update_yaxes(title="ATM IV (%)", ticksuffix="%")
+        fig = style_chart(fig, 175, legend=False)
+    return delta, fig, current
+
+
 def detector_view(ctx, read, plan, iv):
     move, flow, two = plan["movement"], plan["flow"], plan["flow_confirmation"]
     direction = plan["direction"]
     state = movement_status(plan)
-    def show_stage(number, value, detail):
-        stage(number, value, detail, ctx, read, plan, state)
+    def show_stage(number, value, detail, **kwargs):
+        stage(number, value, detail, ctx, read, plan, state, **kwargs)
     reason = (plan["blocks"] or plan["missing"] or plan["evidence"] or ["Awaiting a completed price and flow read."])[0]
     tint = "long" if plan["status"] == "ENTER LONG" else "short" if plan["status"] == "ENTER SHORT" else (
         "avoid" if plan["status"] == "AVOID" else "ready" if state != "NO TRADE" else "")
@@ -68,13 +98,28 @@ def detector_view(ctx, read, plan, iv):
     show_stage(1, move["market"], f"5m bias {plan['bias'].lower()} · directional price efficiency {efficiency} · "
                               f"same direction on {move['closed_bars']}/2 completed bars.")
     volatility = read["regime"]
+    iv_minutes = st.segmented_control("IV change window", [1, 3, 5], default=3, key="movement_iv_window") or 3
+    iv_watch = st.number_input("IV expansion watch (vol points; exploratory)", min_value=0.1, max_value=5.0,
+                               value=0.3, step=0.1, format="%.1f", key="movement_iv_watch")
+    iv_delta, iv_chart, iv_current = intraday_iv(ctx, read, iv, iv_minutes)
     atr = positive(volatility.get("atr"))
     iv_label = "Selected-expiry ATM IV" if ctx.expiry else "30-day ATM IV"
     detail = (f"5m ATR {amount(atr)} points · ATR versus baseline {amount(volatility.get('atr_ratio'))}×. "
-              f"{iv_label} {ratio_pct(iv['atm'])}.")
+              f"{iv_label} {ratio_pct(iv['atm'])} · {iv_minutes}m IV change "
+              f"{iv_delta:+.2f} vol points." if iv_delta is not None else
+              f"5m ATR {amount(atr)} points · ATR versus baseline {amount(volatility.get('atr_ratio'))}×. "
+              f"{iv_label} {ratio_pct(iv['atm'])} · {iv_minutes}m IV change awaiting two observed snapshots.")
     if move["range_hold"]:
         detail += " Wait for a held range break with expanding activity."
     show_stage(2, plan["regime"] or "Waiting for bars", detail)
+    st.caption((f"IV change over {iv_minutes}m: {iv_delta:+.2f} vol points · "
+                f"{'Above watch level' if iv_delta >= iv_watch else 'Below watch level'}. "
+                f"Example: 14.1% to 14.4% is +0.3 vol points.") if iv_delta is not None
+               else "IV change waiting for two actual source snapshots spanning the selected window.")
+    if iv_chart is not None:
+        plot(iv_chart, "movement_iv_history")
+    st.caption("Price ATR expansion and option IV expansion are different. IV has no universal trigger number; compare the change "
+               "in vol points with the same expiry and confirm with fresh quotes and price/flow.")
 
     gamma = plan["gex"]
     if gamma is None:
@@ -103,7 +148,10 @@ def detector_view(ctx, read, plan, iv):
             st.caption("5m hedge scenarios require current spot, compatible gamma/vanna/charm and five session minutes.")
 
     cvd = plan["cvd"]
-    flow_note = (f"15m net premium {compact(flow.get('recent_net'), currency=True, signed=True)} · "
+    flow_interval = st.segmented_control("Net premium chart interval", ["1m", "3m", "5m"], default="5m",
+                                         key="movement_flow_interval") or "5m"
+    flow_feed = ctx.timeline(interval="1m") if flow_interval != "5m" else None
+    flow_note = (f"Trade Plan 15m net premium {compact(flow.get('recent_net'), currency=True, signed=True)} · "
                  f"acceleration {compact(flow.get('momentum'), currency=True, signed=True)} · "
                  f"{two['count']}/2 completed flow intervals agree.")
     if cvd["delta"] is not None:
@@ -113,7 +161,8 @@ def detector_view(ctx, read, plan, iv):
     else:
         flow_note += f" {cvd['label']} is unavailable." if ctx.ticker not in INDICES else f" {cvd['label']}."
     show_stage(4, ("Aligned" if two["confirmed"] else "Opposing" if direction * flow.get("direction", 0) < 0
-              else "Waiting for agreement"), flow_note)
+              else "Waiting for agreement"), flow_note, flow_interval=flow_interval, flow_feed=flow_feed)
+    st.caption(f"Chart: completed {flow_interval} net premium. Trade Plan confirmation still uses two completed 5m intervals.")
     if two["intervals"]:
         pieces = " · ".join(f"{et_time(row['close'], short=True)} ET {compact(row['net'], currency=True, signed=True)}"
                             for row in two["intervals"])

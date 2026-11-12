@@ -1,3 +1,8 @@
+# Quant Desk 2.6.2
+
+- Added 1m, 3m and 5m net-premium chart choices in Movement Detector. The 3m view aggregates three matching, completed 1m bins; Trade Plan confirmation remains on completed 5m bars.
+- Added 1, 3 and 5-minute observed ATM IV change views and a configurable exploratory expansion watch level in volatility points. Intra-session comparison waits for actual snapshots in the current dashboard session.
+
 # Quant Desk 2.6.1
 
 - Added a compact evidence chart and context-sensitive “Look next” cue below each of the nine Movement Detector checks.

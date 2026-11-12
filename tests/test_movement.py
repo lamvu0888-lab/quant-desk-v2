@@ -125,8 +125,12 @@ def test_movement_navigation_and_spx_proxy(monkeypatch):
     headings = [row.value for row in app.markdown if '<section class="qd-movement-stage">' in row.value]
     assert len(headings) == len(CHECKS)
     assert all(f"<h3>{name}</h3>" in row for name, row in zip(CHECKS, headings))
-    assert len(app.get("plotly_chart")) == len(CHECKS)
+    assert len(app.get("plotly_chart")) >= len(CHECKS)  # separate observed-IV chart
     assert len([row for row in app.markdown if '<div class="qd-next-cue">' in row.value]) == len(CHECKS)
+    app.segmented_control(key="movement_flow_interval").set_value("1m").run()
+    assert not app.exception
+    app.segmented_control(key="movement_iv_window").set_value(5).run()
+    assert not app.exception
     app.button(key="watch_SPX").click().run()
     app.toggle(key="movement_spy_cvd").set_value(True).run()
     assert any("SPY estimated 10m CVD" in row.value for row in app.caption)

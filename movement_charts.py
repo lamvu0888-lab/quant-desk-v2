@@ -81,20 +81,32 @@ def _gamma(read, plan):
                            focus_radius_pct=.015)
 
 
-def _flow(ctx, read, plan):
+def _flow(ctx, read, plan, interval="5m", feed=None):
+    source = feed if feed is not None else read["flow"]
+    width = 1 if interval in ("1m", "3m") else 5
     rows = [(time_or_none(row.get("time")), numeric(row.get("net_premium_usd")))
-            for row in read["flow"].rows]
+            for row in source.rows]
     rows = [(stamp, value) for stamp, value in rows
             if stamp is not None and value is not None and stamp.astimezone(ET).date() == ctx.session
-            and stamp + timedelta(minutes=5) <= ctx.now][-12:]
+            and stamp + timedelta(minutes=width) <= ctx.now]
+    if interval == "3m":
+        from market_session import rth_bounds
+        opened, _ = rth_bounds(ctx.session)
+        by_time = dict(rows)
+        rows = [(stamp, sum(by_time[stamp + timedelta(minutes=i)] for i in range(3)))
+                for stamp, _ in rows if (stamp - opened).total_seconds() % 180 == 0
+                and all(stamp + timedelta(minutes=i) in by_time for i in range(3))
+                and stamp + timedelta(minutes=3) <= ctx.now]
+        width = 3
+    rows = rows[-18:]
     if not rows:
         return None
-    x = [(stamp + timedelta(minutes=5)).astimezone(ET).replace(tzinfo=None) for stamp, _ in rows]
+    x = [(stamp + timedelta(minutes=width)).astimezone(ET).replace(tzinfo=None) for stamp, _ in rows]
     values = [value for _, value in rows]
-    fig = go.Figure(go.Bar(x=x, y=values, name="Completed 5m net premium",
+    fig = go.Figure(go.Bar(x=x, y=values, name=f"Completed {interval} net premium",
                            marker_color=[TEAL if v >= 0 else RED for v in values],
                            hovertemplate="%{x|%H:%M} ET · $%{y:,.0f}<extra>Net premium</extra>"))
-    floor = numeric(plan["flow_confirmation"].get("floor"))
+    floor = numeric(plan["flow_confirmation"].get("floor")) if interval == "5m" else None
     if floor is not None:
         fig.add_hline(y=floor, line_dash="dot", line_color=TEAL)
         fig.add_hline(y=-floor, line_dash="dot", line_color=RED)
@@ -188,12 +200,12 @@ def _quality(ctx, plan):
     return style_chart(fig, 182, legend=False, hover="closest")
 
 
-def chart_for_stage(number, ctx, read, plan):
+def chart_for_stage(number, ctx, read, plan, *, flow_interval="5m", flow_feed=None):
     """Return a chart or None when its input is unavailable."""
     return {1: lambda: _price(ctx, read, plan),
             2: lambda: _volatility(ctx, read),
             3: lambda: _gamma(read, plan),
-            4: lambda: _flow(ctx, read, plan),
+            4: lambda: _flow(ctx, read, plan, flow_interval, flow_feed),
             5: lambda: _price(ctx, read, plan, structure=True),
             6: lambda: _momentum(ctx, read, plan),
             7: lambda: _decision(plan),

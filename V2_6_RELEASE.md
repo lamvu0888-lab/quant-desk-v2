@@ -1,5 +1,9 @@
 # Quant Desk 2.6
 
+## 2.6.2 Short-window options flow and IV
+
+Movement Detector now lets you select 1m, 3m or 5m net premium bars. The 3m chart is built only from three contiguous completed 1m source intervals. The Trade Plan's 15m context and two completed 5m confirmation checks remain separate, and the chart explicitly labels this distinction. The IV selector compares observed selected-expiry ATM IV (30-day ATM for All DTE) over 1, 3 or 5 minutes. The default +0.3 volatility-point expansion watch level is adjustable and exploratory: 14.1% to 14.4% is +0.3 points. Two actual surface snapshots spanning the chosen period are required. The chart cannot reconstruct IV changes from before the dashboard began collecting snapshots in that browser session, and source updates slower than the selected interval leave the comparison waiting.
+
 ## 2.6.1 Movement Detector charts
 
 Every check now includes a compact chart and a **Look next** cue tied to its current status. Market State shows completed 5m closes; Volatility shows recent 5m true range; Dealer Positioning shows current modeled net GEX by strike; Netflow shows completed 5m net premium; Structure shows 1m closes with range and VWAP levels; Momentum shows 5m price change and available native volume; Movement Decision shows completed price and flow checks plus the evidence score; Trade Trigger plots underlying stop, invalidation, trigger and targets; Data Quality shows quote, price, flow and GEX age against freshness limits. Missing or stale evidence does not become a synthetic chart. The charts explain current Trade Plan evidence; they do not change entry rules or backtest results.
