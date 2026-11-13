@@ -3838,5 +3838,20 @@
     "previous_price": 7526.04,
     "id": "move:SPX:2026-11-13:2026-11-13T17:07:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPX",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-13T19:59:00+00:00",
+    "triggered_at_utc": "2026-11-13T19:59:01.041128+00:00",
+    "price": 7557.66,
+    "scope": "2026-11-13",
+    "source": "Tradytics",
+    "direction": "UP",
+    "window": "1m",
+    "change_pct": 0.10941266855644116,
+    "previous_price": 7549.4,
+    "id": "move:SPX:2026-11-13:2026-11-13T19:59:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
