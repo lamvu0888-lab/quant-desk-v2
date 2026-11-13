@@ -3643,5 +3643,20 @@
     "rule_version": "2.6.0",
     "id": "quality:SPX:2026-11-12:2026-11-12T20:07:46.791385+00:00",
     "explanation": "Current regular-session quote."
+  },
+  {
+    "symbol": "SPY",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-13T14:37:00+00:00",
+    "triggered_at_utc": "2026-11-13T14:37:01.946430+00:00",
+    "price": 757.0,
+    "scope": "2026-11-13",
+    "source": "Tradytics",
+    "direction": "DOWN",
+    "window": "5m",
+    "change_pct": -0.3645840188478022,
+    "previous_price": 759.77,
+    "id": "move:SPY:2026-11-13:2026-11-13T14:37:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
