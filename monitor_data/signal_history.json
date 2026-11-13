@@ -3733,5 +3733,20 @@
     "previous_price": 752.13,
     "id": "move:SPY:2026-11-13:2026-11-13T15:15:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPY",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-13T15:33:00+00:00",
+    "triggered_at_utc": "2026-11-13T15:33:00.137470+00:00",
+    "price": 751.04,
+    "scope": "2026-11-13",
+    "source": "Tradytics",
+    "direction": "UP",
+    "window": "5m",
+    "change_pct": 0.307182733659217,
+    "previous_price": 748.74,
+    "id": "move:SPY:2026-11-13:2026-11-13T15:33:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
