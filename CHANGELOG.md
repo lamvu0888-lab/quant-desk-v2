@@ -1,3 +1,9 @@
+# Quant Desk 2.7.1
+
+- Expanded Learn into a chart and tool reference organized by dashboard page.
+- Added day trade, swing trade and LEAPS checklists with worked examples.
+- This dashboard release keeps the 2.7.0 signal rules and Discord worker build.
+
 # Quant Desk 2.7.0
 
 - Both the dashboard and worker can use Webull stock and ETF quotes and completed candles alongside Tradytics flow, index prices and modeled positioning. Batched background requests update prices and candles independently of options.

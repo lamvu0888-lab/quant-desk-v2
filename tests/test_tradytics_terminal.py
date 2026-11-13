@@ -141,3 +141,25 @@ def test_terminal_preview_pages_and_index_switch(monkeypatch):
     app.button(key="learn_open_page").click().run()
     assert app.session_state["desk_page"] == "Overview"
     assert not app.exception
+
+
+def test_learn_chart_catalog_and_holding_periods(monkeypatch):
+    from terminal import PAGES_LABEL
+    from terminal_learn import load_sections
+
+    monkeypatch.delenv("TRADYTICS_API_KEY", raising=False)
+    catalog = load_sections("learn_charts.md")
+    assert set(catalog) == set(PAGES_LABEL) - {"Learn"}
+    assert catalog["Movement Detector"].count("### ") == 9
+
+    app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "terminal.py"), default_timeout=20).run()
+    app.radio(key="desk_page").set_value("Learn").run()
+    for page in catalog:
+        app.selectbox(key="learn_page_topic").set_value(page).run()
+        assert app.expander and not app.exception, page
+
+    app.segmented_control(key="learn_mode").set_value("Trade workflows").run()
+    for period in ("Day trade", "Swing trade", "LEAPS"):
+        app.selectbox(key="learn_holding_period").set_value(period).run()
+        assert not app.exception, period
+        assert any("Worked example" in item.value for item in app.markdown)

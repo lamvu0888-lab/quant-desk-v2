@@ -1,4 +1,10 @@
-# Validation — Quant Desk 2.7.0
+# Validation — Quant Desk 2.7.1
+
+- 98 automated checks passed, including navigation through all 13 Learn chart sections and the three holding-period workflows in Streamlit's test harness.
+- The guide covers the visible Quant Desk terminal. Strategy Lab, History & Replay, and the legacy dashboard are outside this release's Learn scope.
+- Production rollout of this dashboard package is pending.
+
+## Prior validation — Quant Desk 2.7.0
 
 - 97 automated checks passed. Streamlit interaction tests exercised the visible workspace, including Trade Plan and Movement Detector, and checked that Strategy Lab and History & Replay are hidden.
 - Webull and Tradytics fixtures tested one-minute candle completion, ticker identity, timestamp and delay checks, exact-expiry SPXW contract discovery, fresh bids and asks, and IV comparisons within the same strike pair.

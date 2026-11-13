@@ -1,5 +1,6 @@
 """One set of explanations for the Learn library and contextual help."""
 from dataclasses import dataclass
+from pathlib import Path
 
 import streamlit as st
 
@@ -161,39 +162,37 @@ def explanation(topic, key):
         st.caption("See Learn for an example.")
 
 
+def load_sections(filename):
+    text = (Path(__file__).parent / filename).read_text(encoding="utf-8")
+    return dict(section.strip().split("\n", 1) for section in ("\n" + text).split("\n## ") if section.strip())
+
+
 def learn_page(go_to, nav_labels, pages):
-    st.markdown(
-        '<div class="qd-learn-hero"><div class="qd-eyebrow">FIELD GUIDE</div>'
-        '<h2>Read the market with context.</h2><p>Understand what each chart measures, how to read it, and what to check next.</p></div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown("#### A quick session walkthrough")
-    columns = st.columns(3)
-    for column, (title, detail) in zip(columns, (
-        ("Check the session", "Start with the symbol, source timestamp and entry status in Overview."),
-        ("Read the plan", "Open Trade Plan for the trigger, stop, targets and nearby opposing levels."),
-        ("Compare the payoff", "Check IV for the selected expiry and run Monte Carlo to compare entry methods after costs."),
-    )):
-        with column.container(border=True):
-            st.markdown(f"**{title}**")
-            st.caption(detail)
-    guides = {key: guide for key, guide in GUIDES.items() if guide.page in pages}
-    groups = list(dict.fromkeys(guide.group for guide in guides.values()))
-    group = st.selectbox("Topic group", ["All tools", *groups], key="learn_group")
-    topics = [key for key, guide in guides.items() if group in ("All tools", guide.group)]
-    topic = st.selectbox("Tool or chart", topics, format_func=lambda key: GUIDES[key].title, key="learn_topic")
-    guide = GUIDES[topic]
-    with st.container(border=True):
-        st.markdown(f"### {guide.title}")
-        st.caption(guide.group)
-        st.write(guide.meaning)
-        left, right = st.columns(2)
-        with left:
-            st.markdown("**How to read it**")
-            st.write(guide.read)
-        with right:
-            st.markdown("**Worked example**")
-            st.write(guide.example)
-        if guide.source:
-            st.markdown(f"[Read the provider documentation]({guide.source})")
-        st.button(f"Open {nav_labels.get(guide.page, guide.page)}", on_click=go_to, args=(guide.page,), key="learn_open_page")
+    st.subheader("Learn")
+    st.write("Read each chart, check what supports a setup, and build a checklist for your holding period.")
+    mode = st.segmented_control("Guide", ["Charts and tools", "Trade workflows"],
+                                default="Charts and tools", key="learn_mode")
+    if mode == "Trade workflows":
+        workflows = load_sections("learn_workflows.md")
+        st.markdown(
+            "| Trade | Start with | Check before entry |\n"
+            "| --- | --- | --- |\n"
+            "| Day trade | 5m trend, 3m structure, 1m timing | Matching flow, target room, quote spread and session time |\n"
+            "| Swing trade | Daily structure, sector and catalyst | Exact expiry, overnight gap scenarios and IV changes |\n"
+            "| LEAPS | Weekly and daily thesis, time to play out | Far-dated chain, delta, vega, time value and full debit at risk |"
+        )
+        workflow = st.selectbox("Holding period", list(workflows), key="learn_holding_period")
+        st.markdown(f"### {workflow}")
+        st.markdown(workflows[workflow])
+        return
+
+    sections = load_sections("learn_charts.md")
+    available = [page for page in sections if page in pages]
+    page = st.selectbox("Dashboard page", available,
+                        format_func=lambda value: nav_labels.get(value, value), key="learn_page_topic")
+    st.button(f"Open {nav_labels.get(page, page)}", on_click=go_to, args=(page,), key="learn_open_page")
+    entries = sections[page].strip().split("\n### ")
+    for index, entry in enumerate(entries):
+        title, body = entry.removeprefix("### ").split("\n", 1)
+        with st.expander(title, expanded=index == 0):
+            st.markdown(body)

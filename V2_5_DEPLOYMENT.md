@@ -1,4 +1,4 @@
-# Deploy Quant Desk 2.7.0
+# Deploy Quant Desk 2.7.1
 
 Keep your existing repository, Streamlit URL and Render worker. The dashboard entry point remains `terminal.py`. The Render worker runs independently of the dashboard browser.
 
@@ -7,7 +7,7 @@ Keep your existing repository, Streamlit URL and Render worker. The dashboard en
 In Windows PowerShell, set `$src` to the folder containing the **new** `terminal.py` and set `$repo` to your existing Git checkout. The paths below use your previous checkout location and an example Downloads path.
 
 ```powershell
-$src = "$env:USERPROFILE\Downloads\Quant_Desk_V2_7_0_Webull_Tradytics"
+$src = "$env:USERPROFILE\Downloads\Quant_Desk_V2_7_1_Learn_Guide"
 $repo = "E:\Webull autotrade\github\quant_options_agent"
 Set-Location -LiteralPath $repo
 git remote -v
@@ -25,7 +25,7 @@ After the pull succeeds, copy the contents of the extracted folder into the repo
 ```powershell
 if (!(Test-Path -LiteralPath (Join-Path $src "terminal.py") -PathType Leaf) -or
     !(Test-Path -LiteralPath (Join-Path $src "decision_engine.py") -PathType Leaf)) {
-    throw "Set src to the extracted V2.7.0 folder containing terminal.py and decision_engine.py."
+    throw "Set src to the extracted V2.7.1 folder containing terminal.py and decision_engine.py."
 }
 robocopy $src $repo /E /R:2 /W:2 /XD ".git" ".venv" "__pycache__" ".pytest_cache" "monitor_data" /XF ".git" ".env" "secrets.toml" "*.sqlite3*"
 if ($LASTEXITCODE -ge 8) { throw "Folder copy failed. Check the Robocopy output." }
@@ -36,7 +36,7 @@ git diff --cached --name-status
 Confirm that the staged list includes `webull_feed.py`, `option_quotes.py`, `discord_monitor.py`, `terminal.py` and `render.yaml`. Keep `.env`, `.streamlit/secrets.toml`, webhook URLs, and token values out of Git.
 
 ```powershell
-git commit -m "Upgrade Quant Desk to V2.7.0"
+git commit -m "Upgrade Quant Desk to V2.7.1"
 git push origin main
 git log -1 --format="%h %s"
 ```
@@ -45,7 +45,7 @@ If another worker commit lands before your push, rerun `git pull --rebase origin
 
 ## 2. Update the existing Streamlit app
 
-Use the existing app connected to branch `main` and `terminal.py`. After the repository update, look for **Options intelligence · 2.7.0** in the sidebar. If the app keeps displaying the old version, verify its connected repository, branch and main file in the Community Cloud workspace. Check its logs before restarting it.
+Use the existing app connected to branch `main` and `terminal.py`. After the repository update, look for **Options intelligence · 2.7.1** in the sidebar. If the app keeps displaying the old version, verify its connected repository, branch and main file in the Community Cloud workspace. Check its logs before restarting it.
 
 Keep your current **App settings → Secrets** values. Streamlit expects TOML. The following block shows the format. Replace the placeholder values only in the Streamlit settings.
 

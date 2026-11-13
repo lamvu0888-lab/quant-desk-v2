@@ -1,4 +1,4 @@
-# Quant Desk 2.7.0
+# Quant Desk 2.7.1
 
 Quant Desk uses Webull for stock and ETF price timing when configured, and Tradytics for index prices, options flow and modeled dealer exposure. Open any covered ticker in the command bar. The quick buttons open SPY, SPX and QQQ. The dashboard and Discord worker run in analysis and paper mode.
 
@@ -37,7 +37,7 @@ Use the PowerShell steps in the [deployment guide](V2_5_DEPLOYMENT.md) from your
 | Monte Carlo | Compare four entry methods with fill odds, target/stop odds and net modeled P&L. Open Validation for paper outcomes or replay. Price forecast contains the earlier range models. |
 | Scanner | Rank stocks or ETFs by provider premium, volume, IV or dark-pool activity. |
 | TradingView | Generate a Pine indicator or JSON snapshot of GEX strikes, gamma levels, dark-pool levels and support or resistance. |
-| Learn | Choose a topic for the definition, reading guide and worked example. Use its button to open the corresponding page. |
+| Learn | Read chart-by-chart explanations and worked examples, or open the day trade, swing trade and LEAPS workflows. |
 | Data Health | Compare provider quote timestamps and inspect the latest candle, flow interval and SPXW quote coverage. |
 
 Click **?** beside a title for a quick explanation. Click outside or press Esc to close it. **Learn** has examples. Preview downloads carry a demo label.
