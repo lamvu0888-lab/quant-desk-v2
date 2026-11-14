@@ -72,6 +72,131 @@ def price_figure(bars, ticker, timeframe, *, levels=None, overlays=True, orders=
     return style_chart(fig, 395, hover="closest", revision=f"{ticker}:{timeframe}")
 
 
+def _ema(values, period=21):
+    values = [numeric(value) for value in values]
+    values = [value for value in values if value is not None]
+    if not values:
+        return []
+    alpha = 2 / (period + 1)
+    result = [values[0]]
+    for value in values[1:]:
+        result.append(alpha * value + (1 - alpha) * result[-1])
+    return result
+
+
+def integrated_intraday_figure(bars, ticker, *, flow_rows=(), levels=(), gamma_rows=(), cvd_points=(),
+                               flow_interval="5m", max_bars=105):
+    """Readable, explainable intraday view inspired by common dealer dashboards.
+
+    The chart uses only normalized price, volume, flow, and modeled gamma data.
+    It intentionally does not reproduce proprietary cycle/D1 intelligence.
+    """
+    rows = list(bars or [])[-max_bars:]
+    if not rows:
+        return None
+    times = [utc(row["time_utc"]) for row in rows]
+    labels = [stamp.astimezone(ET).strftime("%H:%M") for stamp in times]
+    x = list(range(len(rows)))
+    close = [numeric(row.get("close")) for row in rows]
+    ema = _ema(close, 21)
+    volume = [numeric(row.get("volume")) or 0 for row in rows]
+    vwap = [numeric(row.get("session_vwap")) or numeric(row.get("estimated_session_vwap")) for row in rows]
+    profile_bins = 14
+    low = min(numeric(row.get("low")) for row in rows if numeric(row.get("low")) is not None)
+    high = max(numeric(row.get("high")) for row in rows if numeric(row.get("high")) is not None)
+    step = max((high - low) / profile_bins, (close[-1] or 1) * .0002)
+    profile = [0.0] * profile_bins
+    for row, vol in zip(rows, volume):
+        price = numeric(row.get("close"))
+        if price is None:
+            continue
+        idx = max(0, min(profile_bins - 1, int((price - low) / step)))
+        profile[idx] += vol
+    mids = [low + step * (i + .5) for i in range(profile_bins)]
+
+    specs = [[{}, {}], [{"colspan": 2}, None], [{"colspan": 2}, None]]
+    fig = make_subplots(rows=3, cols=2, specs=specs, shared_xaxes=False, shared_yaxes=False,
+                        column_widths=[.78, .22], row_heights=[.65, .2, .15],
+                        vertical_spacing=.075, horizontal_spacing=.035,
+                        subplot_titles=(None, "Volume profile", "Flow force", None, "CVD", None))
+    fig.add_trace(go.Candlestick(x=x, open=[row["open"] for row in rows], high=[row["high"] for row in rows],
+                                 low=[row["low"] for row in rows], close=close, text=labels,
+                                 increasing=dict(line=dict(color=TEAL, width=1), fillcolor=TEAL),
+                                 decreasing=dict(line=dict(color=RED, width=1), fillcolor=RED),
+                                 name=ticker, showlegend=False), row=1, col=1)
+    if any(value is not None for value in ema):
+        fig.add_trace(go.Scatter(x=x, y=ema, mode="lines", name="EMA 21", line=dict(color=BLUE, width=1.6),
+                                 hovertemplate="%{y:,.2f}<extra>EMA 21</extra>"), row=1, col=1)
+    if any(value is not None for value in vwap):
+        fig.add_trace(go.Scatter(x=x, y=vwap, mode="lines", name="VWAP", line=dict(color=VIOLET, width=1.6),
+                                 hovertemplate="%{y:,.2f}<extra>Session VWAP</extra>"), row=1, col=1)
+    for label, price, color in levels or ():
+        price = numeric(price)
+        if price is not None and low - step * 2 <= price <= high + step * 2:
+            fig.add_hline(y=price, line_color=color, line_dash="dot", opacity=.75,
+                          annotation_text=label, annotation_font_color=color, annotation_font_size=9,
+                          annotation_position="top left", row=1, col=1)
+    fig.add_trace(go.Bar(x=profile, y=mids, orientation="h", marker_color="#9eb3c9", opacity=.8,
+                         name="Volume profile", hovertemplate="%{y:,.2f}<br>%{x:,.0f} shares<extra></extra>",
+                         showlegend=False), row=1, col=2)
+
+    flow = sorted(list(flow_rows or []), key=lambda row: time_or_none(row.get("time")) or utc(rows[0]["time_utc"]))
+    flow_pairs = [(time_or_none(row.get("time")), numeric(row.get("net_premium_usd")) or 0) for row in flow]
+    flow_pairs = [(stamp, value) for stamp, value in flow_pairs if stamp is not None]
+    flow_times = [stamp for stamp, _ in flow_pairs]
+    flow_values = [value for _, value in flow_pairs]
+    if flow_values:
+        positive_flow = [value if value >= 0 else 0 for value in flow_values]
+        negative_flow = [value if value < 0 else 0 for value in flow_values]
+        flow_labels = [stamp.astimezone(ET).strftime("%H:%M") for stamp in flow_times]
+        flow_x = list(range(len(flow_values)))
+        fig.add_trace(go.Bar(x=flow_x, y=positive_flow, marker_color=TEAL, name="Positive flow", showlegend=False,
+                             customdata=flow_labels, hovertemplate="%{customdata}<br>%{y:$,.0f}<extra>Net flow</extra>"), row=2, col=1)
+        fig.add_trace(go.Bar(x=flow_x, y=negative_flow, marker_color=RED, name="Negative flow", showlegend=False,
+                             customdata=flow_labels, hovertemplate="%{customdata}<br>%{y:$,.0f}<extra>Net flow</extra>"), row=2, col=1)
+        force = []
+        for index in range(len(flow_values)):
+            force.append(sum(flow_values[max(0, index - 2): index + 1]))
+        fig.add_trace(go.Scatter(x=flow_x, y=force, mode="lines", line=dict(color=AMBER, width=1.7),
+                                 name=f"Flow force ({flow_interval})", showlegend=False), row=2, col=1)
+        fig.update_xaxes(tickmode="array", tickvals=flow_x[::max(1, len(flow_x)//5)],
+                         ticktext=flow_labels[::max(1, len(flow_labels)//5)], row=2, col=1)
+    else:
+        fig.add_annotation(text="No completed flow", x=.5, y=.5, xref="x3 domain", yref="y2 domain",
+                           showarrow=False, font=dict(color=MUTED), row=2, col=1)
+
+    if cvd_points:
+        points = list(cvd_points)[-max_bars:]
+        cvd_x = list(range(len(points)))
+        cvd_y = [numeric(point.get("cvd")) for point in points]
+        cvd_labels = [et_time(point.get("time"), short=True) for point in points]
+        fig.add_trace(go.Scatter(x=cvd_x, y=cvd_y, mode="lines", line=dict(color=TEAL, width=1.7),
+                                 name="CVD", showlegend=False, customdata=cvd_labels,
+                                 hovertemplate="%{customdata}<br>%{y:,.0f}<extra>CVD</extra>"), row=3, col=1)
+    else:
+        fig.add_annotation(text="CVD unavailable", x=.5, y=.5, xref="x4 domain", yref="y3 domain",
+                           showarrow=False, font=dict(color=MUTED), row=3, col=1)
+
+    if gamma_rows:
+        usable = [(numeric(row.get("strike")), numeric(row.get("net"))) for row in gamma_rows]
+        usable = [(strike, net) for strike, net in usable if strike is not None and net is not None]
+        if usable:
+            fig.add_trace(go.Bar(x=[net for _, net in usable], y=[strike for strike, _ in usable], orientation="h",
+                                 marker_color=[TEAL if net >= 0 else RED for _, net in usable],
+                                 name="Net GEX", showlegend=False, opacity=.55,
+                                 hovertemplate="Strike %{y:,.2f}<br>%{x:$,.0f}<extra>Modeled GEX</extra>"), row=1, col=2)
+    fig.update_xaxes(rangeslider_visible=False, showgrid=False, row=1, col=1,
+                     tickmode="array", tickvals=x[::max(1, len(x)//6)], ticktext=labels[::max(1, len(labels)//6)])
+    fig.update_xaxes(showgrid=False, showticklabels=False, row=1, col=2)
+    fig.update_yaxes(side="right", tickformat=",.2f", row=1, col=1)
+    fig.update_yaxes(showticklabels=True, tickformat=",.2f", row=1, col=2)
+    fig.update_yaxes(tickformat="~s", title="Net premium", row=2, col=1)
+    fig.update_yaxes(tickformat="~s", title="CVD", row=3, col=1)
+    fig.update_layout(barmode="relative", bargap=.12, showlegend=True, legend=dict(orientation="h", y=1.02),
+                      margin=dict(l=8, r=8, t=32, b=8))
+    return style_chart(fig, 650, hover="closest", revision=f"integrated:{ticker}:{flow_interval}")
+
+
 def dated_rows(rows, field="time"):
     return sorted([(ts.astimezone(ET).replace(tzinfo=None), row) for row in rows if (ts := time_or_none(row.get(field)))],
                   key=lambda pair: pair[0])

@@ -1,3 +1,9 @@
+# Quant Desk 2.8.0
+
+- Added an integrated intraday chart with 1m, 3m and 5m controls, EMA 21, VWAP, price levels, volume profile, modeled net GEX, options flow force and CVD.
+- Added a simple directional watch state and “look next” confirmation cue so the chart is readable during fast moves.
+- Excluded proprietary D1/Cycle Intelligence; no unsupported intelligence label is shown.
+
 # Quant Desk 2.7.1
 
 - Expanded Learn into a chart and tool reference organized by dashboard page.

@@ -263,7 +263,7 @@ def main():
     ticker = st.session_state["desk_ticker"]
     with st.sidebar:
         st.markdown('<div class="qd-brand"><div class="qd-mark">◈</div><div><div class="qd-name">Quant Desk</div>'
-                    '<div class="qd-brand-sub">Options intelligence · 2.7.1</div></div></div>', unsafe_allow_html=True)
+                    '<div class="qd-brand-sub">Options intelligence · 2.8.0</div></div></div>', unsafe_allow_html=True)
         st.toggle("Dark mode", key="desk_dark_mode", help="Switch between the light and dark dashboard themes.")
         for col, symbol in zip(st.columns(3, gap="small"), ("SPY", "SPX", "QQQ")):
             col.button(symbol, key=f"watch_{symbol}", width="stretch", on_click=choose_ticker, args=(symbol,))
@@ -320,7 +320,7 @@ def main():
             if not discord_webhook:
                 st.caption("Add DISCORD_WEBHOOK_URL to .env or Streamlit Secrets to enable the test button.")
             st.caption("Tradytics key configured" if key else "Set your Tradytics key in .env")
-        st.caption("Quant Options Agent · 2.7.1")
+        st.caption("Quant Options Agent · 2.8.0")
     preview = mode == "Preview"
     price_provider = "Tradytics" if preview else price_source(ticker, selected_provider, webull_configured)
     paused = bool(paused and not preview)

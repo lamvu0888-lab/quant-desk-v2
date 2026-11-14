@@ -1,4 +1,8 @@
-# Quant Desk 2.7.1
+# Quant Desk 2.8.0
+
+- Added an explainable integrated intraday chart inspired by common dealer dashboards: 1m/3m/5m candles, EMA 21, session VWAP, opening/prior-day and modeled dealer levels, volume profile, net GEX by strike, options flow force and CVD.
+- Added a compact LONG WATCH / SHORT WATCH / RANGE / WAIT readout with a next confirmation step. This is a watch aid, not an automatic trade signal.
+- Deliberately excluded proprietary D1/Cycle Intelligence claims; every displayed component is labeled by its source or model status.
 
 Quant Desk uses Webull for stock and ETF price timing when configured, and Tradytics for index prices, options flow and modeled dealer exposure. Open any covered ticker in the command bar. The quick buttons open SPY, SPX and QQQ. The dashboard and Discord worker run in analysis and paper mode.
 

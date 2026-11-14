@@ -21,7 +21,7 @@ from movement_ui import detector_view, nav_button
 from monte_carlo import forecast, walk_forward
 from option_quotes import age_text, option_rows, quote_age, quote_status, sample_exposure, spread_fraction
 from terminal_charts import (bubble_figure, cvd_figure, dark_figure, exposure_figure, flow_desk_figure, flow_figure,
-                             forecast_figure, money_map_figure, price_figure, series_figure)
+                             forecast_figure, integrated_intraday_figure, money_map_figure, price_figure, series_figure)
 from terminal_data import (INDICES, chart_buckets, completed_boundary, display_exposure_unit, et_time, expiration_date, exposure_obj,
                            feed_has_delay, filter_expiration, first_listed_dte, interval_length, numeric, positive, price_bars, quote_row,
                            same_ticker, scope_timeline, session_rows, snapshot_forecast_gate, source_stamp, status,
@@ -397,6 +397,57 @@ def price_panel(ctx, read):
         return prints, prints_feed
 
 
+def integrated_state(rows, flow_rows):
+    """Turn the combined chart into a simple watch state, not an auto-trade signal."""
+    if not rows:
+        return "WAIT", "Waiting for completed candles and flow data."
+    closes = [numeric(row.get("close")) for row in rows]
+    closes = [value for value in closes if value is not None]
+    if not closes:
+        return "WAIT", "Waiting for a valid completed close."
+    last = closes[-1]
+    alpha = 2 / 22
+    ema = closes[0]
+    for value in closes[1:]:
+        ema = alpha * value + (1 - alpha) * ema
+    vwap = numeric(rows[-1].get("session_vwap")) or numeric(rows[-1].get("estimated_session_vwap"))
+    flow = [numeric(row.get("net_premium_usd")) for row in flow_rows]
+    flow = [value for value in flow if value is not None]
+    force = sum(flow[-3:]) if flow else None
+    if vwap is None or force is None:
+        return "WAIT", "Waiting for a completed VWAP and flow interval before judging direction."
+    if last > ema and last > vwap and force > 0:
+        return "LONG WATCH", "Wait for a hold above the nearest level with positive flow force."
+    if last < ema and last < vwap and force < 0:
+        return "SHORT WATCH", "Wait for a failed retest below the nearest level with negative flow force."
+    return "RANGE / WAIT", "Price and flow are mixed; wait for a clean break with confirmation."
+
+
+def integrated_intraday_panel(ctx, read):
+    with st.container(border=True):
+        panel_header("Integrated intraday chart", "chart", "overview_integrated",
+                     "Price · EMA 21 · VWAP · levels · volume profile · flow force · CVD")
+        interval = st.segmented_control("Decision timeframe", ["1m", "3m", "5m"], default="1m",
+                                        key="integrated_timeframe", label_visibility="collapsed") or "1m"
+        minutes = {"1m": 1, "3m": 3, "5m": 5}[interval]
+        candles = read["candles"]
+        rows = chart_buckets(candles, minutes, estimate_vwap=ctx.price_provider == "Webull")
+        flow = read["flow"] if interval == "5m" else ctx.timeline(interval=interval)
+        levels, _ = level_inputs(ctx, read, strikes=4, show_expected=True)
+        visible_levels = nearest_chart_levels(levels, rows, False)
+        points = share_cvd(candles, ctx.session)
+        gamma_rows = read["gamma"].get("rows", []) if isinstance(read.get("gamma"), dict) else []
+        state, next_step = integrated_state(rows, flow.rows)
+        st.markdown(f"**{state}** · {next_step}")
+        fig = integrated_intraday_figure(rows, ctx.ticker, flow_rows=flow.rows,
+                                         levels=visible_levels, gamma_rows=gamma_rows,
+                                         cvd_points=points, flow_interval=interval)
+        render_chart(fig, "overview_integrated_chart", flow,
+                     "Waiting for completed price and flow observations.")
+        source = "Webull price + Tradytics options/levels" if ctx.price_provider == "Webull" else "Tradytics price, options and levels"
+        st.caption(f"{source} · modeled GEX is an estimate; use this as a confirmation view, not an automatic entry.")
+
+
 def show_session_changes(ctx, read, prints, prints_feed):
     session_key = (ctx.ticker, ctx.scope, ctx.preview, ctx.price_provider, ctx.session)
     snap = {}
@@ -494,6 +545,7 @@ def overview(ctx):
     ])
     if plan["score"] is None and read["reasons"]:
         st.caption(" ".join(read["reasons"]))
+    integrated_intraday_panel(ctx, read)
     left, right = st.columns([2.55, 1], gap="medium")
     with left:
         prints, prints_feed = price_panel(ctx, read)

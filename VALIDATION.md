@@ -1,4 +1,8 @@
-# Validation — Quant Desk 2.7.1
+# Validation — Quant Desk 2.8.0
+
+- Integrated chart uses completed normalized candles, available VWAP fields, current level inputs, modeled gamma rows, completed flow intervals and estimated share CVD.
+- The chart supports 1m/3m/5m views and displays WAIT when required observations are missing; it never converts the watch state into an order.
+- Proprietary D1/Cycle Intelligence is intentionally not reproduced.
 
 - 98 automated checks passed, including navigation through all 13 Learn chart sections and the three holding-period workflows in Streamlit's test harness.
 - The guide covers the visible Quant Desk terminal. Strategy Lab, History & Replay, and the legacy dashboard are outside this release's Learn scope.

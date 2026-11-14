@@ -8,6 +8,7 @@ from streamlit.testing.v1 import AppTest
 
 from terminal_data import chart_buckets, price_bars, quote_row, snapshot_forecast_gate, status
 from terminal_demo import DEMO_AT, DemoStore
+from terminal_views import integrated_state
 from tradytics_feed import BASE_URL, Feed, FeedError, FeedStore, Snapshot, TradyticsClient
 
 
@@ -163,3 +164,14 @@ def test_learn_chart_catalog_and_holding_periods(monkeypatch):
         app.selectbox(key="learn_holding_period").set_value(period).run()
         assert not app.exception, period
         assert any("Worked example" in item.value for item in app.markdown)
+
+
+def test_integrated_chart_watch_state_is_confirmation_only():
+    rows = [{"close": 100 + i * .1, "session_vwap": 100 + i * .05} for i in range(30)]
+    state, cue = integrated_state(rows, [{"net_premium_usd": 50_000}] * 3)
+    assert state == "LONG WATCH"
+    assert "hold" in cue.lower()
+    state, cue = integrated_state(rows[:-1] + [{"close": 95, "session_vwap": 100}],
+                                  [{"net_premium_usd": -50_000}] * 3)
+    assert state == "SHORT WATCH"
+    assert "retest" in cue.lower()
