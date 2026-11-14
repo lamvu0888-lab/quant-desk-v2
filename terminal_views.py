@@ -425,7 +425,7 @@ def integrated_state(rows, flow_rows):
 
 def integrated_intraday_panel(ctx, read):
     with st.container(border=True):
-        panel_header("Integrated intraday chart", "chart", "overview_integrated",
+        panel_header("Integrated intraday chart", "price", "overview_integrated",
                      "Price · EMA 21 · VWAP · levels · volume profile · flow force · CVD")
         interval = st.segmented_control("Decision timeframe", ["1m", "3m", "5m"], default="1m",
                                         key="integrated_timeframe", label_visibility="collapsed") or "1m"
