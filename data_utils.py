@@ -1,6 +1,7 @@
 """Validated Webull response handling. Never fill missing market values with zero."""
 from __future__ import annotations
 import math
+import re
 from datetime import datetime, timezone
 
 UTC = timezone.utc
@@ -105,4 +106,10 @@ def safe_error(exc):
         return 'Webull API token authorization is incomplete or expired. Approve it in the Webull OpenAPI console and reconnect.'
     if isinstance(exc, DataError):
         return str(exc)[:350]
+    if type(exc).__name__ == 'ServerException':
+        status_getter = getattr(exc, 'get_http_status', None)
+        status = status_getter() if callable(status_getter) else None
+        safe_code = str(code) if isinstance(code, str) and re.fullmatch(r'[A-Z0-9_]{2,60}', code) else 'UNKNOWN'
+        safe_status = f' HTTP {status}' if isinstance(status, int) and 100 <= status <= 599 else ''
+        return f'Webull API{safe_status} ({safe_code}). Check the endpoint and OpenAPI access in Data Health.'
     return f'{type(exc).__name__}: Webull connection failed. Check network, API credentials and OpenAPI permissions locally.'

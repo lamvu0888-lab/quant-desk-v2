@@ -1,3 +1,8 @@
+# Validation — Quant Desk 2.8.3
+
+- Added regression checks for a failed, empty Webull SPX history, retained cached bars, missing Tradytics access, and sanitized SDK server errors. The dashboard fallback is visual only; it does not silently change the cloud worker's signal source.
+- The screenshot alone cannot identify whether the deployed failure is a network issue, an SDK/server error, or a different OpenAPI entitlement. Check Data Health after deployment for the HTTP status and code.
+
 # Validation — Quant Desk 2.8.2
 
 - Direct Webull connector calls on November 14, 2026 returned an SPX index snapshot with symbol `SPX` and instrument ID `913354362`, and completed M1 bars with the same instrument ID and `delay_minutes: 0`, using `US_INDEX`. This verifies the connected Webull access, not the separate OpenAPI credentials in Streamlit or Render.

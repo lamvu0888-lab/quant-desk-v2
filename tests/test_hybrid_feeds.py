@@ -173,6 +173,32 @@ def test_spx_dashboard_uses_webull_price_and_leaves_index_volume_blank():
     assert all(trace.name != "Volume profile" for trace in fig.data)
 
 
+def test_webull_server_error_is_safe_and_identifiable():
+    from data_utils import safe_error
+
+    class ServerException(Exception):
+        def get_http_status(self): return 417
+        def get_error_code(self): return "UNSUPPORTED_CATEGORY"
+        def __str__(self): return "WEBULL_APP_SECRET=must-not-appear"
+
+    message = safe_error(ServerException())
+    assert "417" in message and "UNSUPPORTED_CATEGORY" in message
+    assert "must-not-appear" not in message
+
+
+def test_spx_chart_falls_back_only_after_failed_empty_webull_history():
+    from terminal import view_price_source
+    from tradytics_feed import FeedError
+
+    broken = Feed(error=FeedError("WEBULL UNAVAILABLE", "Webull index rejected"))
+    assert view_price_source("SPX", "Webull", {"history": broken}, True) == "Tradytics"
+    assert view_price_source("SPX", "Webull", {"history": broken}, False) == "Webull"
+    assert view_price_source("SPY", "Webull", {"history": broken}, True) == "Webull"
+    assert view_price_source("SPX", "Webull", {"history": Feed()}, True) == "Webull"
+    cached = Feed(Snapshot({"candles": [{"close": 7500}]}, {}, DEMO_AT), broken.error)
+    assert view_price_source("SPX", "Webull", {"history": cached}, True) == "Webull"
+
+
 def test_new_receipt_cannot_refresh_delayed_or_sandbox_prices():
     inputs = synthetic_inputs()
     now = inputs["now"]

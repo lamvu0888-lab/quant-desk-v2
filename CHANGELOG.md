@@ -1,3 +1,8 @@
+# Quant Desk 2.8.3
+
+- If Webull SPX candle requests fail with no cached bars, the dashboard shows clearly labeled Tradytics SPX candles instead of a blank chart. The Discord monitor retains its live-data gate.
+- Webull server failures now show a safe HTTP status and error code in Data Health without printing signed requests or credentials.
+
 # Quant Desk 2.8.2
 
 - Verified SPX `US_INDEX` snapshot and one-minute candle responses directly through Webull and connected them to Auto, dashboard charts and the Discord monitor's price path.

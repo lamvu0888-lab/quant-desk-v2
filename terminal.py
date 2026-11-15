@@ -26,7 +26,7 @@ from option_quotes import age_text, quote_age
 from webull_feed import INDEX_SYMBOLS, WebullFeedStore, price_source
 
 UTC = timezone.utc
-VERSION = "2.8.2"
+VERSION = "2.8.3"
 WEBULL_CHART_PAGES = {"Overview", "Movement Detector"}
 PAGES_LABEL = {
     "Overview": ("Market overview", "Entry timing, market direction, flow and nearby levels.", "◈"),
@@ -231,6 +231,15 @@ def market_strip(ctx):
     st.markdown('<div class="qd-market-strip">' + ''.join(chunks) + '</div>', unsafe_allow_html=True)
 
 
+def view_price_source(ticker, selected, prices, tradytics_configured):
+    """Keep a read-only SPX chart available after a failed Webull candle request."""
+    history = (prices or {}).get("history")
+    if (ticker == "SPX" and selected == "Webull" and tradytics_configured and history is not None
+            and history.error and not history.obj.get("candles")):
+        return "Tradytics"
+    return selected
+
+
 def main():
     st.set_page_config(page_title="Quant Desk | Options Intelligence", page_icon="◈", layout="wide", initial_sidebar_state="auto")
     st.session_state.setdefault("desk_dark_mode", False)
@@ -361,8 +370,12 @@ def main():
             st.rerun()
         prices = (webull.prices([ticker], paused=paused).get(ticker) if webull and
                   (price_provider == "Webull" or page == "Data Health") else None)
+        effective_provider = view_price_source(ticker, price_provider, prices, bool(key))
+        if effective_provider != price_provider:
+            st.warning("Webull SPX candles are unavailable. Showing Tradytics SPX price and candles for this view. "
+                       "Live alerts still wait for valid Webull data; check Data Health or choose Tradytics in Feed controls.")
         ctx = Desk(ticker, DEMO_AT if preview else datetime.now(UTC), demo(ticker) if preview else store,
-                   preview, paused, dte, bool(key), price_provider, config_error=config_error, journal=journal,
+                   preview, paused, dte, bool(key), effective_provider, config_error=config_error, journal=journal,
                    shared=shared, webull_store=webull, webull_prices=prices)
         if expiry_mode == "Nearest listed":
             listing = ctx.get("expirations", symbol=ticker)
