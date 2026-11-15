@@ -100,3 +100,9 @@ Real-data exercise through the connected Webull service:
 - The exercise occurred before the November 4 regular-session open. No historical replay was labeled as a live forecast.
 
 Not verified here: the user's local SDK authentication/entitlements, full production multi-expiry chain completion, Windows-native double-click startup, or pixel-level rendering in a desktop browser. A browser executable could not be downloaded in this environment; UI validation used Streamlit's application test harness. No claims of forecast accuracy, backtested profits, or live trading readiness are made.
+# Validation — Quant Desk 2.8.4
+
+- ES/MES parsing and chart trace tests, plus the full 111-test suite pass locally.
+- The SDK has futures instrument, bars, and footprint methods. Connected ES one-minute bars reported zero delay; connected footprint access was denied on the available credential. A user's approved footprint entitlement still needs checking after deployment. The CVD line stays absent without explicit zero-delay buy and sell totals.
+- No ES/MES data changes SPX prices, Trade Plan, the Discord monitor, or automatic order execution.
+

@@ -141,3 +141,9 @@ Earlier version notes are retained under `docs/history/`.
 - A flow bar now displays its completed interval close instead of its interval start. The label also shows how long since the app received the latest API response, separately from the provider's source time.
 - Exposure older than two minutes and flow older than 90 seconds are labeled AGED instead of RECENT. Charts may still display an older observation with its timestamp; an API check does not create a newer provider observation.
 
+# Quant Desk 2.8.4
+
+- Added an ES/MES selector to the SPX integrated chart. Webull futures one-minute bars supply contract volume; a footprint CVD line appears only with explicit zero-delay buy and sell totals from the same contract and minute. No futures price replaces SPX index price.
+- Automatically selects the nearest active contract and labels its symbol. Futures activity stays out of the trade and Discord signal gates.
+- Limited the integrated chart price scale to nearby levels so distant walls and stale quotes do not flatten intraday candles.
+

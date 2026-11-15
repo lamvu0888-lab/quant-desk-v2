@@ -1,4 +1,6 @@
-# Quant Desk 2.8.3
+# Quant Desk 2.8.4
+
+On SPX, the integrated chart offers **ES / MES / Off**. It reads the nearest active Webull futures contract's completed one-minute volume bars, with contract volume on its own panel. If your paper OpenAPI credentials include the futures footprint entitlement and Webull explicitly reports zero delay with matching buy and sell totals, that panel also plots futures CVD. It does not create SPX share volume or feed the trade alerts. Approve the futures market-data permission for the same API credentials used by the deployed app. If the footprint entitlement is missing, the chart shows volume only and says CVD unavailable. Contract rollover is automatic.
 
 - Overview and Movement Detector show a gold quote marker with a source timestamp. On supported Webull symbols the regular-session dashboard targets a two-second quote poll by default. An existing `QUOTE_REFRESH_SECONDS` setting overrides the default. The shared budget and provider cooldowns still apply.
 - Movement Detector uses a dropdown for the IV expansion threshold and includes reading guidance below each chart.

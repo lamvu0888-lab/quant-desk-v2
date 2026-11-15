@@ -108,7 +108,8 @@ def rolling_chart_flow(rows, interval):
 
 
 def integrated_intraday_figure(bars, ticker, timeframe, *, flow_rows=(), levels=(), gamma_rows=(),
-                               gamma_unit="", cvd_points=(), profile="Volume", quote=None):
+                               gamma_unit="", cvd_points=(), profile="Volume", quote=None,
+                               proxy_points=(), proxy_label=None):
     """Align completed price, flow and share CVD on the same market clock."""
     rows = bars[-105:]
     if not rows:
@@ -124,10 +125,11 @@ def integrated_intraday_figure(bars, ticker, timeframe, *, flow_rows=(), levels=
     window_minutes = 3 * (width // timedelta(minutes=1))
     flow_title = f"{timeframe} net premium · {window_minutes}m rolling sum"
     profile_title = "Volume profile" if profile == "Volume" else "Modeled net GEX"
-    fig = make_subplots(rows=3, cols=2, specs=[[{}, {}], [{}, None], [{}, None]],
+    fig = make_subplots(rows=3, cols=2, specs=[[{}, {}], [{}, None], [{"secondary_y": True}, None]],
                         shared_xaxes=True, shared_yaxes=True, column_widths=[.76, .24],
                         row_heights=[.64, .19, .17], vertical_spacing=.09, horizontal_spacing=.025,
-                        subplot_titles=(f"{ticker} · {timeframe} closes", profile_title, flow_title, "Estimated share CVD"))
+                        subplot_titles=(f"{ticker} · {timeframe} closes", profile_title, flow_title,
+                                        f"{proxy_label} futures activity (contracts)" if proxy_label in ("ES", "MES") else "Estimated share CVD"))
     fig.add_trace(go.Candlestick(x=times, open=[row["open"] for row in rows], high=[row["high"] for row in rows],
                                  low=[row["low"] for row in rows], close=[row["close"] for row in rows],
                                  increasing=dict(line=dict(color=TEAL, width=1), fillcolor=TEAL),
@@ -140,15 +142,19 @@ def integrated_intraday_figure(bars, ticker, timeframe, *, flow_rows=(), levels=
         if any(value is not None for value in values):
             fig.add_scatter(x=times, y=values, name=label, line=dict(color=color, width=1.6, dash=dash),
                             hovertemplate="%{x|%H:%M} ET · %{y:,.2f}<extra>%{fullData.name}</extra>", row=1, col=1)
-    for name, price, color in levels:
+    low, high = min(row["low"] for row in rows), max(row["high"] for row in rows)
+    pad = max((high - low) * .35, rows[-1]["close"] * .003)
+    nearby_levels = [(name, price, color) for name, price, color in levels
+                     if low - pad <= price <= high + pad]
+    for name, price, color in nearby_levels:
         fig.add_hline(y=price, line_color=color, line_dash="dot",
                       annotation_text=f"{name} {amount(price)}", annotation_font_color=color,
                       annotation_font_size=9, annotation_position="top left", row=1, col=1)
     if quote and quote["at"] >= last_close:
         fig.add_trace(quote_marker(quote, clock(quote["at"])), row=1, col=1)
-        fig.add_hline(y=quote["price"], line_color=AMBER, line_dash="dot", opacity=.55, row=1, col=2)
+        if low - pad <= quote["price"] <= high + pad:
+            fig.add_hline(y=quote["price"], line_color=AMBER, line_dash="dot", opacity=.55, row=1, col=2)
 
-    low, high = min(row["low"] for row in rows), max(row["high"] for row in rows)
     if profile == "Volume":
         bin_count = 14
         step = (high - low) / bin_count if high > low else low * .0002
@@ -166,8 +172,8 @@ def integrated_intraday_figure(bars, ticker, timeframe, *, flow_rows=(), levels=
             fig.add_annotation(text="No share<br>volume", x=.5, y=.5, xref="x domain", yref="y domain",
                                showarrow=False, row=1, col=2)
     else:
-        prices = [low, high, *(price for _, price, _ in levels)]
-        if quote:
+        prices = [low, high, *(price for _, price, _ in nearby_levels)]
+        if quote and low - pad <= quote["price"] <= high + pad:
             prices.append(quote["price"])
         pad = max((high - low) * .15, rows[-1]["close"] * .0004)
         lower, upper = min(prices) - pad, max(prices) + pad
@@ -196,19 +202,32 @@ def integrated_intraday_figure(bars, ticker, timeframe, *, flow_rows=(), levels=
         fig.add_annotation(text="Waiting for completed flow", x=.5, y=.5, xref="x domain", yref="y domain",
                            showarrow=False, row=2, col=1)
     points = [(clock(stamp), point["cvd"]) for point in cvd_points if (stamp := utc(point["time"])) > first]
-    if points:
+    if proxy_points:
+        futures = [(clock(stamp), p) for p in proxy_points if (stamp := utc(p["time"])) > first and stamp <= last_close]
+        fig.add_bar(x=[t for t, _ in futures], y=[p['volume'] for _, p in futures],
+                    marker_color=BLUE, name=f"{proxy_label} volume", showlegend=False,
+                    hovertemplate="%{x|%H:%M} ET · %{y:,.0f} contracts<extra>Futures volume</extra>", row=3, col=1)
+        delta_points = [(t, p['cvd']) for t, p in futures if p.get('cvd') is not None]
+        if delta_points:
+            fig.add_scatter(x=[t for t, _ in delta_points], y=[v for _, v in delta_points], mode="lines",
+                            line=dict(color=TEAL, width=2), name=f"{proxy_label} footprint CVD",
+                            hovertemplate="%{x|%H:%M} ET · %{y:,.0f} contracts<extra>Futures CVD</extra>",
+                            row=3, col=1, secondary_y=True)
+    elif points:
         cvd_times, cvd_values = zip(*points)
         fig.add_scatter(x=cvd_times, y=cvd_values, mode="lines", line=dict(color=TEAL, width=1.7),
                         name="Estimated share CVD", showlegend=False,
                         hovertemplate="%{x|%H:%M} ET · %{y:,.0f} shares<extra>Estimated share CVD</extra>", row=3, col=1)
     else:
-        fig.add_annotation(text="Share CVD unavailable", x=.5, y=.5, xref="x domain", yref="y domain",
+        fig.add_annotation(text="Futures activity waiting" if proxy_label in ("ES", "MES") else "Share CVD unavailable",
+                           x=.5, y=.5, xref="x domain", yref="y domain",
                            showarrow=False, row=3, col=1)
     fig.update_xaxes(rangeslider_visible=False, type="date", row=1, col=1)
     fig.update_xaxes(showgrid=False, showticklabels=False, fixedrange=True, row=1, col=2)
     fig.update_xaxes(type="date", row=2, col=1)
     fig.update_xaxes(type="date", tickformat="%H:%M", nticks=5, title="Time (ET)", row=3, col=1)
     fig.update_yaxes(tickformat=",.2f", row=1, col=1)
+    fig.update_yaxes(range=[low - pad, high + pad], row=1, col=1)
     fig.update_yaxes(showticklabels=False, showgrid=False, row=1, col=2)
     fig.update_yaxes(tickformat="~s", tickprefix="$", nticks=3, row=2, col=1)
     fig.update_yaxes(tickformat="~s", nticks=3, row=3, col=1)

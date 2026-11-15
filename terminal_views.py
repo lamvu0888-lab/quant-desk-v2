@@ -455,6 +455,20 @@ def integrated_intraday_panel(ctx, read):
             profile = right.segmented_control("Side profile", ["Volume", "GEX"], default="Volume",
                                               key=f"integrated_profile_{ctx.ticker}") or "Volume"
         chart_quote_caption(ctx)
+        proxy_points, proxy_label = [], "ES"
+        if ctx.ticker == "SPX":
+            proxy_label = st.selectbox("Futures activity proxy", ["ES", "MES", "Off"], key="spx_futures_proxy",
+                                       help="Separate futures contract volume; SPX has no share tape. CVD requires footprint access.")
+            if proxy_label != "Off" and ctx.webull_store:
+                proxy = ctx.webull_store.futures_activity(proxy_label, ctx.now, ctx.session, paused=ctx.paused)
+                proxy_points = proxy.obj.get("points", [])
+                contract = proxy.obj.get("contract", proxy_label)
+                st.caption(f"{contract} futures volume (contracts), not SPX share volume · "
+                           f"{'Footprint CVD' if any(p.get('cvd') is not None for p in proxy_points) else 'CVD unavailable without usable footprint data'}.")
+                if proxy.error:
+                    st.caption(f"Futures proxy unavailable: {proxy.error}")
+                elif proxy.loading and not proxy_points:
+                    st.caption("Loading Webull futures activity. This does not replace the SPX price feed.")
         minutes = {"1m": 1, "3m": 3, "5m": 5}[interval]
         width = minutes * MINUTE
         candles = read["candles"]
@@ -488,7 +502,8 @@ def integrated_intraday_panel(ctx, read):
         fig = integrated_intraday_figure(rows, ctx.ticker, interval, flow_rows=flows,
                                          levels=visible_levels, gamma_rows=gamma_rows,
                                          gamma_unit=display_exposure_unit(gamma), cvd_points=points,
-                                         profile=profile, quote=ctx.chart_quote)
+                                         profile=profile, quote=ctx.chart_quote,
+                                         proxy_points=proxy_points, proxy_label=proxy_label)
         render_chart(fig, "overview_integrated_chart", read["bars"], "Waiting for completed candles in this session.")
         provider = "Preview" if ctx.preview else ctx.price_provider
         flow_provider = "Preview" if ctx.preview else "Tradytics"
@@ -514,6 +529,10 @@ def integrated_intraday_panel(ctx, read):
                         "Look for multiple bars agreeing with the move and a rolling line that continues in that direction.")
             st.markdown("**Estimated share CVD.** Compare its slope with price. If price makes a new high while CVD falls, "
                         "watch the retest for signs of a weak break. The estimate uses one-minute candle direction and share volume.")
+            st.markdown("**SPX futures proxy.** ES or MES bars show contract volume from Webull, in a separate panel. "
+                        "Footprint CVD appears only when your API entitlement returns current buy and sell contract totals. "
+                        "Compare its direction with SPX price, but remember futures contracts are a related market, not SPX shares. "
+                        "If the CVD line is missing, volume alone does not establish buyer or seller initiative.")
 
 
 def show_session_changes(ctx, read, prints, prints_feed):

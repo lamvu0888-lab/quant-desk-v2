@@ -9,6 +9,8 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 
 from data_utils import BudgetPause, DataError, reported_delay, safe_error
+from futures_proxy import activity, choose_contract
+from data_utils import records
 from live_chain import contract_symbol, occ_info, unwrap
 from market_session import ET, rth_bounds, session_state
 from my_webull_adapter import WebullSDKAdapter, category_for, normalize_candles, normalize_quote
@@ -68,7 +70,7 @@ class WebullFeedStore:
         self._adapter_lock = threading.Lock()
         self._lock = threading.RLock()
         self._closed = False
-        self._entries = {kind: OrderedDict() for kind in ("quote", "history", "options")}
+        self._entries = {kind: OrderedDict() for kind in ("quote", "history", "options", "futures")}
         self._category_hints = OrderedDict()
         self._pending = {kind: 0 for kind in self._entries}
         self._pools = {kind: ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"webull-{kind}")
@@ -156,6 +158,8 @@ class WebullFeedStore:
         opened = session_state(now)["status"] == "OPEN"
         if kind == "options":
             return OPTION_REFRESH_SECONDS if opened else 60
+        if kind == "futures":
+            return 65 if opened else 180
         if kind == "quote":
             return self.quote_poll_seconds if opened else 30
         if not opened:
@@ -185,6 +189,39 @@ class WebullFeedStore:
                     for ticker, entry in entries.items():
                         result[ticker][kind] = entry.feed
         return result
+
+    def futures_activity(self, root, now, day, *, paused=False):
+        key = (root, str(day))
+        with self._lock:
+            entry = self._entry("futures", key)
+            if not (paused or self._closed or entry.feed.loading) and time.monotonic() >= entry.due:
+                self._schedule("futures", {key: entry}, self._read_futures, key)
+            return entry.feed
+
+    def _read_futures(self, key):
+        root, day = key
+        client = self._client()
+        instruments = client.request("Futures contracts", client.data.instrument.get_futures_instrument,
+                                     self.budget, category="US_FUTURES", code=root, status="OC")
+        contract = choose_contract(records(instruments), root, day)
+        bars = client.request("Futures candles", client.data.futures_market_data.get_futures_history_bars,
+                              self.budget, symbols=contract, category="US_FUTURES", timespan="M1",
+                              count="420", real_time_required=False)
+        footprint = None
+        try:
+            footprint = client.request("Futures footprint", client.data.futures_market_data.get_futures_footprint,
+                                       self.budget, symbols=contract, category="US_FUTURES", timespan="M1",
+                                       count="420", real_time_required=False, trading_sessions="RTH")
+        except (DataError, BudgetPause):
+            pass
+        try:
+            points = activity(bars, footprint, contract, datetime.now(UTC), day)
+        except DataError:
+            if footprint is None:
+                raise
+            points = activity(bars, None, contract, datetime.now(UTC), day)
+        return {key: Snapshot({"contract": contract, "points": points},
+                              {"symbol": contract, "delay_minutes": reported_delay(bars, contract)}, datetime.now(UTC))}
 
     def _read_prices(self, kind, category, previous):
         client = self._client()
