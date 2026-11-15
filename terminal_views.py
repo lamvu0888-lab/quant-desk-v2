@@ -11,22 +11,24 @@ import pandas as pd
 import streamlit as st
 
 from data_utils import DataError, field, utc
+from decision_flow import price_quote_issues, usable_exposure
 from decision_ui import (command_panel, dashboard_decision, dealer_center, iv_center, journal_panel, option_entry_panel,
                          probability_center, validation_view)
-from desk_analytics import (FIVE_MINUTES, MINUTE, candles_on, flow_read, mark_orders, order_rows, price_levels,
+from desk_analytics import (FIVE_MINUTES, MINUTE, PriceLevel, candles_on, flow_read, mark_orders, order_rows, price_levels,
                             realized_regime, replay_setups, session_window, setup_read, share_cvd, signed_moves)
 from market_session import ET, active_session, rth_bounds, session_state
 from movement_detector import early_price_move
 from movement_ui import detector_view, nav_button
 from monte_carlo import forecast, walk_forward
 from option_quotes import age_text, option_rows, quote_age, quote_status, sample_exposure, spread_fraction
-from terminal_charts import (bubble_figure, cvd_figure, dark_figure, exposure_figure, flow_desk_figure, flow_figure,
-                             forecast_figure, integrated_intraday_figure, money_map_figure, price_figure, series_figure)
-from terminal_data import (INDICES, chart_buckets, completed_boundary, display_exposure_unit, et_time, expiration_date, exposure_obj,
+from terminal_charts import (bubble_figure, cvd_figure, dark_figure, ema_series, exposure_figure, flow_desk_figure, flow_figure,
+                             forecast_figure, integrated_intraday_figure, money_map_figure, price_figure,
+                             rolling_chart_flow, series_figure)
+from terminal_data import (INDICES, chart_buckets, chart_flow_rows, completed_boundary, display_exposure_unit, et_time, expiration_date, exposure_obj,
                            feed_has_delay, filter_expiration, first_listed_dte, interval_length, numeric, positive, price_bars, quote_row,
                            same_ticker, scope_timeline, session_rows, snapshot_forecast_gate, source_stamp, status,
                            ticker_symbol, time_or_none)
-from terminal_style import (AMBER, BLUE, RED, TEAL, VIOLET, amount, compact, empty, esc, feed_stamp, kpis,
+from terminal_style import (AMBER, BLUE, RED, TEAL, VIOLET, amount, chart_quote_caption, compact, empty, esc, feed_stamp, kpis,
                             panel_header, plot, ratio_pct, signed_pct)
 from tradytics_feed import ENDPOINTS, Feed, FeedError
 from monitor_storage import SharedStore
@@ -108,10 +110,27 @@ class Desk:
             q = self.webull_price_feed("quote").obj
             price = self.webull_quality.get("price")
             previous = positive(q.get("pre_close"))
-            return {"price": self.webull_quality.get("price"), "name": self.ticker,
+            return {"price": price, "name": self.ticker,
                     "previous_close": previous, "price_at": self.webull_quality.get("price_time_utc"),
                     "change_pct": 100 * (price / previous - 1) if price and previous else None}
         return quote_row(self.quote_feed(), self.ticker)
+
+    @cached_property
+    def chart_quote(self):
+        """A same-session, fresh underlying observation for display between closes."""
+        quote = self.quote()
+        price = positive(quote.get("price"))
+        observed = time_or_none(field(quote, "price_at", "time"))
+        market = session_state(self.now)
+        opened = time_or_none(market["open_utc"])
+        if (market["status"] != "OPEN" or not opened or not observed or observed < opened
+                or price is None or price_quote_issues(self, quote)):
+            return None
+        if self.price_provider == "Webull" and feed_has_delay(self.webull_price_feed("quote")):
+            return None
+        source = "Preview" if self.preview else self.price_provider
+        basis = self.webull_quality["price_kind"] if self.price_provider == "Webull" else "Reported price"
+        return {"price": price, "at": observed, "source": source, "basis": basis}
 
     @cached_property
     def _current_history(self):
@@ -308,15 +327,21 @@ def read_workspace(ctx, *, include_flow=True, prices=None, timeline=None):
             "regime": regime, "plan": plan, "levels": levels, "reasons": reasons}
 
 
+def chart_exposure(ctx, read):
+    """Allow a same-session snapshot after the close and require fresh GEX during trading."""
+    gamma_feed = read["gamma_feed"]
+    gamma_stamp = source_stamp("exposure", gamma_feed, ctx.ticker)
+    if session_state(ctx.now)["status"] == "OPEN":
+        return usable_exposure(ctx, "gamma", gamma_feed)
+    gamma_current = (isinstance(gamma_stamp, datetime) and gamma_stamp.astimezone(ET).date() == ctx.session
+                     and gamma_stamp <= ctx.now)
+    return read["gamma"] if gamma_current and not gamma_feed.error and not feed_has_delay(gamma_feed) else {}
+
+
 def level_inputs(ctx, read, *, strikes=0, dark_count=3, show_expected=False):
     """Keep a late or missing provider snapshot out of today's chart layers."""
     spot = positive(ctx.quote().get("price")) or (read["buckets"][-1]["close"] if read["buckets"] else None)
-    gamma_feed = read["gamma_feed"]
-    gamma_stamp = source_stamp("exposure", gamma_feed, ctx.ticker)
-    in_session = session_state(ctx.now)["status"] == "OPEN"
-    gamma_current = (isinstance(gamma_stamp, datetime) and gamma_stamp.astimezone(ET).date() == ctx.session
-                     and gamma_stamp <= ctx.now and (not in_session or (ctx.now - gamma_stamp).total_seconds() <= 420))
-    gamma = read["gamma"] if gamma_current and not gamma_feed.error and not feed_has_delay(gamma_feed) else {}
+    gamma = chart_exposure(ctx, read)
     dark = ctx.get("dark_levels", symbol=ctx.ticker, window=5, limit=30) if ctx.ticker not in INDICES and dark_count else Feed()
     dark_day = source_stamp("dark_levels", dark, ctx.ticker)
     dark_ok = dark.snapshot and not dark.error and (dark_day is None or dark_day == ctx.session)
@@ -379,7 +404,8 @@ def price_panel(ctx, read):
             marks = mark_orders([order for order in prints if start <= order["stamp"] < end],
                                 candles_on(candles, ctx.session), 14 if labels else 32)
         fig = (price_figure(rows, ctx.ticker, timeframe, levels=nearest_chart_levels(levels, rows, more_levels),
-                            overlays=overlays and not daily, orders=marks, order_labels=labels) if rows else None)
+                            overlays=overlays and not daily, orders=marks, order_labels=labels,
+                            quote=ctx.chart_quote if not daily else None) if rows else None)
         render_chart(fig, "price_action_chart", feed, "Waiting for completed candles in this timeframe.")
         if using_webull:
             close = read["minute_close"]
@@ -397,25 +423,17 @@ def price_panel(ctx, read):
         return prints, prints_feed
 
 
-def integrated_state(rows, flow_rows):
+def integrated_state(rows, force):
     """Turn the combined chart into a simple watch state, not an auto-trade signal."""
     if not rows:
-        return "WAIT", "Waiting for completed candles and flow data."
-    closes = [numeric(row.get("close")) for row in rows]
-    closes = [value for value in closes if value is not None]
-    if not closes:
-        return "WAIT", "Waiting for a valid completed close."
-    last = closes[-1]
-    alpha = 2 / 22
-    ema = closes[0]
-    for value in closes[1:]:
-        ema = alpha * value + (1 - alpha) * ema
-    vwap = numeric(rows[-1].get("session_vwap")) or numeric(rows[-1].get("estimated_session_vwap"))
-    flow = [numeric(row.get("net_premium_usd")) for row in flow_rows]
-    flow = [value for value in flow if value is not None]
-    force = sum(flow[-3:]) if flow else None
+        return "WAIT", "Waiting for completed candles in this session."
+    latest = rows[-1]
+    last, ema = latest["close"], latest["ema21"]
+    vwap = latest.get("session_vwap") or latest.get("estimated_session_vwap")
+    if ema is None:
+        return "WAIT", "Waiting for 21 completed candles to calculate EMA 21."
     if vwap is None or force is None:
-        return "WAIT", "Waiting for a completed VWAP and flow interval before judging direction."
+        return "WAIT", "Waiting for VWAP and three consecutive flow intervals aligned with price."
     if last > ema and last > vwap and force > 0:
         return "LONG WATCH", "Wait for a hold above the nearest level with positive flow force."
     if last < ema and last < vwap and force < 0:
@@ -425,27 +443,77 @@ def integrated_state(rows, flow_rows):
 
 def integrated_intraday_panel(ctx, read):
     with st.container(border=True):
-        panel_header("Integrated intraday chart", "price", "overview_integrated",
-                     "Price · EMA 21 · VWAP · levels · volume profile · flow force · CVD")
-        interval = st.segmented_control("Decision timeframe", ["1m", "3m", "5m"], default="1m",
-                                        key="integrated_timeframe", label_visibility="collapsed") or "1m"
+        panel_header("Integrated intraday chart", "intraday", "overview_integrated",
+                     f"Price, flow and share volume · {ctx.session}")
+        left, right = st.columns(2)
+        interval = left.segmented_control("Candle and flow interval", ["1m", "3m", "5m"], default="1m",
+                                          key="integrated_timeframe") or "1m"
+        if ctx.ticker in INDEX_SYMBOLS:
+            profile = "GEX"
+            right.caption("Side profile · Modeled net GEX")
+        else:
+            profile = right.segmented_control("Side profile", ["Volume", "GEX"], default="Volume",
+                                              key=f"integrated_profile_{ctx.ticker}") or "Volume"
+        chart_quote_caption(ctx)
         minutes = {"1m": 1, "3m": 3, "5m": 5}[interval]
+        width = minutes * MINUTE
         candles = read["candles"]
-        rows = chart_buckets(candles, minutes, estimate_vwap=ctx.price_provider == "Webull")
-        flow = read["flow"] if interval == "5m" else ctx.timeline(interval=interval)
+        buckets = chart_buckets(candles, minutes, estimate_vwap=ctx.price_provider == "Webull")
+        rows = candles_on([{**row, "ema21": ema} for row, ema in zip(buckets, ema_series(buckets))], ctx.session)
+        flow = read["flow"] if interval == "5m" else ctx.timeline(interval="1m")
+        flows = chart_flow_rows(flow.rows, ctx.session, ctx.now, interval)
         levels, _ = level_inputs(ctx, read, strikes=4, show_expected=True)
+        opening = candles_on(read["buckets"], ctx.session)[:6]
+        opened, _ = rth_bounds(ctx.session)
+        if len(opening) == 6 and all(utc(bar["time_utc"]) == opened + i * FIVE_MINUTES
+                                     for i, bar in enumerate(opening)):
+            at = (opened + 6 * FIVE_MINUTES).isoformat()
+            levels.extend([PriceLevel("Opening 30m high", max(bar["high"] for bar in opening), "resistance", at),
+                           PriceLevel("Opening 30m low", min(bar["low"] for bar in opening), "support", at)])
         visible_levels = nearest_chart_levels(levels, rows, False)
-        points = share_cvd(candles, ctx.session)
-        gamma_rows = read["gamma"].get("rows", []) if isinstance(read.get("gamma"), dict) else []
-        state, next_step = integrated_state(rows, flow.rows)
+        points = [] if ctx.ticker in INDEX_SYMBOLS else share_cvd(candles, ctx.session)
+        gamma = chart_exposure(ctx, read) if profile == "GEX" else {}
+        gamma_rows = read["gamma_feed"].rows if gamma else []
+        price_close = utc(rows[-1]["time_utc"]) + width if rows else None
+        flow_close = utc(flows[-1]["time"]) + width if flows else None
+        boundary = completed_boundary(ctx.now, ctx.session, width)
+        force = None
+        if (boundary and price_close == flow_close == boundary and not flow.error and not feed_has_delay(flow)
+                and read["bars_usable"] and (ctx.preview or read["bars_ready"])):
+            force = rolling_chart_flow(flows, interval)[-1]
+        state, next_step = integrated_state(rows, force)
+        if not ctx.preview and session_state(ctx.now)["status"] != "OPEN":
+            state, next_step = "SESSION CLOSED", "Review the completed session."
         st.markdown(f"**{state}** · {next_step}")
-        fig = integrated_intraday_figure(rows, ctx.ticker, flow_rows=flow.rows,
+        fig = integrated_intraday_figure(rows, ctx.ticker, interval, flow_rows=flows,
                                          levels=visible_levels, gamma_rows=gamma_rows,
-                                         cvd_points=points, flow_interval=interval)
-        render_chart(fig, "overview_integrated_chart", flow,
-                     "Waiting for completed price and flow observations.")
-        source = "Webull price + Tradytics options/levels" if ctx.price_provider == "Webull" else "Tradytics price, options and levels"
-        st.caption(f"{source} · modeled GEX is an estimate; use this as a confirmation view, not an automatic entry.")
+                                         gamma_unit=display_exposure_unit(gamma), cvd_points=points,
+                                         profile=profile, quote=ctx.chart_quote)
+        render_chart(fig, "overview_integrated_chart", read["bars"], "Waiting for completed candles in this session.")
+        provider = "Preview" if ctx.preview else ctx.price_provider
+        flow_provider = "Preview" if ctx.preview else "Tradytics"
+        price_notice = " · cached" if read["bars"].error and price_close else (
+            " · reported delay" if feed_has_delay(read["bars"]) else "")
+        flow_notice = " · cached" if flow.error and flow_close else " · reported delay" if feed_has_delay(flow) else ""
+        st.caption(f"{provider} {interval} close {et_time(price_close, short=True)}{price_notice} · "
+                   f"{flow_provider} {interval} flow close {et_time(flow_close, short=True)} ET{flow_notice}")
+        if profile == "GEX" and gamma:
+            st.caption(f"{flow_provider} modeled GEX · {ctx.scope} · {et_time(source_stamp('exposure', read['gamma_feed'], ctx.ticker))}")
+        with st.expander("What to look for on these charts"):
+            st.markdown("**Price, EMA 21 and VWAP.** EMA 21 follows closes on the selected interval. VWAP averages prices by session volume. "
+                        "Look for closes holding the same side of both lines. "
+                        "Repeated crossings suggest chop. The gold diamond shows the latest fresh quote between closes.")
+            st.markdown("**Price levels.** Watch for a close and retest around a nearby range edge, the opening 30-minute range, "
+                        "the prior session high or low, or a modeled gamma wall. Check the room to the next level.")
+            st.markdown("**Volume profile.** The longest bars show the price bands with the most estimated share volume in view. "
+                        "Look for acceptance near a large bar or whether price moves quickly through a low-volume area. "
+                        "The estimate assigns each candle's volume to its closing-price bin.")
+            st.markdown("**GEX profile.** Green and red show positive and negative modeled gamma at each strike. "
+                        "Check whether price stalls or holds beyond a nearby cluster. The profile has its own exposure scale.")
+            st.markdown("**Net premium.** Bars show each completed interval. The gold line sums the most recent three consecutive intervals. "
+                        "Look for multiple bars agreeing with the move and a rolling line that continues in that direction.")
+            st.markdown("**Estimated share CVD.** Compare its slope with price. If price makes a new high while CVD falls, "
+                        "watch the retest for signs of a weak break. The estimate uses one-minute candle direction and share volume.")
 
 
 def show_session_changes(ctx, read, prints, prints_feed):

@@ -53,7 +53,7 @@ class Settings:
         result = replace(result, quote_max_age=min(result.quote_max_age, 30))
         if result.endpoint not in ('api.webull.com', 'api.sandbox.webull.com'):
             raise DataError('WEBULL_ENDPOINT must be api.webull.com or api.sandbox.webull.com')
-        bounds = {'quote_seconds': (5, 60), 'candle_seconds': (30, 300), 'chain_seconds': (60, 1800),
+        bounds = {'quote_seconds': (2, 60), 'candle_seconds': (30, 300), 'chain_seconds': (60, 1800),
                   'discovery_seconds': (300, 3600), 'max_requests': (15, 120), 'history_count': (500, 1200),
                   'quote_max_age': (5, 90), 'option_max_age': (15, 300), 'dte_days': (1, 14),
                   'strike_width': (.005, .1), 'max_pages': (1, 100), 'max_contracts': (20, 1000),

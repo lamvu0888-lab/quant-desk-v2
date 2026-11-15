@@ -16,7 +16,14 @@ from terminal_data import et_time, interval_length, numeric, time_or_none
 from terminal_style import AMBER, BLUE, INK, MUTED, RED, TEAL, VIOLET, amount, compact, esc, style_chart
 
 
-def price_figure(bars, ticker, timeframe, *, levels=None, overlays=True, orders=(), order_labels=False):
+def quote_marker(quote, x):
+    return go.Scatter(x=[x], y=[quote["price"]], mode="markers", name=f"{quote['source']} quote",
+                      marker=dict(color=AMBER, size=10, symbol="diamond", line=dict(color="white", width=1)),
+                      text=[f"{quote['basis']} · {et_time(quote['at'])}"],
+                      hovertemplate="%{y:,.2f}<br>%{text}<extra>%{fullData.name}</extra>", showlegend=False)
+
+
+def price_figure(bars, ticker, timeframe, *, levels=None, overlays=True, orders=(), order_labels=False, quote=None):
     rows = bars[-105:]
     times = [utc(row["time_utc"]) for row in rows]
     labels = [stamp.strftime("%b %d") if timeframe == "1D" else stamp.astimezone(ET).strftime("%b %d · %H:%M") for stamp in times]
@@ -60,8 +67,12 @@ def price_figure(bars, ticker, timeframe, *, levels=None, overlays=True, orders=
                 visible.append((i + .8 * fraction - .4, order))
         for trace in order_traces(visible, show_labels=order_labels, max_size=29):
             fig.add_trace(trace, row=1, col=1)
-    last = rows[-1]["close"]
-    fig.add_annotation(x=len(rows)-1, y=last, text=amount(last), showarrow=False,
+    show_quote = (timeframe != "1D" and quote and quote["at"] >= times[-1] + interval_length(timeframe)
+                  and quote["at"].astimezone(ET).date() == times[-1].astimezone(ET).date())
+    if show_quote:
+        fig.add_trace(quote_marker(quote, len(rows)), row=1, col=1)
+    last = quote["price"] if show_quote else rows[-1]["close"]
+    fig.add_annotation(x=len(rows) if show_quote else len(rows)-1, y=last, text=amount(last), showarrow=False,
                        xanchor="left", xshift=10, bgcolor="#e4f4ed", borderpad=4,
                        font=dict(color=TEAL, size=10), row=1, col=1)
     ticks = positions[::max(1, len(rows)//6)]
@@ -72,129 +83,139 @@ def price_figure(bars, ticker, timeframe, *, levels=None, overlays=True, orders=
     return style_chart(fig, 395, hover="closest", revision=f"{ticker}:{timeframe}")
 
 
-def _ema(values, period=21):
-    values = [numeric(value) for value in values]
-    values = [value for value in values if value is not None]
-    if not values:
-        return []
+def ema_series(bars, period=21):
+    """Warm up using a simple average, then calculate EMA from completed closes."""
+    if len(bars) < period:
+        return [None] * len(bars)
     alpha = 2 / (period + 1)
-    result = [values[0]]
-    for value in values[1:]:
-        result.append(alpha * value + (1 - alpha) * result[-1])
+    result = [None] * (period - 1) + [sum(bar["close"] for bar in bars[:period]) / period]
+    for bar in bars[period:]:
+        result.append(result[-1] + alpha * (bar["close"] - result[-1]))
     return result
 
 
-def integrated_intraday_figure(bars, ticker, *, flow_rows=(), levels=(), gamma_rows=(), cvd_points=(),
-                               flow_interval="5m", max_bars=105):
-    """Readable, explainable intraday view inspired by common dealer dashboards.
+def rolling_chart_flow(rows, interval):
+    """Sum the last three intervals only where the feed has no gaps."""
+    width = interval_length(interval)
+    times = [utc(row["time"]) for row in rows]
+    net = [numeric(row["net_premium_usd"]) for row in rows]
+    rolling = [None] * len(rows)
+    for i in range(2, len(rows)):
+        window = net[i - 2:i + 1]
+        if None not in window and times[i] - times[i - 1] == times[i - 1] - times[i - 2] == width:
+            rolling[i] = sum(window)
+    return rolling
 
-    The chart uses only normalized price, volume, flow, and modeled gamma data.
-    It intentionally does not reproduce proprietary cycle/D1 intelligence.
-    """
-    rows = list(bars or [])[-max_bars:]
+
+def integrated_intraday_figure(bars, ticker, timeframe, *, flow_rows=(), levels=(), gamma_rows=(),
+                               gamma_unit="", cvd_points=(), profile="Volume", quote=None):
+    """Align completed price, flow and share CVD on the same market clock."""
+    rows = bars[-105:]
     if not rows:
         return None
-    times = [utc(row["time_utc"]) for row in rows]
-    labels = [stamp.astimezone(ET).strftime("%H:%M") for stamp in times]
-    x = list(range(len(rows)))
-    close = [numeric(row.get("close")) for row in rows]
-    ema = _ema(close, 21)
-    volume = [numeric(row.get("volume")) or 0 for row in rows]
-    vwap = [numeric(row.get("session_vwap")) or numeric(row.get("estimated_session_vwap")) for row in rows]
-    profile_bins = 14
-    low = min(numeric(row.get("low")) for row in rows if numeric(row.get("low")) is not None)
-    high = max(numeric(row.get("high")) for row in rows if numeric(row.get("high")) is not None)
-    step = max((high - low) / profile_bins, (close[-1] or 1) * .0002)
-    profile = [0.0] * profile_bins
-    for row, vol in zip(rows, volume):
-        price = numeric(row.get("close"))
-        if price is None:
-            continue
-        idx = max(0, min(profile_bins - 1, int((price - low) / step)))
-        profile[idx] += vol
-    mids = [low + step * (i + .5) for i in range(profile_bins)]
+    width = interval_length(timeframe)
+    first = utc(rows[0]["time_utc"])
+    last_close = utc(rows[-1]["time_utc"]) + width
 
-    specs = [[{}, {}], [{"colspan": 2}, None], [{"colspan": 2}, None]]
-    fig = make_subplots(rows=3, cols=2, specs=specs, shared_xaxes=False, shared_yaxes=False,
-                        column_widths=[.78, .22], row_heights=[.65, .2, .15],
-                        vertical_spacing=.075, horizontal_spacing=.035,
-                        subplot_titles=(None, "Volume profile", "Flow force", None, "CVD", None))
-    fig.add_trace(go.Candlestick(x=x, open=[row["open"] for row in rows], high=[row["high"] for row in rows],
-                                 low=[row["low"] for row in rows], close=close, text=labels,
+    def clock(stamp):
+        return stamp.astimezone(ET).replace(tzinfo=None)
+
+    times = [clock(utc(row["time_utc"]) + width) for row in rows]
+    window_minutes = 3 * (width // timedelta(minutes=1))
+    flow_title = f"{timeframe} net premium · {window_minutes}m rolling sum"
+    profile_title = "Volume profile" if profile == "Volume" else "Modeled net GEX"
+    fig = make_subplots(rows=3, cols=2, specs=[[{}, {}], [{}, None], [{}, None]],
+                        shared_xaxes=True, shared_yaxes=True, column_widths=[.76, .24],
+                        row_heights=[.64, .19, .17], vertical_spacing=.09, horizontal_spacing=.025,
+                        subplot_titles=(f"{ticker} · {timeframe} closes", profile_title, flow_title, "Estimated share CVD"))
+    fig.add_trace(go.Candlestick(x=times, open=[row["open"] for row in rows], high=[row["high"] for row in rows],
+                                 low=[row["low"] for row in rows], close=[row["close"] for row in rows],
                                  increasing=dict(line=dict(color=TEAL, width=1), fillcolor=TEAL),
                                  decreasing=dict(line=dict(color=RED, width=1), fillcolor=RED),
                                  name=ticker, showlegend=False), row=1, col=1)
-    if any(value is not None for value in ema):
-        fig.add_trace(go.Scatter(x=x, y=ema, mode="lines", name="EMA 21", line=dict(color=BLUE, width=1.6),
-                                 hovertemplate="%{y:,.2f}<extra>EMA 21</extra>"), row=1, col=1)
-    if any(value is not None for value in vwap):
-        fig.add_trace(go.Scatter(x=x, y=vwap, mode="lines", name="VWAP", line=dict(color=VIOLET, width=1.6),
-                                 hovertemplate="%{y:,.2f}<extra>Session VWAP</extra>"), row=1, col=1)
-    for label, price, color in levels or ():
-        price = numeric(price)
-        if price is not None and low - step * 2 <= price <= high + step * 2:
-            fig.add_hline(y=price, line_color=color, line_dash="dot", opacity=.75,
-                          annotation_text=label, annotation_font_color=color, annotation_font_size=9,
-                          annotation_position="top left", row=1, col=1)
-    fig.add_trace(go.Bar(x=profile, y=mids, orientation="h", marker_color="#9eb3c9", opacity=.8,
-                         name="Volume profile", hovertemplate="%{y:,.2f}<br>%{x:,.0f} shares<extra></extra>",
-                         showlegend=False), row=1, col=2)
+    for field, label, color, dash in (("ema21", "EMA 21", BLUE, "solid"),
+                                      ("session_vwap", "Session VWAP", VIOLET, "solid"),
+                                      ("estimated_session_vwap", "Estimated VWAP", VIOLET, "dot")):
+        values = [row.get(field) for row in rows]
+        if any(value is not None for value in values):
+            fig.add_scatter(x=times, y=values, name=label, line=dict(color=color, width=1.6, dash=dash),
+                            hovertemplate="%{x|%H:%M} ET · %{y:,.2f}<extra>%{fullData.name}</extra>", row=1, col=1)
+    for name, price, color in levels:
+        fig.add_hline(y=price, line_color=color, line_dash="dot",
+                      annotation_text=f"{name} {amount(price)}", annotation_font_color=color,
+                      annotation_font_size=9, annotation_position="top left", row=1, col=1)
+    if quote and quote["at"] >= last_close:
+        fig.add_trace(quote_marker(quote, clock(quote["at"])), row=1, col=1)
+        fig.add_hline(y=quote["price"], line_color=AMBER, line_dash="dot", opacity=.55, row=1, col=2)
 
-    flow = sorted(list(flow_rows or []), key=lambda row: time_or_none(row.get("time")) or utc(rows[0]["time_utc"]))
-    flow_pairs = [(time_or_none(row.get("time")), numeric(row.get("net_premium_usd")) or 0) for row in flow]
-    flow_pairs = [(stamp, value) for stamp, value in flow_pairs if stamp is not None]
-    flow_times = [stamp for stamp, _ in flow_pairs]
-    flow_values = [value for _, value in flow_pairs]
-    if flow_values:
-        positive_flow = [value if value >= 0 else 0 for value in flow_values]
-        negative_flow = [value if value < 0 else 0 for value in flow_values]
-        flow_labels = [stamp.astimezone(ET).strftime("%H:%M") for stamp in flow_times]
-        flow_x = list(range(len(flow_values)))
-        fig.add_trace(go.Bar(x=flow_x, y=positive_flow, marker_color=TEAL, name="Positive flow", showlegend=False,
-                             customdata=flow_labels, hovertemplate="%{customdata}<br>%{y:$,.0f}<extra>Net flow</extra>"), row=2, col=1)
-        fig.add_trace(go.Bar(x=flow_x, y=negative_flow, marker_color=RED, name="Negative flow", showlegend=False,
-                             customdata=flow_labels, hovertemplate="%{customdata}<br>%{y:$,.0f}<extra>Net flow</extra>"), row=2, col=1)
-        force = []
-        for index in range(len(flow_values)):
-            force.append(sum(flow_values[max(0, index - 2): index + 1]))
-        fig.add_trace(go.Scatter(x=flow_x, y=force, mode="lines", line=dict(color=AMBER, width=1.7),
-                                 name=f"Flow force ({flow_interval})", showlegend=False), row=2, col=1)
-        fig.update_xaxes(tickmode="array", tickvals=flow_x[::max(1, len(flow_x)//5)],
-                         ticktext=flow_labels[::max(1, len(flow_labels)//5)], row=2, col=1)
+    low, high = min(row["low"] for row in rows), max(row["high"] for row in rows)
+    if profile == "Volume":
+        bin_count = 14
+        step = (high - low) / bin_count if high > low else low * .0002
+        totals = [0.0] * bin_count
+        for row in rows:
+            if (volume := numeric(row.get("volume"))) is not None and volume > 0:
+                index = min(bin_count - 1, int((row["close"] - low) / step))
+                totals[index] += volume
+        if any(totals):
+            populated = [(total, low + (i + .5) * step) for i, total in enumerate(totals) if total > 0]
+            fig.add_bar(x=[total for total, _ in populated], y=[price for _, price in populated], width=step * .86,
+                        orientation="h", marker_color="#8da8c3", name="Volume profile", showlegend=False,
+                        hovertemplate="Price bin %{y:,.2f}<br>%{x:,.0f} shares<extra>Estimated volume</extra>", row=1, col=2)
+        else:
+            fig.add_annotation(text="No share<br>volume", x=.5, y=.5, xref="x domain", yref="y domain",
+                               showarrow=False, row=1, col=2)
     else:
-        fig.add_annotation(text="No completed flow", x=.5, y=.5, xref="x3 domain", yref="y2 domain",
-                           showarrow=False, font=dict(color=MUTED), row=2, col=1)
+        prices = [low, high, *(price for _, price, _ in levels)]
+        if quote:
+            prices.append(quote["price"])
+        pad = max((high - low) * .15, rows[-1]["close"] * .0004)
+        lower, upper = min(prices) - pad, max(prices) + pad
+        near = [(strike, net) for row in gamma_rows if isinstance(row, dict) and
+                (strike := numeric(row.get("strike"))) is not None and lower <= strike <= upper
+                and (net := numeric(row.get("net"))) is not None]
+        if near:
+            fig.add_bar(x=[net for _, net in near], y=[strike for strike, _ in near], orientation="h",
+                        marker_color=[TEAL if net >= 0 else RED for _, net in near], name="Net GEX", showlegend=False,
+                        hovertemplate="Strike %{y:,.2f}<br>%{x:,.0f} " + esc(gamma_unit) + "<extra>Modeled GEX</extra>", row=1, col=2)
+        else:
+            fig.add_annotation(text="No nearby<br>GEX", x=.5, y=.5, xref="x domain", yref="y domain",
+                               showarrow=False, row=1, col=2)
 
-    if cvd_points:
-        points = list(cvd_points)[-max_bars:]
-        cvd_x = list(range(len(points)))
-        cvd_y = [numeric(point.get("cvd")) for point in points]
-        cvd_labels = [et_time(point.get("time"), short=True) for point in points]
-        fig.add_trace(go.Scatter(x=cvd_x, y=cvd_y, mode="lines", line=dict(color=TEAL, width=1.7),
-                                 name="CVD", showlegend=False, customdata=cvd_labels,
-                                 hovertemplate="%{customdata}<br>%{y:,.0f}<extra>CVD</extra>"), row=3, col=1)
+    flow = [(clock(end), numeric(row["net_premium_usd"]), force)
+            for row, force in zip(flow_rows, rolling_chart_flow(flow_rows, timeframe))
+            if (end := utc(row["time"]) + width) > first]
+    if flow:
+        dates, values, rolling = zip(*flow)
+        fig.add_bar(x=dates, y=values, marker_color=[TEAL if value >= 0 else RED for value in values],
+                    name="Interval net premium", showlegend=False,
+                    hovertemplate="%{x|%H:%M} ET · $%{y:,.0f}<extra>Interval net premium</extra>", row=2, col=1)
+        fig.add_scatter(x=dates, y=rolling, mode="lines", line=dict(color=AMBER, width=1.8), name="Rolling net",
+                        hovertemplate="%{x|%H:%M} ET · $%{y:,.0f}<extra>Rolling net</extra>", row=2, col=1)
     else:
-        fig.add_annotation(text="CVD unavailable", x=.5, y=.5, xref="x4 domain", yref="y3 domain",
-                           showarrow=False, font=dict(color=MUTED), row=3, col=1)
-
-    if gamma_rows:
-        usable = [(numeric(row.get("strike")), numeric(row.get("net"))) for row in gamma_rows]
-        usable = [(strike, net) for strike, net in usable if strike is not None and net is not None]
-        if usable:
-            fig.add_trace(go.Bar(x=[net for _, net in usable], y=[strike for strike, _ in usable], orientation="h",
-                                 marker_color=[TEAL if net >= 0 else RED for _, net in usable],
-                                 name="Net GEX", showlegend=False, opacity=.55,
-                                 hovertemplate="Strike %{y:,.2f}<br>%{x:$,.0f}<extra>Modeled GEX</extra>"), row=1, col=2)
-    fig.update_xaxes(rangeslider_visible=False, showgrid=False, row=1, col=1,
-                     tickmode="array", tickvals=x[::max(1, len(x)//6)], ticktext=labels[::max(1, len(labels)//6)])
-    fig.update_xaxes(showgrid=False, showticklabels=False, row=1, col=2)
-    fig.update_yaxes(side="right", tickformat=",.2f", row=1, col=1)
-    fig.update_yaxes(showticklabels=True, tickformat=",.2f", row=1, col=2)
-    fig.update_yaxes(tickformat="~s", title="Net premium", row=2, col=1)
-    fig.update_yaxes(tickformat="~s", title="CVD", row=3, col=1)
-    fig.update_layout(barmode="relative", bargap=.12, showlegend=True, legend=dict(orientation="h", y=1.02),
-                      margin=dict(l=8, r=8, t=32, b=8))
-    return style_chart(fig, 650, hover="closest", revision=f"integrated:{ticker}:{flow_interval}")
+        fig.add_annotation(text="Waiting for completed flow", x=.5, y=.5, xref="x domain", yref="y domain",
+                           showarrow=False, row=2, col=1)
+    points = [(clock(stamp), point["cvd"]) for point in cvd_points if (stamp := utc(point["time"])) > first]
+    if points:
+        cvd_times, cvd_values = zip(*points)
+        fig.add_scatter(x=cvd_times, y=cvd_values, mode="lines", line=dict(color=TEAL, width=1.7),
+                        name="Estimated share CVD", showlegend=False,
+                        hovertemplate="%{x|%H:%M} ET · %{y:,.0f} shares<extra>Estimated share CVD</extra>", row=3, col=1)
+    else:
+        fig.add_annotation(text="Share CVD unavailable", x=.5, y=.5, xref="x domain", yref="y domain",
+                           showarrow=False, row=3, col=1)
+    fig.update_xaxes(rangeslider_visible=False, type="date", row=1, col=1)
+    fig.update_xaxes(showgrid=False, showticklabels=False, fixedrange=True, row=1, col=2)
+    fig.update_xaxes(type="date", row=2, col=1)
+    fig.update_xaxes(type="date", tickformat="%H:%M", nticks=5, title="Time (ET)", row=3, col=1)
+    fig.update_yaxes(tickformat=",.2f", row=1, col=1)
+    fig.update_yaxes(showticklabels=False, showgrid=False, row=1, col=2)
+    fig.update_yaxes(tickformat="~s", tickprefix="$", nticks=3, row=2, col=1)
+    fig.update_yaxes(tickformat="~s", nticks=3, row=3, col=1)
+    fig.update_annotations(font_size=10, selector=lambda annotation: annotation.xref == "paper")
+    styled = style_chart(fig, 610, hover="closest", revision=f"integrated:{ticker}:{timeframe}:{first.date()}")
+    styled.update_layout(margin=dict(t=24, b=50), legend=dict(y=-.12))
+    return styled
 
 
 def dated_rows(rows, field="time"):

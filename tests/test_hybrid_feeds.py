@@ -1,17 +1,24 @@
 """Hybrid provider regressions at the quote, dashboard and worker boundaries."""
+from concurrent.futures import Future
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+from streamlit.testing.v1 import AppTest
+
+from data_utils import BudgetPause
 from discord_monitor import MonitorScan
 from desk_analytics import MINUTE
 from market_session import rth_bounds
+from movement_charts import chart_for_stage
 from my_webull_adapter import WebullSDKAdapter
 from movement_detector import early_price_move
 from option_quotes import atm_iv_sample
 from research_journal import Journal
 from settings import Settings
-from terminal_data import time_or_none
+from terminal_charts import integrated_intraday_figure
+from terminal_data import chart_buckets, price_bars, time_or_none
+from terminal_demo import DEMO_AT, DemoStore
 from terminal_views import Desk, read_workspace
 from test_v25 import synthetic_inputs
 from tradytics_feed import Feed, Snapshot
@@ -105,6 +112,109 @@ def test_new_receipt_cannot_refresh_delayed_or_sandbox_prices():
     assert not webull_price_quality(feeds["quote"], feeds["history"], Settings(), now + 30 * MINUTE)["bars_ready"]
     sandbox = Settings(endpoint="api.sandbox.webull.com")
     assert not webull_price_quality(feeds["quote"], feeds["history"], sandbox, now)["quote_ready"]
+
+
+def test_dashboard_webull_marker_moves_between_completed_candles():
+    inputs = synthetic_inputs()
+    now = inputs["now"] + timedelta(seconds=7)
+    candles = inputs["candles"]
+    store = SimpleNamespace(settings=Settings(quote_seconds=2))
+    prices = webull_prices(candles, now)
+    bars = chart_buckets(candles, 5)
+    read = {"candles": candles, "buckets": bars}
+
+    def charts(feeds, at=now, paused=False):
+        ctx = Desk("SPY", at, None, False, paused, None, True, price_provider="Webull",
+                   webull_store=store, webull_prices=feeds)
+        return (integrated_intraday_figure(bars, "SPY", "5m", quote=ctx.chart_quote),
+                chart_for_stage(1, ctx, read, {}))
+
+    first = charts(prices)
+    new_quote = snapshot({"last_price": candles[-1]["close"] + .22,
+                          "price_time_utc": (now + timedelta(seconds=2)).isoformat()}, now + timedelta(seconds=2))
+    second = charts({**prices, "quote": new_quote}, now + timedelta(seconds=2))
+    for original, refreshed in zip(first, second):
+        completed_series = original.data[0]
+        closes = completed_series.y if completed_series.type == "scatter" else completed_series.close
+        assert list(closes) == [row["close"] for row in bars]
+        old_marker = next(trace for trace in original.data if trace.name == "Webull quote")
+        new_marker = next(trace for trace in refreshed.data if trace.name == "Webull quote")
+        assert old_marker.x[0] < new_marker.x[0]
+        assert new_marker.y[0] - old_marker.y[0] > .2
+
+    delayed = snapshot(prices["quote"].obj, now, delay_minutes=15)
+    for feeds, at, paused in ((prices, now + timedelta(seconds=20), False),
+                              ({**prices, "quote": delayed}, now, False), (prices, now, True),
+                              (prices, rth_bounds(inputs["session"])[1], False)):
+        assert all(trace.name != "Webull quote" for fig in charts(feeds, at, paused) for trace in fig.data)
+
+
+def test_live_dashboard_reads_webull_quote_and_renders_movement_detector(monkeypatch):
+    import terminal
+
+    demo = DemoStore("SPY")
+    candles = price_bars(demo.get("bars", symbol="SPY", timeframe="1m"), "SPY", DEMO_AT)
+    current = [DEMO_AT]
+    prices = webull_prices(candles, current[0])
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return current[0]
+
+    store = SimpleNamespace(settings=Settings(quote_seconds=2), quote_poll_seconds=2,
+                            prices=lambda symbols, paused=False: {"SPY": prices})
+    config = {"TRADYTICS_API_KEY": "fixture-tradytics", "WEBULL_APP_KEY": "fixture-webull",
+              "WEBULL_APP_SECRET": "fixture-secret", "DEFAULT_TICKER": "SPY"}
+    monkeypatch.setattr(terminal, "datetime", Clock)
+    monkeypatch.setattr(terminal, "dotenv_values", lambda *_: {})
+    monkeypatch.setattr(terminal, "config_value", lambda local, name, default="": config.get(name, default))
+    monkeypatch.setattr(terminal, "webull_store", lambda *_: store)
+    monkeypatch.setattr(terminal, "tradytics_store", lambda *_: demo)
+    monkeypatch.setattr(terminal, "journal_resource", lambda *_: None)
+    app = AppTest.from_string("from terminal import main\nmain()\n", default_timeout=30)
+    app.session_state["desk_expiry_mode"] = "All DTE"
+    app.run()
+    assert not app.exception and app.session_state["desk_mode"] == "Live"
+    assert any(f"Webull last trade {candles[-1]['close']:,.2f}" in row.value and "polling target 2s" in row.value
+               for row in app.caption)
+
+    current[0] += timedelta(seconds=2)
+    spot = candles[-1]["close"] + .35
+    prices["quote"] = snapshot({"last_price": spot, "price_time_utc": current[0].isoformat()}, current[0])
+    app.button(key="overview_open_movement").click().run()
+    assert not app.exception and not app.number_input
+    assert any(f"Webull last trade {spot:,.2f}" in row.value for row in app.caption)
+
+
+def test_webull_fast_quote_cadence_keeps_retry_and_sandbox_limits(monkeypatch):
+    inputs = synthetic_inputs()
+    clock = [100.]
+    monkeypatch.setattr("webull_feed.time.monotonic", lambda: clock[0])
+    settings = Settings.load({"QUOTE_REFRESH_SECONDS": "2"}.get)
+    store = WebullFeedStore(settings, adapter_factory=Mock())
+    sandbox = WebullFeedStore(Settings(endpoint="api.sandbox.webull.com", quote_seconds=2), adapter_factory=Mock())
+    future = Future()
+    monkeypatch.setattr(store._pools["quote"], "submit", Mock(return_value=future))
+    try:
+        assert sandbox.quote_poll_seconds == 5
+        assert store.prices(["SPY"])["SPY"]["quote"].loading
+        clock[0] += .5
+        future.set_result({"SPY": Snapshot({}, {}, inputs["now"])})
+        clock[0] = 101.99
+        assert not store.prices(["SPY"])["SPY"]["quote"].loading
+        assert store._pools["quote"].submit.call_count == 1
+        clock[0] = 102
+        retry = Future()
+        store._pools["quote"].submit.return_value = retry
+        assert store.prices(["SPY"])["SPY"]["quote"].loading
+        retry.set_exception(BudgetPause(60))
+        clock[0] = 120
+        assert store.prices(["SPY"])["SPY"]["quote"].snapshot
+        assert store._pools["quote"].submit.call_count == 2
+    finally:
+        store.close()
+        sandbox.close()
 
 
 def test_first_completed_impulse_fires_before_five_minute_close():

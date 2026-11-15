@@ -114,6 +114,28 @@ def closed_flow_rows(rows, session, now, interval):
     return [selected[stamp] for stamp in sorted(selected)]
 
 
+def chart_flow_rows(rows, session, now, interval):
+    """Build a 3m display interval from three consecutive closed 1m bins."""
+    if interval != "3m":
+        return closed_flow_rows(rows, session, now, interval)
+    bounds = _bounds(session.isoformat())
+    if bounds is None:
+        return []
+    minute = timedelta(minutes=1)
+    width = 3 * minute
+    opened, closed = bounds
+    values = {utc(row["time"]): numeric(row["net_premium_usd"])
+              for row in closed_flow_rows(rows, session, now, "1m")}
+    result = []
+    for start in values:
+        if (start - opened) % width or start + width > min(now, closed):
+            continue
+        window = [values.get(start + i * minute) for i in range(3)]
+        if None not in window:
+            result.append({"time": start.isoformat(), "date": session.isoformat(), "net_premium_usd": sum(window)})
+    return result
+
+
 def exact_timeline(upper, lower, session, now, interval):
     """Recover one DTE by subtracting additive buckets at matching timestamps."""
     if upper.error or lower.error:

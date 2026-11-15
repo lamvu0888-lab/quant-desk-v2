@@ -8,6 +8,16 @@
 
 **Example.** A rising 1-minute reading inside a neutral 5-minute range is a reason to watch the range high. If the next opposing level leaves little room above the trigger, the plan can still show AVOID. The evidence score summarizes rule agreement and carries no probability units.
 
+### Integrated intraday chart
+
+**Price and levels.** The gold diamond shows the latest fresh underlying quote and its market timestamp. Completed 1-, 3- or 5-minute candles determine EMA 21 and session VWAP. Look for a close and retest above or below both lines and the next nearby level. When visible, the opening range comes from the first 30 minutes of the regular session. Watch for repeated crossings, which can signal a range.
+
+**Side profile.** Volume groups the visible candles' share volume by their closing-price bins. Long bars highlight areas of concentrated volume. Switch to GEX to see modeled net gamma by strike on the same price axis. Look for a reaction to a nearby cluster or wall. Use the displayed expiry scope and snapshot time. Share-volume panels are blank when the instrument has no native share volume.
+
+**Net premium and CVD.** Green and red bars show completed Tradytics directional premium. The gold line is the rolling sum of the latest three consecutive intervals: 3, 9 or 15 minutes depending on the setting. Look for repeat flow in the direction of price. Estimated CVD adds or subtracts one-minute share volume based on candle direction. Compare its slope with price to identify moves where volume participation may be fading.
+
+**Example.** Webull shows a quote through the opening high during a forming candle. Watch for the next close to hold that level and for nearby completed premium bars to agree. Check each source timestamp before comparing the readings.
+
 ### Price action and large-order overlays
 
 **What you see.** Horizontal position is candle time, and the right scale is underlying price. The candle body spans open to close, and the wick spans low to high. The lower panel shows share volume when available. VWAP is volume-weighted session price. The chart can label a candle-based estimate when native VWAP is unavailable. Dashed price levels and optional C/P markers add context.
@@ -44,7 +54,7 @@
 
 ### 1. Market status and completed closes
 
-**What you see.** A line connects recent completed 5-minute closes. The card summarizes direction, volatility regime and how consistently the completed bars support the move. An early move watch may appear after a qualifying short-window price move.
+**What you see.** A line connects recent completed 5-minute closes. A gold diamond shows the current fresh quote between closes. The card summarizes direction, volatility regime and how consistently the completed bars support the move. An early move watch may appear after a qualifying short-window price move.
 
 **Look for.** Separate stair-stepping closes from overlapping closes. Check whether the 5-minute bias agrees with the short-window push and whether the push cleared a recent range. Then look at volatility and flow.
 
@@ -76,7 +86,7 @@
 
 ### 5. Price structure
 
-**What you see.** A line plots completed 1-, 3- or 5-minute closes. Where available, dotted lines mark the plan's prior 5-minute range high, range low and VWAP. The selector changes the price detail while the plan levels keep their original timeframe.
+**What you see.** A line plots completed 1-, 3- or 5-minute closes and the gold diamond marks the current fresh quote. Where available, dotted lines mark the plan's prior 5-minute range high, range low and session VWAP. A candle-based VWAP carries an estimated label.
 
 **Look for.** Look for a break, acceptance on closes, and a retest that stays on the expected side. A move back through the boundary or repeated VWAP crossings can indicate a failed break or a range. Switch to the candlestick view to inspect wicks.
 

@@ -141,9 +141,15 @@ def test_movement_navigation_and_spx_proxy(monkeypatch):
     assert all(f"<h3>{name}</h3>" in row for name, row in zip(CHECKS, headings))
     assert len(app.get("plotly_chart")) >= len(CHECKS)  # separate observed-IV chart
     assert len([row for row in app.markdown if '<div class="qd-next-cue">' in row.value]) == len(CHECKS)
+    assert len([row for row in app.caption if row.value.startswith("What to look for ·")]) == len(CHECKS)
+    assert any(row.value.startswith("What to look for on the IV chart") for row in app.caption)
+    assert not app.number_input
+    assert app.selectbox(key="movement_iv_threshold").value == 3
+    app.selectbox(key="movement_iv_threshold").set_value(5).run()
     app.segmented_control(key="movement_flow_interval").set_value("1m").run()
     assert not app.exception
     app.segmented_control(key="movement_iv_window").set_value(5).run()
+    assert app.selectbox(key="movement_iv_threshold").value == 5
     assert not app.exception
     app.button(key="watch_SPX").click().run()
     app.toggle(key="movement_spy_cvd").set_value(True).run()

@@ -26,6 +26,8 @@ from option_quotes import age_text, quote_age
 from webull_feed import INDEX_SYMBOLS, WebullFeedStore, price_source
 
 UTC = timezone.utc
+VERSION = "2.8.1"
+WEBULL_CHART_PAGES = {"Overview", "Movement Detector"}
 PAGES_LABEL = {
     "Overview": ("Market overview", "Entry timing, market direction, flow and nearby levels.", "◈"),
     "Movement Detector": ("Movement Detector", "Follow the checks in order before acting on a setup.", "⇥"),
@@ -101,7 +103,7 @@ def tradytics_store(key, auth):
 
 def webull_store(local, key, secret):
     registry = resources()
-    settings = Settings.load(lambda name: config_value(local, name))
+    settings = Settings.load(lambda name: config_value(local, name, "2" if name == "QUOTE_REFRESH_SECONDS" else ""))
     region = config_value(local, "WEBULL_REGION", "us")
     identity = (hashlib.sha256(f"{key}\0{secret}".encode()).digest(), settings, region)
     with registry["lock"]:
@@ -263,7 +265,7 @@ def main():
     ticker = st.session_state["desk_ticker"]
     with st.sidebar:
         st.markdown('<div class="qd-brand"><div class="qd-mark">◈</div><div><div class="qd-name">Quant Desk</div>'
-                    '<div class="qd-brand-sub">Options intelligence · 2.8.0</div></div></div>', unsafe_allow_html=True)
+                    f'<div class="qd-brand-sub">Options intelligence · {VERSION}</div></div></div>', unsafe_allow_html=True)
         st.toggle("Dark mode", key="desk_dark_mode", help="Switch between the light and dark dashboard themes.")
         for col, symbol in zip(st.columns(3, gap="small"), ("SPY", "SPX", "QQQ")):
             col.button(symbol, key=f"watch_{symbol}", width="stretch", on_click=choose_ticker, args=(symbol,))
@@ -320,7 +322,7 @@ def main():
             if not discord_webhook:
                 st.caption("Add DISCORD_WEBHOOK_URL to .env or Streamlit Secrets to enable the test button.")
             st.caption("Tradytics key configured" if key else "Set your Tradytics key in .env")
-        st.caption("Quant Options Agent · 2.8.0")
+        st.caption(f"Quant Options Agent · {VERSION}")
     preview = mode == "Preview"
     price_provider = "Tradytics" if preview else price_source(ticker, selected_provider, webull_configured)
     paused = bool(paused and not preview)
@@ -347,8 +349,14 @@ def main():
     if not preview and page in ("Overview", "Movement Detector", "Trade Plan", "Forecast", "Positioning"):
         journal = journal_resource(config_value(local, "MONITOR_JOURNAL_PATH"), config_value(local, "MONITOR_JOURNAL_DSN"))
 
-    @st.fragment(run_every="4s" if not preview and not paused else None)
+    fast_quotes = bool(webull and not paused and price_provider == "Webull" and page in WEBULL_CHART_PAGES)
+    fast_open = fast_quotes and session_state(datetime.now(UTC))["status"] == "OPEN"
+    refresh_seconds = (1 if fast_open else 4) if not preview and not paused else None
+
+    @st.fragment(run_every=refresh_seconds)
     def workspace():
+        if fast_quotes and fast_open != (session_state(datetime.now(UTC))["status"] == "OPEN"):
+            st.rerun()
         prices = (webull.prices([ticker], paused=paused).get(ticker) if webull and
                   (price_provider == "Webull" or page == "Data Health") else None)
         ctx = Desk(ticker, DEMO_AT if preview else datetime.now(UTC), demo(ticker) if preview else store,

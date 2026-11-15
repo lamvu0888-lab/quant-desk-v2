@@ -17,7 +17,7 @@ from movement_charts import chart_for_stage, next_cue
 from movement_detector import CHECKS, DIRECTION, MIN_ENTRY_SCORE, PLAYBOOKS, cvd_context, movement_status
 from option_quotes import age_text, quote_age
 from terminal_data import INDICES, et_time, feed_has_delay, positive, time_or_none
-from terminal_style import AMBER, amount, compact, empty, esc, plot, ratio_pct, style_chart
+from terminal_style import AMBER, amount, chart_quote_caption, compact, empty, esc, plot, ratio_pct, style_chart
 
 AUDIT_PATH = Path(__file__).resolve().parent / "research" / "strategy_audit.json"
 LAB_MATCHES = {
@@ -26,6 +26,18 @@ LAB_MATCHES = {
     "Volatility expansion": ("TF10", "TF13", "TF16", "SA14"),
     "Range mean reversion": ("MR02", "MR08", "MR16", "MR20"),
 }
+
+CHART_GUIDANCE = (
+    "Follow the sequence of 5-minute closes. Rising or falling steps show follow-through. Overlapping closes suggest a range. The quote diamond shows where price is between closes.",
+    "Watch for true range to rise as completed candles hold outside the range. A brief spike that closes back inside gives weaker evidence of expansion.",
+    "Find the largest modeled bars close to spot. Watch whether price stalls at a nearby wall, rejects it, or holds beyond it on completed candles.",
+    "Watch for consecutive premium bars in the same direction as price. On the 5-minute view, the dotted lines show the premium floors used by the plan.",
+    "Watch for closes beyond the range boundary and a retest that holds. Repeated crosses of VWAP or a close back inside the range suggest a weaker break.",
+    "Compare the size of successive 5-minute moves and their share volume where available. Shrinking bars on a new high or low can show momentum fading.",
+    "Read the thresholds separately. The bars show progress toward the price, flow, and score requirements. The card above explains the current blocker.",
+    "Compare the current quote and trigger, then check the distance to the stop and first target. Structural invalidation is checked on a close.",
+    "Scan for red or missing rows. Compare the quote, candle, flow and GEX clocks before using the evidence together.",
+)
 
 
 def nav_button(label, page, key):
@@ -46,6 +58,7 @@ def stage(number, value, detail, ctx, read, plan, state, *, flow_interval="5m", 
         empty(message="Chart waiting for the matching completed data or current exposure snapshot.")
     else:
         plot(chart, f"movement_stage_{number}_chart")
+    st.caption(f"What to look for · {CHART_GUIDANCE[number - 1]}")
     st.markdown(f'<div class="qd-next-cue"><b>Look next</b> · {esc(next_cue(number, ctx, plan, state))}</div>',
                 unsafe_allow_html=True)
 
@@ -103,6 +116,7 @@ def detector_view(ctx, read, plan, iv):
     timing = plan["feed_timing"]
     st.caption(f"{plan['source']} quote {age_text(timing['quote_age'])} old · 1m close {age_text(timing['minute_age'])} old · "
                f"Tradytics 5m flow {age_text(timing['flow_age'])} old · {timing['flow_state']}.")
+    chart_quote_caption(ctx)
     if watch := plan.get("price_watch"):
         st.info(f"{watch['window']} price move {watch['change_pct']:+.2f}% · {plan['source']} completed candles · {et_time(watch['bar'])}")
 
@@ -111,8 +125,10 @@ def detector_view(ctx, read, plan, iv):
                               f"same direction on {move['closed_bars']}/2 completed bars.")
     volatility = read["regime"]
     iv_minutes = st.segmented_control("IV change window", [1, 3, 5], default=3, key="movement_iv_window") or 3
-    iv_watch = st.number_input("IV expansion watch (vol points; exploratory)", min_value=0.1, max_value=5.0,
-                               value=0.3, step=0.1, format="%.1f", key="movement_iv_watch")
+    iv_watch = st.selectbox("IV expansion watch (vol points)", range(1, 51), index=2,
+                           format_func=lambda tenths: f"+{tenths / 10:.1f}",
+                           help="Compare ATM IV from the same expiry and source. The default +0.3 is a watch level.",
+                           key="movement_iv_threshold") / 10
     iv_delta, iv_chart, _ = intraday_iv(ctx, iv, iv_minutes)
     atr = positive(volatility.get("atr"))
     iv_label = f"ATM IV ({iv['atm_source']})" if ctx.expiry else f"30-day ATM IV ({iv['atm_source']})"
@@ -125,13 +141,14 @@ def detector_view(ctx, read, plan, iv):
         detail += " Wait for a held range break with expanding activity."
     show_stage(2, plan["regime"] or "Waiting for bars", detail)
     st.caption((f"IV change over {iv_minutes}m: {iv_delta:+.2f} vol points · "
-                f"{'Above watch level' if iv_delta >= iv_watch else 'Below watch level'}. "
+                f"{'Watch level reached' if round(iv_delta, 2) >= iv_watch else 'Below watch level'}. "
                 f"Example: 14.1% to 14.4% is +0.3 vol points.") if iv_delta is not None
                else "IV change waiting for two actual source snapshots spanning the selected window.")
     if iv_chart is not None:
         plot(iv_chart, "movement_iv_history")
-    st.caption("Price ATR expansion and option IV expansion are different. IV has no universal trigger number; compare the change "
-               "in vol points with the same expiry and confirm with fresh quotes and price/flow.")
+    st.caption("What to look for on the IV chart · Check whether ATM IV is rising by your watch level over the selected window. "
+               "Compare fresh samples from the same expiry and source. Rising IV means option premiums imply more movement. "
+               "Use the price and flow charts to see the direction.")
 
     gamma = plan["gex"]
     if gamma is None:
@@ -178,6 +195,8 @@ def detector_view(ctx, read, plan, iv):
                       else "Waiting for agreement")
     show_stage(4, flow_label, flow_note, flow_interval=flow_interval, flow_feed=flow_feed)
     st.caption(f"Chart: completed {flow_interval} net premium. Trade Plan confirmation still uses two completed 5m intervals.")
+    if cvd["delta"] is not None:
+        st.caption("Compare estimated share CVD with those bars. Rising price alongside falling CVD calls for a closer look at the retest.")
     if two["intervals"]:
         pieces = " · ".join(f"{et_time(row['close'], short=True)} ET {compact(row['net'], currency=True, signed=True)}"
                             for row in two["intervals"])
@@ -192,7 +211,7 @@ def detector_view(ctx, read, plan, iv):
                        f"{et_time(context['close'], short=True)} ET. Comparison only.")
 
     low, high = plan["range"]
-    structure = f"Prior 5m range {amount(low)}–{amount(high)} · session VWAP {amount(plan['vwap'])}."
+    structure = f"Prior 5m range {amount(low)}–{amount(high)}."
     if move["boundary_hold"]:
         structure += f" Two closes held {amount(move['hold_level'])}."
     elif plan.get("failed_break"):

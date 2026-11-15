@@ -30,6 +30,10 @@ GUIDES = {
         "Candles show price. Circles mark large options trades.",
         "C means call and P means put. Bigger circles mean more premium.",
         "A C on the 10:15 candle means a call trade printed during that candle. Hover to see its price and size.", "Overview", DOC + "stocks/stocks-bars"),
+    "intraday": Guide("Integrated intraday chart", "Start here",
+        "See the latest quote alongside completed candles, EMA 21, session VWAP, price levels, options premium and estimated share CVD.",
+        "Follow the completed closes first. Look for price holding the same side of EMA 21 and VWAP with aligned premium bars.",
+        "If price trades through a range high between closes, check whether the next candle holds above the level and flow follows.", "Overview"),
     "regime": Guide("Volatility regime", "Start here",
         "Compressing means price swings are narrowing. Expanding means they are widening.",
         "Normal means neither pattern stands out.",
@@ -154,7 +158,9 @@ GUIDES = {
 
 
 def explanation(topic, key):
-    guide = GUIDES[topic]
+    guide = GUIDES.get(topic)
+    if guide is None:
+        return
     with st.popover("?", key=key, help=f"How to read {guide.title}", type="secondary"):
         st.markdown(f"**{guide.title}**")
         st.write(guide.meaning)

@@ -1,3 +1,10 @@
+# Quant Desk 2.8.1
+
+- Replaced the Movement Detector IV threshold number field with a dropdown covering the same +0.1 to +5.0 volatility points.
+- Added chart reading notes on Movement Detector and Overview, plus an integrated chart entry in Learn.
+- Added a timestamped quote diamond to the intraday price charts and a two-second default regular-session Webull quote cadence in the dashboard. The quote uses its own clock, while candle-based indicators use completed bars.
+- Split the volume and GEX profiles by units and aligned the price, completed options flow and estimated share CVD panels by time.
+
 # Quant Desk 2.8.0
 
 - Added an integrated intraday chart with 1m, 3m and 5m controls, EMA 21, VWAP, price levels, volume profile, modeled net GEX, options flow force and CVD.

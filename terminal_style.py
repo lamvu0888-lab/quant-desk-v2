@@ -5,7 +5,8 @@ import html
 
 import streamlit as st
 
-from terminal_data import numeric, status
+from market_session import session_state
+from terminal_data import et_time, numeric, status
 from terminal_learn import explanation
 
 PANEL = "#ffffff"
@@ -243,6 +244,21 @@ def panel_header(title, topic, key, detail=None):
         st.markdown(f'<div class="qd-panel-title">{esc(title)}</div>' +
                     (f'<div class="qd-panel-sub">{esc(detail)}</div>' if detail else ""), unsafe_allow_html=True, width="content")
         explanation(topic, f"guide_{key}")
+
+
+def chart_quote_caption(ctx):
+    quote = ctx.chart_quote
+    if quote:
+        pace = (f" · polling target {ctx.webull_store.quote_poll_seconds}s"
+                if ctx.price_provider == "Webull" and ctx.webull_store else "")
+        st.caption(f"{quote['source']} {quote['basis'].lower()} {amount(quote['price'])} · "
+                   f"{et_time(quote['at'])}{pace}.")
+    elif ctx.paused:
+        st.caption("Price updates are paused.")
+    elif session_state(ctx.now)["status"] != "OPEN":
+        st.caption("Regular session closed. Price charts show completed candles.")
+    else:
+        st.caption(f"Waiting for a fresh {ctx.price_provider} price. The chart uses the available completed candles.")
 
 
 def feed_stamp(name, feed, ctx):

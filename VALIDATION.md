@@ -1,12 +1,15 @@
-# Validation — Quant Desk 2.8.0
+# Validation — Quant Desk 2.8.1
 
-- Integrated chart uses completed normalized candles, available VWAP fields, current level inputs, modeled gamma rows, completed flow intervals and estimated share CVD.
-- The chart supports 1m/3m/5m views and displays WAIT when required observations are missing; it never converts the watch state into an order.
-- Proprietary D1/Cycle Intelligence is intentionally not reproduced.
+- The 104-case regression suite passed on Python 3.12 and Streamlit 1.67.0.
+- Streamlit interaction tests cover the IV threshold and time selectors, the inline Movement Detector guidance, and the three Overview intervals on Preview.
+- Quote fixtures exercised two price observations on the same set of completed candles, including the Live dashboard's Webull path. Additional cases cover delayed, old and paused quotes, a closed regular session and a provider cooldown.
+- The hosted Streamlit dashboard requires authentication to check the deployed screen and authenticated market data.
+- Chart tests checked price/flow time matching, skipped incomplete flow bins, separate volume and GEX profiles, and missing native share CVD on SPX.
+
+## Prior validation — Quant Desk 2.8.0
 
 - 98 automated checks passed, including navigation through all 13 Learn chart sections and the three holding-period workflows in Streamlit's test harness.
 - The guide covers the visible Quant Desk terminal. Strategy Lab, History & Replay, and the legacy dashboard are outside this release's Learn scope.
-- Production rollout of this dashboard package is pending.
 
 ## Prior validation — Quant Desk 2.7.0
 

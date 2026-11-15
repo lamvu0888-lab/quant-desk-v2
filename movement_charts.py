@@ -14,8 +14,8 @@ from plotly.subplots import make_subplots
 from data_utils import utc
 from desk_analytics import candles_on
 from market_session import ET
-from terminal_charts import exposure_figure
-from terminal_data import chart_buckets, display_exposure_unit, numeric, time_or_none
+from terminal_charts import exposure_figure, quote_marker
+from terminal_data import chart_buckets, chart_flow_rows, display_exposure_unit, interval_length, numeric, time_or_none
 from terminal_style import AMBER, BLUE, INK, RED, TEAL, VIOLET, style_chart
 from movement_detector import MIN_ENTRY_SCORE, MIN_RELATIVE_VOLUME
 
@@ -31,28 +31,35 @@ def _clock(bars, minutes):
 
 def _price(ctx, read, plan, *, structure_minutes=None):
     minutes = structure_minutes or 5
-    if structure_minutes is None or minutes == 5:
+    if structure_minutes is None:
         bars = _session_bars(ctx, read, "buckets", 24)
-    elif minutes == 3:
-        bars = chart_buckets(_session_bars(ctx, read, "candles", 111), 3)[-36:]
     else:
-        bars = _session_bars(ctx, read, "candles", 36)
+        bars = chart_buckets(_session_bars(ctx, read, "candles", 390), minutes,
+                             estimate_vwap=ctx.price_provider == "Webull")[-36:]
     if not bars:
         return None
     x = _clock(bars, minutes)
     fig = go.Figure()
     fig.add_scatter(x=x, y=[bar["close"] for bar in bars], name="Completed close",
                     line=dict(color=INK, width=2), hovertemplate="%{x|%H:%M} ET · %{y:,.2f}<extra>Close</extra>")
+    quote = ctx.chart_quote
+    if quote and quote["at"] >= utc(bars[-1]["time_utc"]) + timedelta(minutes=minutes):
+        at = quote["at"].astimezone(ET).replace(tzinfo=None)
+        fig.add_trace(quote_marker(quote, at))
     if structure_minutes is not None:
+        last = bars[-1]
+        native = numeric(last.get("session_vwap"))
+        vwap = native if native is not None else numeric(last.get("estimated_session_vwap"))
+        vwap_label = "VWAP" if native is not None else "Estimated VWAP"
         for label, value, color in (("Range high", plan["range"][1], TEAL),
                                     ("Range low", plan["range"][0], RED),
-                                    ("VWAP", plan["vwap"], VIOLET)):
+                                    (vwap_label, vwap, VIOLET)):
             if value is not None:
                 fig.add_hline(y=value, line_color=color, line_dash="dot",
                               annotation_text=label, annotation_font_color=color, annotation_font_size=10)
     fig.update_xaxes(tickformat="%H:%M", nticks=5)
     fig.update_yaxes(tickformat=",.2f", side="right", title="Price")
-    return style_chart(fig, 182, legend=False)
+    return style_chart(fig, 182, legend=False, revision=f"{ctx.ticker}:{ctx.session}:{minutes}")
 
 
 def _volatility(ctx, read):
@@ -67,7 +74,8 @@ def _volatility(ctx, read):
     # This is a recent 5m true-range trend; the regime read has its own ATR baseline.
     points = [(i, sum(true_ranges[max(0, i - 13):i + 1]) / min(i + 1, 14))
               for i in range(4, len(bars))]
-    fig = go.Figure(go.Scatter(x=[_clock(bars, 5)[i] for i, _ in points],
+    times = _clock(bars, 5)
+    fig = go.Figure(go.Scatter(x=[times[i] for i, _ in points],
                                y=[value for _, value in points], mode="lines", name="5m true range · 14-bar mean",
                                line=dict(color=AMBER, width=2), fill="tozeroy"))
     fig.update_xaxes(tickformat="%H:%M", nticks=5)
@@ -75,40 +83,27 @@ def _volatility(ctx, read):
     return style_chart(fig, 182, legend=False)
 
 
-def _gamma(read, plan):
+def _gamma(ctx, read, plan):
     if plan["gex"] is None:
         return None
     feed = read["gamma_feed"]
     rows = feed.rows if read["gamma"] else []
     if not rows:
         return None
+    spot = ctx.chart_quote["price"] if ctx.chart_quote else numeric(read["gamma"].get("spot"))
     return exposure_figure(rows, "strike", display_exposure_unit(read["gamma"]),
-                           plan["price"], plan["gamma_levels"]["flip"], compact=True,
+                           spot, plan["gamma_levels"]["flip"], compact=True,
                            focus_radius_pct=.015)
 
 
 def _flow(ctx, read, plan, interval="5m", feed=None):
     source = feed if feed is not None else read["flow"]
-    width = 1 if interval in ("1m", "3m") else 5
-    rows = [(time_or_none(row.get("time")), numeric(row.get("net_premium_usd")))
-            for row in source.rows]
-    rows = [(stamp, value) for stamp, value in rows
-            if stamp is not None and value is not None and stamp.astimezone(ET).date() == ctx.session
-            and stamp + timedelta(minutes=width) <= ctx.now]
-    if interval == "3m":
-        from market_session import rth_bounds
-        opened, _ = rth_bounds(ctx.session)
-        by_time = dict(rows)
-        rows = [(stamp, sum(by_time[stamp + timedelta(minutes=i)] for i in range(3)))
-                for stamp, _ in rows if (stamp - opened).total_seconds() % 180 == 0
-                and all(stamp + timedelta(minutes=i) in by_time for i in range(3))
-                and stamp + timedelta(minutes=3) <= ctx.now]
-        width = 3
-    rows = rows[-18:]
+    rows = chart_flow_rows(source.rows, ctx.session, ctx.now, interval)[-18:]
     if not rows:
         return None
-    x = [(stamp + timedelta(minutes=width)).astimezone(ET).replace(tzinfo=None) for stamp, _ in rows]
-    values = [value for _, value in rows]
+    width = interval_length(interval)
+    x = [(utc(row["time"]) + width).astimezone(ET).replace(tzinfo=None) for row in rows]
+    values = [numeric(row["net_premium_usd"]) for row in rows]
     fig = go.Figure(go.Bar(x=x, y=values, name=f"Completed {interval} net premium",
                            marker_color=[TEAL if v >= 0 else RED for v in values],
                            hovertemplate="%{x|%H:%M} ET · $%{y:,.0f}<extra>Net premium</extra>"))
@@ -161,7 +156,7 @@ def _decision(plan):
     return style_chart(fig, 165, legend=False, hover="closest")
 
 
-def _trigger(plan):
+def _trigger(ctx, plan):
     levels = [("Stop", plan["stop"], RED), ("Invalidation", plan["invalidation"], AMBER),
               ("Trigger", plan["trigger"], BLUE), ("TP1", plan["tp1"], TEAL),
               ("TP2", plan["tp2"], VIOLET)]
@@ -172,24 +167,30 @@ def _trigger(plan):
     for label, value, color in levels:
         fig.add_hline(y=value, line_color=color, line_dash="dot", annotation_text=f"{label} {value:,.2f}",
                       annotation_font_color=color, annotation_font_size=10)
-    spot = numeric(plan["price"])
-    if spot is not None:
-        fig.add_scatter(x=["Current"], y=[spot], mode="markers", marker=dict(color=INK, size=11),
-                        name="Current price", hovertemplate="%{y:,.2f}<extra>Current price</extra>")
+    if ctx.chart_quote:
+        fig.add_trace(quote_marker(ctx.chart_quote, "Current"))
+    prices = [value for _, value, _ in levels]
+    if ctx.chart_quote:
+        prices.append(ctx.chart_quote["price"])
+    pad = max((max(prices) - min(prices)) * .15, max(prices) * .0002)
     fig.update_xaxes(visible=False)
-    fig.update_yaxes(tickformat=",.2f", side="right", title="Price")
+    fig.update_yaxes(tickformat=",.2f", side="right", title="Price",
+                     range=[min(prices) - pad, max(prices) + pad])
     fig.update_layout(margin=dict(l=10, r=105, t=15, b=18))
     return style_chart(fig, 204, legend=False, hover="closest")
 
 
 def _quality(ctx, plan):
-    checks = [("Quote", plan.get("quote_at"), 120), ("5m price", plan.get("bar"), 420),
+    quote_limit = ctx.webull_store.settings.quote_max_age if ctx.webull_store and ctx.price_provider == "Webull" else 120
+    checks = [("Quote", plan.get("quote_at"), quote_limit), ("5m price", plan.get("bar"), 420),
               ("Flow", plan.get("flow_at"), 420), ("GEX", plan.get("gamma_at"), 420)]
     fig = go.Figure()
     for label, stamp, limit in checks:
         observed = time_or_none(stamp)
         age = (ctx.now - observed).total_seconds() if observed else None
         valid = age is not None and 0 <= age <= limit
+        if label == "Quote":
+            valid = valid and plan["feed_timing"]["quote_ready"]
         value = min(max(age, 0) / limit, 1.25) if age is not None else 0
         fig.add_trace(go.Bar(y=[label], x=[1], orientation="h", marker_color="#dce4ee", width=.48,
                              showlegend=False, hoverinfo="skip"))
@@ -210,12 +211,12 @@ def chart_for_stage(number, ctx, read, plan, *, flow_interval="5m", flow_feed=No
     """Return a chart or None when its input is unavailable."""
     return {1: lambda: _price(ctx, read, plan),
             2: lambda: _volatility(ctx, read),
-            3: lambda: _gamma(read, plan),
+            3: lambda: _gamma(ctx, read, plan),
             4: lambda: _flow(ctx, read, plan, flow_interval, flow_feed),
             5: lambda: _price(ctx, read, plan, structure_minutes=structure_minutes),
             6: lambda: _momentum(ctx, read, plan),
             7: lambda: _decision(plan),
-            8: lambda: _trigger(plan),
+            8: lambda: _trigger(ctx, plan),
             9: lambda: _quality(ctx, plan)}[number]()
 
 

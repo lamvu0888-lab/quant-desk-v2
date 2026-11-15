@@ -37,6 +37,7 @@ def supports_options(symbol):
 class _Entry:
     feed: Feed = Feed()
     due: float = 0.0
+    started: float = 0.0
 
 
 def _symbol_in_payload(payload, symbol):
@@ -111,8 +112,10 @@ class WebullFeedStore:
         return entry
 
     def _schedule(self, kind, entries, read, *args):
+        started = time.monotonic()
         for entry in entries.values():
             entry.feed = replace(entry.feed, loading=True)
+            entry.started = started
         self._pending[kind] += 1
         future = self._pools[kind].submit(read, *args)
         future.add_done_callback(lambda result: self._finish(kind, entries, result))
@@ -135,7 +138,18 @@ class WebullFeedStore:
                 else:
                     entry.feed = Feed(snapshot)
                     delay = self._refresh_delay(kind, snapshot)
-                entry.due = time.monotonic() + delay
+                now = time.monotonic()
+                # Space successful quote requests from their start. A slow response
+                # gets a small recovery interval; failures always wait the full retry.
+                if kind == "quote" and isinstance(snapshot, Snapshot):
+                    entry.due = max(entry.started + delay, now + .1)
+                else:
+                    entry.due = now + delay
+
+    @property
+    def quote_poll_seconds(self):
+        minimum = 5 if self.settings.endpoint == "api.sandbox.webull.com" else 2
+        return max(minimum, self.settings.quote_seconds)
 
     def _refresh_delay(self, kind, snapshot):
         now = snapshot.received_at
@@ -143,7 +157,7 @@ class WebullFeedStore:
         if kind == "options":
             return OPTION_REFRESH_SECONDS if opened else 60
         if kind == "quote":
-            return self.settings.quote_seconds if opened else 30
+            return self.quote_poll_seconds if opened else 30
         if not opened:
             return self.settings.candle_seconds
         last = time_or_none(snapshot.data.get("last_bar_utc"))
