@@ -1,10 +1,10 @@
-# Quant Desk 2.8.1
+# Quant Desk 2.8.2
 
 - Overview and Movement Detector show a gold quote marker with a source timestamp. On supported Webull symbols the regular-session dashboard targets a two-second quote poll by default. An existing `QUOTE_REFRESH_SECONDS` setting overrides the default. The shared budget and provider cooldowns still apply.
 - Movement Detector uses a dropdown for the IV expansion threshold and includes reading guidance below each chart.
 - The integrated intraday chart aligns 1m, 3m or 5m closes, Tradytics net premium and estimated share CVD in Eastern Time. Switch the side profile between volume and modeled net GEX. Open **What to look for on these charts** for the overlay guide.
 
-Quant Desk uses Webull for stock and ETF price timing when configured, and Tradytics for index prices, options flow and modeled dealer exposure. Open any covered ticker in the command bar. The quick buttons open SPY, SPX and QQQ. The dashboard and Discord worker run in analysis and paper mode.
+Quant Desk uses Webull for SPX, stock and ETF price timing when configured, and Tradytics for other index prices, options flow and modeled dealer exposure. Open any covered ticker in the command bar. The quick buttons open SPY, SPX and QQQ. The dashboard and Discord worker run in analysis and paper mode.
 
 - [Read the earlier Movement Detector rules](V2_6_RELEASE.md)
 - [Deploy to your existing GitHub, Streamlit and Render services](V2_5_DEPLOYMENT.md)
@@ -72,7 +72,7 @@ Share CVD estimates signed volume from completed one-minute OHLCV bars. It adds 
 
 The Tradytics client uses the current public REST endpoints and API key query parameter. Keep `TRADYTICS_AUTH_MODE=query` for the current quickstart. The optional `bearer` setting supports an account setup that specifies header authentication. Your key controls which scopes the terminal can access. Requests stay on the documented host. Failures appear in Data Health without credential details.
 
-- **Supported symbols.** Enter a Tradytics ticker. Major index quotes, including SPX, use the dedicated index endpoint. Index candle volume and VWAP are blank when the provider omits them. Option, volatility, dark-pool and signal coverage varies by ticker and session.
+- **Supported symbols.** Enter a Tradytics ticker. With Webull configured, SPX price uses its tested `US_INDEX` snapshot and completed 1-minute bars. Other index prices use the Tradytics index endpoint. SPX share volume and VWAP remain blank. Option, volatility, dark-pool and signal coverage varies by ticker and session.
 - **Net flow.** The session chart uses the provider aggregate. The tape loads up to 500 recent matching records and polls by ID between periodic refreshes. Bubble ranks and review points apply to the loaded sample. The flow feed documents a $25K coverage floor. Market scope in the net premium chart is the provider's single-stock universe.
 - **Dark pool.** This page uses share-trade notional and excludes exchange venue rows from the tape. The Options Flow page handles option sweeps and blocks.
 - **Exposure.** Tradytics reports a dealer model about every five minutes. Use the reported unit and expiry scope. The chart may focus near spot while the total still covers the full selected scope.
@@ -82,7 +82,7 @@ Quotes typically refresh at Tradytics about every 30 seconds. The workspace requ
 
 ## Webull and Tradytics together
 
-Set **Feed controls → Price and candle source → Auto**. Auto uses configured Webull OpenAPI for supported stocks and ETFs and Tradytics for SPX and other indices. Webull requests a warm history, then fetches recent completed minutes after each close. Prices and candles carry their own market timestamps. An explicit provider delay, stale market timestamp or sandbox data holds the entry check. Webull OpenAPI needs its own data entitlement. See [Webull market data permissions](https://developer.webull.com/apis/docs/market-data-api/overview/).
+Set **Feed controls → Price and candle source → Auto**. Auto uses configured Webull OpenAPI for SPX, supported stocks and ETFs and Tradytics for other indices. Webull requests a warm history, then fetches recent completed minutes after each close. Prices and candles carry their own market timestamps. An explicit provider delay, stale market timestamp or sandbox data holds the entry check. For SPX, the snapshot may omit delay metadata, so a current matching 1-minute response must explicitly report zero delay before its quote can drive a live chart or alert. The index volume is never treated as traded SPX shares, VWAP, volume profile or CVD. Webull's SPX `US_INDEX` category was confirmed by direct snapshot and minute-bar calls on November 14, 2026, though the public stock endpoint reference still lists only `US_STOCK` and `US_ETF`. If your Webull account or the API rejects `US_INDEX`, Data Health shows the error; select Tradytics in Feed controls to use its SPX price and candles. Webull OpenAPI needs its own data entitlement. See [Webull market data permissions](https://developer.webull.com/apis/docs/market-data-api/overview/) and [stock snapshots reference](https://developer.webull.com/apis/docs/reference/snapshot/).
 
 Choose an exact expiry to see Webull bid, ask, spread, quote age and Greeks. The Webull view samples up to 20 near-spot contracts and requests PM-settled SPXW contracts for SPX. **Trade Plan** checks the nearest contract in the setup direction and waits on stale, wide or incomplete quotes. **IV Decision Center** uses a same-strike call and put to estimate exact-expiry ATM IV when both quotes are fresh. **Movement Detector** compares 1, 3 or 5 minute IV changes only within the same provider, expiry and strike pair. The Tradytics surface supplies the 30-day benchmark and rank.
 

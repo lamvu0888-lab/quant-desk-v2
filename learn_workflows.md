@@ -2,7 +2,7 @@
 
 ### Before the session
 
-1. **Data Health.** Select the ticker and intended expiry. During the regular session, check that price and completed 1-minute candles are current, 5-minute flow is aligned when available, and the actual contract has a fresh two-sided quote. For SPX, verify Tradytics index prices and Webull SPXW separately. Nearest listed can resolve to a later date if same-day contracts are absent.
+1. **Data Health.** Select the ticker and intended expiry. During the regular session, check that price and completed 1-minute candles are current, 5-minute flow is aligned when available, and the actual contract has a fresh two-sided quote. For SPX, check Webull index price and completed candles independently of Tradytics flow and Webull SPXW quotes. Nearest listed can resolve to a later date if same-day contracts are absent.
 2. **Price action and levels.** Mark the prior session high/low, early session range as it forms, VWAP when available and the nearest relevant modeled wall. Check whether price is trending or rotating around VWAP. Decide where the trade is invalidated and which obstacle comes before the first target.
 3. **Calendar and contract.** Note scheduled events and the remaining session time. Compare same-day and later expirations where appropriate. Review bid/ask, actual expiry, settlement convention and maximum dollar loss. Same-day options can reprice sharply near the strike and lose their remaining time value quickly.
 

@@ -24,7 +24,7 @@ INDEX_SYMBOLS = INDICES | {"SPXW"}
 
 
 def price_source(symbol, preference, webull):
-    if symbol not in INDEX_SYMBOLS and (preference == "Webull" or preference == "Auto" and webull):
+    if (symbol == "SPX" or symbol not in INDEX_SYMBOLS) and (preference == "Webull" or preference == "Auto" and webull):
         return "Webull"
     return "Tradytics"
 
@@ -171,7 +171,7 @@ class WebullFeedStore:
         with self._lock:
             groups = defaultdict(list)
             for symbol in dict.fromkeys(symbols):
-                if symbol not in INDEX_SYMBOLS:
+                if symbol == "SPX" or symbol not in INDEX_SYMBOLS:
                     category = self._category_hints.get(symbol) or category_for(symbol, self.settings.category)
                     groups[category].append(symbol)
             for kind in ("quote", "history"):
@@ -202,7 +202,7 @@ class WebullFeedStore:
         for ticker in tickers:
             try:
                 if kind == "quote":
-                    if self.settings.category == "AUTO" and not _symbol_in_payload(raw, ticker):
+                    if category != "US_INDEX" and self.settings.category == "AUTO" and not _symbol_in_payload(raw, ticker):
                         with self._lock:
                             if ticker not in self._category_hints:
                                 self._category_hints[ticker] = "US_ETF" if category == "US_STOCK" else "US_STOCK"
@@ -336,7 +336,7 @@ def webull_price_quality(quote, bars, settings, now, *, paused=False):
     day = now.astimezone(ET).date()
     stamp = time_or_none(q.get("price_time_utc"))
     bid_ask = time_or_none(q.get("quote_time_utc"))
-    price, kind = q.get("last_price"), "Last trade"
+    price, kind = q.get("last_price"), "Index value" if q.get("ticker") == "SPX" else "Last trade"
     if ((stamp is None or now - stamp > timedelta(seconds=settings.quote_max_age))
             and bid_ask and q.get("midpoint") and 0 <= (now - bid_ask).total_seconds() <= settings.quote_max_age):
         stamp, price, kind = bid_ask, q["midpoint"], "Bid/ask midpoint"
@@ -345,15 +345,23 @@ def webull_price_quality(quote, bars, settings, now, *, paused=False):
     price_age = (now - stamp).total_seconds() if stamp else None
     bar_age = (now - bar_close).total_seconds() if bar_close else None
     allowed = not paused and settings.endpoint == "api.webull.com"
+    # An index snapshot may omit the delay field. Require the same-symbol M1
+    # response to explicitly report zero delay before using an SPX quote.
+    index_delay_verified = (q.get("ticker") != "SPX" or
+                            (h.get("delay_minutes") == 0 and bar_close is not None and
+                             bar_close.astimezone(ET).date() == day and bar_age is not None and 0 <= bar_age <= 120))
     quote_ok = bool(allowed and not quote.error and price and stamp and stamp.astimezone(ET).date() == day
-                    and 0 <= price_age <= settings.quote_max_age and q.get("delay_minutes") in (None, 0))
+                    and 0 <= price_age <= settings.quote_max_age and q.get("delay_minutes") in (None, 0)
+                    and index_delay_verified)
     bars_ok = bool(allowed and not bars.error and bar_close and bar_close.astimezone(ET).date() == day
-                   and 0 <= bar_age <= 120 and h.get("delay_minutes") in (None, 0))
+                   and 0 <= bar_age <= 120 and h.get("delay_minutes") in (None, 0) and index_delay_verified)
     reasons = []
     if not allowed:
         reasons.append("Webull polling is paused." if paused else "Webull sandbox data is for testing.")
     if not quote_ok:
         reasons.append(str(quote.error) if quote.error else "Waiting for a fresh Webull price timestamp.")
+    if not index_delay_verified:
+        reasons.append("Waiting for explicit zero-delay SPX candle entitlement from Webull.")
     if not bars_ok:
         reasons.append(str(bars.error) if bars.error else "Waiting for a recent completed Webull 1-minute candle.")
     if len(h.get("candles", [])) < 121:

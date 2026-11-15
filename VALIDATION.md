@@ -1,3 +1,9 @@
+# Validation — Quant Desk 2.8.2
+
+- Direct Webull connector calls on November 14, 2026 returned an SPX index snapshot with symbol `SPX` and instrument ID `913354362`, and completed M1 bars with the same instrument ID and `delay_minutes: 0`, using `US_INDEX`. This verifies the connected Webull access, not the separate OpenAPI credentials in Streamlit or Render.
+- The 107-case regression suite passed on Python 3.12 and Streamlit 1.67.0. New tests cover actual index response shapes, source routing, independent Webull index quote/candle requests, the dashboard price and chart marker, hidden index share volume, and the missing/delayed/stale entitlement gate.
+- The current public Webull stock endpoint reference enumerates stock and ETF categories but omits `US_INDEX`. Verify production permissions and timestamps in Data Health during the next open session. No live production deployment or real-market alert was observed in this test.
+
 # Validation — Quant Desk 2.8.1
 
 - The 104-case regression suite passed on Python 3.12 and Streamlit 1.67.0.

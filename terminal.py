@@ -26,7 +26,7 @@ from option_quotes import age_text, quote_age
 from webull_feed import INDEX_SYMBOLS, WebullFeedStore, price_source
 
 UTC = timezone.utc
-VERSION = "2.8.1"
+VERSION = "2.8.2"
 WEBULL_CHART_PAGES = {"Overview", "Movement Detector"}
 PAGES_LABEL = {
     "Overview": ("Market overview", "Entry timing, market direction, flow and nearby levels.", "◈"),
@@ -279,9 +279,11 @@ def main():
         with st.expander("Feed controls"):
             selected_provider = st.selectbox("Price and candle source", ["Auto", "Webull", "Tradytics"], key="desk_price_provider",
                                              disabled=mode == "Preview",
-                                             help="Auto uses Webull for stocks and ETFs when configured, and Tradytics for indices.")
-            if ticker in INDEX_SYMBOLS and mode != "Preview":
-                st.caption("Index price uses Tradytics. Exact-expiry SPXW option quotes can use Webull.")
+                                             help="Auto uses Webull for SPX, stocks and ETFs when configured; Tradytics supplies other indices.")
+            if ticker == "SPX" and mode != "Preview":
+                st.caption("SPX price and 1m candles use Webull US_INDEX when configured. Tradytics still supplies options flow and modeled exposure. Select Tradytics here if Webull index access is unavailable.")
+            elif ticker in INDEX_SYMBOLS and mode != "Preview":
+                st.caption("This index price uses Tradytics. Exact-expiry SPXW option quotes can use Webull for SPX.")
             paused = st.toggle("Pause requests", key="desk_paused", disabled=mode == "Preview")
             st.button("Refresh feeds", key="desk_refresh", on_click=refresh, disabled=mode == "Preview", width="stretch")
             with st.expander("Discord ticker monitoring", expanded=False, on_change="rerun", key="qd25_watchlist") as watch:

@@ -11,7 +11,7 @@ from discord_monitor import MonitorScan
 from desk_analytics import MINUTE
 from market_session import rth_bounds
 from movement_charts import chart_for_stage
-from my_webull_adapter import WebullSDKAdapter
+from my_webull_adapter import WebullSDKAdapter, category_for, normalize_candles, normalize_quote
 from movement_detector import early_price_move
 from option_quotes import atm_iv_sample
 from research_journal import Journal
@@ -96,10 +96,81 @@ def test_spxw_discovery_and_quote_time_are_separate_from_last_trade():
         assert discovery["root_symbol"] == "SPXW" and discovery["start_date"] == expiry
         assert {row["updated_at"] for row in chain.data} == {now.isoformat()}
         assert {row["contract"] for row in chain.data} == set(symbols)
-        assert price_source("SPX", "Auto", store) == "Tradytics"
+        assert price_source("SPX", "Auto", store) == "Webull"
         assert atm_iv_sample(Feed(chain), "SPX", expiry, 5200, now)["value"] == .18
     finally:
         store.close()
+
+
+def test_spx_index_endpoint_shapes_keep_index_volume_out_of_share_charts():
+    now = datetime.fromisoformat("2026-11-13T20:59:04+00:00")
+    quote_raw = [{"symbol": "SPX", "price": "7561.67", "last_trade_time": int((now - timedelta(seconds=4)).timestamp() * 1000),
+                  "volume": "2727332784", "instrument_id": "913354362", "trade_status": "OC"}]
+    bars_raw = {"result": [{"symbol": "SPX", "instrument_id": "913354362", "delay_minutes": 0,
+                            "result": [{"time": "2026-11-13T20:58:00.000+0000", "open": "7559.22",
+                                        "close": "7561.67", "high": "7562.79", "low": "7557.85",
+                                        "volume": "617295295", "trading_session": "RTH"}]}]}
+    assert category_for("SPX") == "US_INDEX"
+    assert price_source("SPX", "Auto", True) == "Webull"
+    assert price_source("SPX", "Tradytics", True) == "Tradytics"
+    assert price_source("NDX", "Auto", True) == "Tradytics"
+    quote = normalize_quote(quote_raw, "SPX", now=now)
+    bars = normalize_candles(bars_raw, "SPX", now=now)
+    assert quote["spot"] == bars["candles"][-1]["close"] == 7561.67
+    assert bars["delay_minutes"] == 0 and bars["candles"][-1]["volume"] is None
+    quality = webull_price_quality(snapshot(quote, now), snapshot(bars, now), Settings(), now)
+    assert quality["quote_ready"] and quality["bars_ready"]
+    assert not webull_price_quality(snapshot(quote, now), snapshot({**bars, "delay_minutes": None}, now), Settings(), now)["quote_ready"]
+    assert not webull_price_quality(snapshot(quote, now), snapshot({**bars, "delay_minutes": 15}, now), Settings(), now)["quote_ready"]
+    assert not webull_price_quality(snapshot(quote, now), snapshot(bars, now), Settings(), now + timedelta(minutes=3))["quote_ready"]
+
+
+def test_spx_is_batched_separately_and_has_no_etf_category_retry(monkeypatch):
+    now = datetime.fromisoformat("2026-11-13T20:55:04+00:00")
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now
+
+    monkeypatch.setattr("webull_feed.datetime", Clock)
+    client = Mock()
+    client.quote_batch.return_value = [{"symbol": "SPX", "price": "7561.67",
+                                         "last_trade_time": int(now.timestamp() * 1000)}]
+    client.history_batch.return_value = {"result": [{"symbol": "SPX", "delay_minutes": 0,
+        "result": [{"time": "2026-11-13T20:54:00.000+0000", "open": "7559.22", "close": "7561.67",
+                    "high": "7562.79", "low": "7557.85", "volume": "617295295"}]}]}
+    store = WebullFeedStore(Settings(), adapter_factory=lambda: client)
+    try:
+        assert "SPX" in store.prices(["SPX", "NDX"])
+        q = store._read_prices("quote", "US_INDEX", {"SPX": {}})["SPX"]
+        h = store._read_prices("history", "US_INDEX", {"SPX": {}})["SPX"]
+        assert q.data["spot"] == 7561.67 and h.data["delay_minutes"] == 0
+        assert client.quote_batch.call_args.args[1] == "US_INDEX"
+        assert client.history_batch.call_args.args[1] == "US_INDEX"
+        assert "SPX" not in store._category_hints
+    finally:
+        store.close()
+
+
+def test_spx_dashboard_uses_webull_price_and_leaves_index_volume_blank():
+    inputs = synthetic_inputs()
+    now = inputs["now"] + timedelta(seconds=4)
+    candles = [{**bar, "volume": None} for bar in inputs["candles"]]
+    feeds = {
+        "quote": snapshot({"ticker": "SPX", "last_price": 7561.67,
+                           "price_time_utc": now.isoformat(), "delay_minutes": None}, now),
+        "history": snapshot({"candles": candles, "last_bar_utc": candles[-1]["time_utc"],
+                             "delay_minutes": 0}, now),
+    }
+    ctx = Desk("SPX", now, DemoStore("SPX"), False, False, None, True, price_provider="Webull",
+               webull_store=SimpleNamespace(settings=Settings()), webull_prices=feeds)
+    assert ctx.quote()["price"] == 7561.67
+    assert ctx.history()[0] == candles
+    assert ctx.chart_quote["source"] == "Webull"
+    fig = integrated_intraday_figure(chart_buckets(candles, 5), "SPX", "5m", profile="GEX", quote=ctx.chart_quote)
+    assert any(trace.name == "Webull quote" for trace in fig.data)
+    assert all(trace.name != "Volume profile" for trace in fig.data)
 
 
 def test_new_receipt_cannot_refresh_delayed_or_sandbox_prices():

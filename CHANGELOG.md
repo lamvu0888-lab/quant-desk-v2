@@ -1,3 +1,9 @@
+# Quant Desk 2.8.2
+
+- Verified SPX `US_INDEX` snapshot and one-minute candle responses directly through Webull and connected them to Auto, dashboard charts and the Discord monitor's price path.
+- Required an explicit zero-delay, current same-symbol SPX candle response when the index snapshot omits delay metadata. Stale, delayed, sandbox or unavailable data still holds live checks.
+- Kept index volume out of share VWAP, volume profile and CVD. Other indices retain Tradytics pricing; explicit Tradytics selection remains available for SPX.
+
 # Quant Desk 2.8.1
 
 - Replaced the Movement Detector IV threshold number field with a dropdown covering the same +0.1 to +5.0 volatility points.

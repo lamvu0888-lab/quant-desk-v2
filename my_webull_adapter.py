@@ -13,8 +13,13 @@ ETF_SYMBOLS = {'SPY','QQQ','IWM','DIA','VOO','IVV','SPLG','SPYM','VTI','TLT','GL
 
 
 def category_for(ticker, configured='AUTO'):
-    if ticker in ('SPX','SPXW','NDX','VIX','RUT'):
-        raise DataError('Webull stock endpoints have no validated index category here. Use SPY/QQQ/IWM; no index price is fabricated or substituted.')
+    # Tested against the Webull OpenAPI SPX snapshot and M1 bar endpoints.
+    # The public stock reference does not yet enumerate US_INDEX; isolate it
+    # to SPX rather than assuming other indices have the same coverage.
+    if ticker == 'SPX':
+        return 'US_INDEX'
+    if ticker in ('SPXW','NDX','DJI','VIX','RUT'):
+        raise DataError('Webull index price is validated only for SPX. Use Tradytics for this index.')
     return ('US_ETF' if ticker in ETF_SYMBOLS else 'US_STOCK') if configured == 'AUTO' else configured
 
 
@@ -65,7 +70,10 @@ def normalize_candles(payload,ticker,*,interval_minutes=1,now=None):
             continue
         ts=utc(field(row,'time','timestamp','time_utc'))
         if ts.second or ts.microsecond: raise DataError('Bar timestamp is not a whole minute')
-        values={k:number(row.get(k),k,minimum=0) for k in ('open','high','low','close','volume')}
+        values={k:number(row.get(k),k,minimum=0) for k in ('open','high','low','close')}
+        # Webull returns an index volume field, but it is not SPX share volume.
+        # Do not turn it into share VWAP, a volume profile, or share CVD.
+        values['volume'] = None if ticker == 'SPX' else number(row.get('volume'),'volume',minimum=0)
         if min(values[k] for k in ('open','high','low','close')) <= 0 or values['high'] < max(values['open'],values['close'],values['low']) or values['low'] > min(values['open'],values['close'],values['high']):
             raise DataError('Invalid Webull OHLCV values')
         bounds=_bounds(ts.astimezone(ET).date().isoformat())
@@ -99,7 +107,8 @@ def aggregate_candles(candles,minutes):
         if len(group)!=minutes or any(utc(row['time_utc'])!=key+timedelta(minutes=i) for i,row in enumerate(group)): continue
         result.append({'time_utc':key.isoformat(),'open':group[0]['open'],'high':max(x['high'] for x in group),
                        'low':min(x['low'] for x in group),'close':group[-1]['close'],
-                       'volume':sum(x['volume'] for x in group),'closed':True})
+                       'volume':sum(x['volume'] for x in group) if all(x['volume'] is not None for x in group) else None,
+                       'closed':True})
     return result
 
 

@@ -97,7 +97,7 @@ class Desk:
 
     @cached_property
     def webull_quality(self):
-        if not self.webull_store or self.ticker in INDEX_SYMBOLS:
+        if not self.webull_store or (self.ticker in INDEX_SYMBOLS and self.ticker != "SPX"):
             return {}
         return webull_price_quality(self.webull_price_feed("quote"), self.webull_price_feed("history"),
                                     self.webull_store.settings, self.now, paused=self.paused)
@@ -444,7 +444,7 @@ def integrated_state(rows, force):
 def integrated_intraday_panel(ctx, read):
     with st.container(border=True):
         panel_header("Integrated intraday chart", "intraday", "overview_integrated",
-                     f"Price, flow and share volume · {ctx.session}")
+                     f"Price, flow and {'modeled GEX' if ctx.ticker in INDEX_SYMBOLS else 'share volume'} · {ctx.session}")
         left, right = st.columns(2)
         interval = left.segmented_control("Candle and flow interval", ["1m", "3m", "5m"], default="1m",
                                           key="integrated_timeframe") or "1m"
@@ -1587,7 +1587,7 @@ def health_page(ctx):
         webull_quote = ctx.webull_price_feed("quote")
         webull_bars = ctx.webull_price_feed("history")
         webull_error = webull_quote.error or webull_bars.error
-        webull_status = q.get("status", "Index price unavailable" if ctx.ticker in INDEX_SYMBOLS else "Webull not configured")
+        webull_status = q.get("status", "Index price unavailable" if ctx.ticker in INDEX_SYMBOLS and ctx.ticker != "SPX" else "Webull not configured")
         table([{"Source": "Preview" if ctx.preview else "Tradytics", "Price": positive(trad.get("price")),
                 "Quote time (ET)": et_time(stamp), "Age": age_text(trad_age), "Status": trad_status,
                 "Note": str(quote_feed.error or "")},
