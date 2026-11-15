@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from functools import cached_property
 
@@ -14,17 +14,17 @@ from data_utils import DataError, field, utc
 from decision_flow import price_quote_issues, usable_exposure
 from decision_ui import (command_panel, dashboard_decision, dealer_center, iv_center, journal_panel, option_entry_panel,
                          probability_center, validation_view)
-from desk_analytics import (FIVE_MINUTES, MINUTE, PriceLevel, candles_on, flow_read, mark_orders, order_rows, price_levels,
+from desk_analytics import (FIVE_MINUTES, MINUTE, candles_on, flow_read, mark_orders, order_rows, price_levels,
                             realized_regime, replay_setups, session_window, setup_read, share_cvd, signed_moves)
+from ema_trend import ema_trend
 from market_session import ET, active_session, rth_bounds, session_state
 from movement_detector import early_price_move
 from movement_ui import detector_view, nav_button
 from monte_carlo import forecast, walk_forward
 from option_quotes import age_text, option_rows, quote_age, quote_status, sample_exposure, spread_fraction
-from terminal_charts import (bubble_figure, cvd_figure, dark_figure, ema_series, exposure_figure, flow_desk_figure, flow_figure,
-                             forecast_figure, integrated_intraday_figure, money_map_figure, price_figure,
-                             rolling_chart_flow, series_figure)
-from terminal_data import (INDICES, chart_buckets, chart_flow_rows, completed_boundary, display_exposure_unit, et_time, expiration_date, exposure_obj,
+from terminal_charts import (bubble_figure, cvd_figure, dark_figure, exposure_figure, flow_desk_figure, flow_figure,
+                             forecast_figure, futures_activity_figure, money_map_figure, price_figure, series_figure)
+from terminal_data import (INDICES, chart_buckets, completed_boundary, display_exposure_unit, et_time, expiration_date, exposure_obj,
                            feed_has_delay, filter_expiration, first_listed_dte, interval_length, numeric, positive, price_bars, quote_row,
                            same_ticker, scope_timeline, session_rows, snapshot_forecast_gate, source_stamp, status,
                            ticker_symbol, time_or_none)
@@ -57,6 +57,7 @@ class Desk:
     webull_store: object | None = None
     webull_prices: dict | None = None
     expiry_waiting: bool = False
+    price_fallback: str | None = None
 
     def get(self, name, **params):
         params = {key: value for key, value in params.items() if value is not None}
@@ -100,7 +101,7 @@ class Desk:
         if not self.webull_store or (self.ticker in INDEX_SYMBOLS and self.ticker != "SPX"):
             return {}
         return webull_price_quality(self.webull_price_feed("quote"), self.webull_price_feed("history"),
-                                    self.webull_store.settings, self.now, paused=self.paused)
+                                    self.webull_store.settings, self.now, paused=self.paused, ticker=self.ticker)
 
     def webull_price_feed(self, kind):
         return (self.webull_prices or {}).get(kind, Feed())
@@ -268,11 +269,38 @@ def read_price(ctx):
     close = utc(candles[-1]["time_utc"]) + MINUTE if candles else None
     usable = bool(not ctx.paused and not bars.error and not feed_has_delay(bars) and candles
                   and not (bars.snapshot and bars.snapshot.meta.get("sandbox")))
+    if ctx.price_provider == "Webull" and ctx.ticker == "SPX":
+        usable = usable and bars.obj.get("delay_minutes") == 0
     ready = bool(usable and close
                  and close.astimezone(ET).date() == ctx.session and 0 <= (ctx.now - close).total_seconds() <= 120)
     if ctx.price_provider == "Webull":
         ready = ready and ctx.webull_quality.get("bars_ready", False)
     return {"candles": candles, "bars": bars, "minute_close": close, "bars_ready": ready, "bars_usable": usable}
+
+
+def route_price(ctx, preference):
+    """Share Auto price selection between the dashboard and the Discord worker."""
+    prices = read_price(ctx)
+    if (ctx.price_provider != "Webull" or preference != "Auto" or ctx.preview or ctx.paused or not ctx.store
+            or prices["bars_ready"]):
+        return ctx, prices
+    fallback = replace(ctx, price_provider="Tradytics")
+    alternate = read_price(fallback)
+    if session_state(ctx.now)["status"] == "OPEN":
+        usable = alternate["bars_ready"]
+    else:
+        usable = alternate["bars_usable"] and (not prices["bars_usable"] or
+                                               alternate["minute_close"] > prices["minute_close"])
+    if not usable:
+        return ctx, prices
+    bars = ctx.webull_price_feed("history")
+    if bars.error:
+        fallback.price_fallback = str(bars.error)
+    elif ctx.webull_store and ctx.webull_store.settings.endpoint == "api.sandbox.webull.com":
+        fallback.price_fallback = "Webull PaperTrade is configured for testing."
+    else:
+        fallback.price_fallback = "Waiting for current Webull minute candles."
+    return fallback, alternate
 
 
 def read_workspace(ctx, *, include_flow=True, prices=None, timeline=None):
@@ -321,8 +349,9 @@ def read_workspace(ctx, *, include_flow=True, prices=None, timeline=None):
     levels = price_levels(buckets, ctx.session)
     plan = setup_read(buckets, timeline.rows, ctx.session, regime, levels, gex=gex, ready=not reasons)
     price_watch = early_price_move(candles, ctx.session, ctx.now) if regular and prices["bars_ready"] else None
+    price_trend = ema_trend(candles, ctx.session, ctx.now) if regular and prices["bars_ready"] else None
     return {**prices, "buckets": buckets, "gamma_feed": gamma_feed,
-            "gamma": gamma, "flow": timeline, "vol": vol_feed, "price_stamp": price_stamp,
+            "gamma": gamma, "flow": timeline, "vol": vol_feed, "price_stamp": price_stamp, "price_trend": price_trend,
             "flow_stamp": flow_stamp, "flow_state": flow_state, "price_watch": price_watch,
             "regime": regime, "plan": plan, "levels": levels, "reasons": reasons}
 
@@ -385,9 +414,10 @@ def price_panel(ctx, read):
             premium = b.number_input("Minimum premium ($)", min_value=25_000, max_value=100_000_000,
                                      value=default_premium(ctx.ticker), step=25_000, key=f"price_min_{ctx.ticker}", disabled=daily)
             option_type = c.selectbox("Show contracts", ["Calls & puts", "Calls", "Puts"], key="price_order_type", disabled=daily)
-            a, b = st.columns(2)
+            a, b, c = st.columns(3)
             labels = a.toggle("Show strike and premium labels", key="price_order_labels", disabled=daily)
             more_levels = b.toggle("Show more levels", key="price_more_levels", disabled=daily)
+            show_ema = c.toggle("EMA 9 and 21", value=True, key="price_ema")
         candles, feed = ctx.history(daily=True) if daily else (read["candles"], read["bars"])
         using_webull = ctx.price_provider == "Webull" and not daily
         rows = candles if daily else chart_buckets(candles, {"1m": 1, "3m": 3, "5m": 5, "15m": 15, "1h": 60}[timeframe],
@@ -405,7 +435,9 @@ def price_panel(ctx, read):
                                 candles_on(candles, ctx.session), 14 if labels else 32)
         fig = (price_figure(rows, ctx.ticker, timeframe, levels=nearest_chart_levels(levels, rows, more_levels),
                             overlays=overlays and not daily, orders=marks, order_labels=labels,
-                            quote=ctx.chart_quote if not daily else None) if rows else None)
+                            quote=ctx.chart_quote if not daily else None, show_ema=show_ema) if rows else None)
+        if not daily:
+            chart_quote_caption(ctx)
         render_chart(fig, "price_action_chart", feed, "Waiting for completed candles in this timeframe.")
         if using_webull:
             close = read["minute_close"]
@@ -421,118 +453,6 @@ def price_panel(ctx, read):
             with st.expander("Download candles"):
                 csv_export(rows, ctx.title(f"{timeframe}_candles.csv"), "export_price_candles")
         return prints, prints_feed
-
-
-def integrated_state(rows, force):
-    """Turn the combined chart into a simple watch state, not an auto-trade signal."""
-    if not rows:
-        return "WAIT", "Waiting for completed candles in this session."
-    latest = rows[-1]
-    last, ema = latest["close"], latest["ema21"]
-    vwap = latest.get("session_vwap") or latest.get("estimated_session_vwap")
-    if ema is None:
-        return "WAIT", "Waiting for 21 completed candles to calculate EMA 21."
-    if vwap is None or force is None:
-        return "WAIT", "Waiting for VWAP and three consecutive flow intervals aligned with price."
-    if last > ema and last > vwap and force > 0:
-        return "LONG WATCH", "Wait for a hold above the nearest level with positive flow force."
-    if last < ema and last < vwap and force < 0:
-        return "SHORT WATCH", "Wait for a failed retest below the nearest level with negative flow force."
-    return "RANGE / WAIT", "Price and flow are mixed; wait for a clean break with confirmation."
-
-
-def integrated_intraday_panel(ctx, read):
-    with st.container(border=True):
-        panel_header("Integrated intraday chart", "intraday", "overview_integrated",
-                     f"Price, flow and {'modeled GEX' if ctx.ticker in INDEX_SYMBOLS else 'share volume'} · {ctx.session}")
-        left, right = st.columns(2)
-        interval = left.segmented_control("Candle and flow interval", ["1m", "3m", "5m"], default="1m",
-                                          key="integrated_timeframe") or "1m"
-        if ctx.ticker in INDEX_SYMBOLS:
-            profile = "GEX"
-            right.caption("Side profile · Modeled net GEX")
-        else:
-            profile = right.segmented_control("Side profile", ["Volume", "GEX"], default="Volume",
-                                              key=f"integrated_profile_{ctx.ticker}") or "Volume"
-        chart_quote_caption(ctx)
-        proxy_points, proxy_label = [], "ES"
-        if ctx.ticker == "SPX":
-            proxy_label = st.selectbox("Futures activity proxy", ["ES", "MES", "Off"], key="spx_futures_proxy",
-                                       help="Separate futures contract volume; SPX has no share tape. CVD requires footprint access.")
-            if proxy_label != "Off" and ctx.webull_store:
-                proxy = ctx.webull_store.futures_activity(proxy_label, ctx.now, ctx.session, paused=ctx.paused)
-                proxy_points = proxy.obj.get("points", [])
-                contract = proxy.obj.get("contract", proxy_label)
-                st.caption(f"{contract} futures volume (contracts), not SPX share volume · "
-                           f"{'Footprint CVD' if any(p.get('cvd') is not None for p in proxy_points) else 'CVD unavailable without usable footprint data'}.")
-                if proxy.error:
-                    st.caption(f"Futures proxy unavailable: {proxy.error}")
-                elif proxy.loading and not proxy_points:
-                    st.caption("Loading Webull futures activity. This does not replace the SPX price feed.")
-        minutes = {"1m": 1, "3m": 3, "5m": 5}[interval]
-        width = minutes * MINUTE
-        candles = read["candles"]
-        buckets = chart_buckets(candles, minutes, estimate_vwap=ctx.price_provider == "Webull")
-        rows = candles_on([{**row, "ema21": ema} for row, ema in zip(buckets, ema_series(buckets))], ctx.session)
-        flow = read["flow"] if interval == "5m" else ctx.timeline(interval="1m")
-        flows = chart_flow_rows(flow.rows, ctx.session, ctx.now, interval)
-        levels, _ = level_inputs(ctx, read, strikes=4, show_expected=True)
-        opening = candles_on(read["buckets"], ctx.session)[:6]
-        opened, _ = rth_bounds(ctx.session)
-        if len(opening) == 6 and all(utc(bar["time_utc"]) == opened + i * FIVE_MINUTES
-                                     for i, bar in enumerate(opening)):
-            at = (opened + 6 * FIVE_MINUTES).isoformat()
-            levels.extend([PriceLevel("Opening 30m high", max(bar["high"] for bar in opening), "resistance", at),
-                           PriceLevel("Opening 30m low", min(bar["low"] for bar in opening), "support", at)])
-        visible_levels = nearest_chart_levels(levels, rows, False)
-        points = [] if ctx.ticker in INDEX_SYMBOLS else share_cvd(candles, ctx.session)
-        gamma = chart_exposure(ctx, read) if profile == "GEX" else {}
-        gamma_rows = read["gamma_feed"].rows if gamma else []
-        price_close = utc(rows[-1]["time_utc"]) + width if rows else None
-        flow_close = utc(flows[-1]["time"]) + width if flows else None
-        boundary = completed_boundary(ctx.now, ctx.session, width)
-        force = None
-        if (boundary and price_close == flow_close == boundary and not flow.error and not feed_has_delay(flow)
-                and read["bars_usable"] and (ctx.preview or read["bars_ready"])):
-            force = rolling_chart_flow(flows, interval)[-1]
-        state, next_step = integrated_state(rows, force)
-        if not ctx.preview and session_state(ctx.now)["status"] != "OPEN":
-            state, next_step = "SESSION CLOSED", "Review the completed session."
-        st.markdown(f"**{state}** · {next_step}")
-        fig = integrated_intraday_figure(rows, ctx.ticker, interval, flow_rows=flows,
-                                         levels=visible_levels, gamma_rows=gamma_rows,
-                                         gamma_unit=display_exposure_unit(gamma), cvd_points=points,
-                                         profile=profile, quote=ctx.chart_quote,
-                                         proxy_points=proxy_points, proxy_label=proxy_label)
-        render_chart(fig, "overview_integrated_chart", read["bars"], "Waiting for completed candles in this session.")
-        provider = "Preview" if ctx.preview else ctx.price_provider
-        flow_provider = "Preview" if ctx.preview else "Tradytics"
-        price_notice = " · cached" if read["bars"].error and price_close else (
-            " · reported delay" if feed_has_delay(read["bars"]) else "")
-        flow_notice = " · cached" if flow.error and flow_close else " · reported delay" if feed_has_delay(flow) else ""
-        st.caption(f"{provider} {interval} close {et_time(price_close, short=True)}{price_notice} · "
-                   f"{flow_provider} {interval} flow close {et_time(flow_close, short=True)} ET{flow_notice}")
-        if profile == "GEX" and gamma:
-            st.caption(f"{flow_provider} modeled GEX · {ctx.scope} · {et_time(source_stamp('exposure', read['gamma_feed'], ctx.ticker))}")
-        with st.expander("What to look for on these charts"):
-            st.markdown("**Price, EMA 21 and VWAP.** EMA 21 follows closes on the selected interval. VWAP averages prices by session volume. "
-                        "Look for closes holding the same side of both lines. "
-                        "Repeated crossings suggest chop. The gold diamond shows the latest fresh quote between closes.")
-            st.markdown("**Price levels.** Watch for a close and retest around a nearby range edge, the opening 30-minute range, "
-                        "the prior session high or low, or a modeled gamma wall. Check the room to the next level.")
-            st.markdown("**Volume profile.** The longest bars show the price bands with the most estimated share volume in view. "
-                        "Look for acceptance near a large bar or whether price moves quickly through a low-volume area. "
-                        "The estimate assigns each candle's volume to its closing-price bin.")
-            st.markdown("**GEX profile.** Green and red show positive and negative modeled gamma at each strike. "
-                        "Check whether price stalls or holds beyond a nearby cluster. The profile has its own exposure scale.")
-            st.markdown("**Net premium.** Bars show each completed interval. The gold line sums the most recent three consecutive intervals. "
-                        "Look for multiple bars agreeing with the move and a rolling line that continues in that direction.")
-            st.markdown("**Estimated share CVD.** Compare its slope with price. If price makes a new high while CVD falls, "
-                        "watch the retest for signs of a weak break. The estimate uses one-minute candle direction and share volume.")
-            st.markdown("**SPX futures proxy.** ES or MES bars show contract volume from Webull, in a separate panel. "
-                        "Footprint CVD appears only when your API entitlement returns current buy and sell contract totals. "
-                        "Compare its direction with SPX price, but remember futures contracts are a related market, not SPX shares. "
-                        "If the CVD line is missing, volume alone does not establish buyer or seller initiative.")
 
 
 def show_session_changes(ctx, read, prints, prints_feed):
@@ -591,9 +511,25 @@ def cvd_panel(ctx, candles, feed):
         panel_header("Cumulative volume delta", "cvd", "overview_cvd", "Estimated share volume · resets each regular session")
         source, name = ctx.price_provider, ctx.ticker
         if ctx.ticker in INDICES:
-            use_proxy = st.toggle("Show SPY share-volume proxy", key="index_cvd_proxy")
-            if not use_proxy:
-                st.caption(f"{ctx.ticker} has no traded share volume. Use SPY as a separate comparison or view contract-volume delta in Flow & Bubbles.")
+            choices = ["Off", "SPY", "ES", "MES"] if ctx.ticker == "SPX" else ["Off", "SPY"]
+            proxy = st.selectbox("Volume comparison", choices, key=f"cvd_proxy_{ctx.ticker}")
+            if proxy == "Off":
+                st.caption(f"{ctx.ticker} has no traded share volume. Choose a separate comparison above.")
+                return
+            if proxy in ("ES", "MES"):
+                if not ctx.webull_store:
+                    st.caption("Webull futures data is needed for this view.")
+                    return
+                futures = ctx.webull_store.futures_activity(proxy, ctx.now, ctx.session, paused=ctx.paused)
+                points = futures.obj.get("points", [])
+                contract = futures.obj.get("contract", proxy)
+                render_chart(futures_activity_figure(points, contract), "futures_activity", futures,
+                             "Waiting for completed futures candles.")
+                if points:
+                    st.caption(f"Webull {contract} · Contract volume through {et_time(points[-1]['time'])}. "
+                               "Compare volume and the slope of CVD with SPX price.")
+                    if not any(p["cvd"] is not None for p in points):
+                        st.caption("Footprint CVD unavailable. It requires buy and sell contract totals from Webull.")
                 return
             candles, feed = ctx.history(symbol="SPY")
             source, name = "Tradytics", "SPY"
@@ -617,7 +553,7 @@ def overview(ctx):
     command_panel(ctx, decision, iv, read["candles"], key="overview")
     nav_button("Open Movement Detector", "Movement Detector", "overview_open_movement")
     quote = ctx.quote()
-    flow, plan, regime = read["flow"], read["plan"], read["regime"]
+    flow, regime = read["flow"], read["regime"]
     gamma, vol = read["gamma"], read["vol"]
     spot, change = positive(quote.get("price")), numeric(quote.get("change_pct"))
     net = net_sum(flow.rows, "net_premium_usd")
@@ -625,14 +561,11 @@ def overview(ctx):
     kpis([
         metric("Underlying", amount(spot), f"{signed_pct(change)} · {ctx.price_provider}", change),
         metric("Volatility regime", regime["label"], "Completed 5m candles"),
-        metric("Legacy 5m readiness", f"{plan['score']}/100" if plan["score"] is not None else "—", plan["state"]),
+        metric("5m EMA 9/21", {1: "Up", -1: "Down", 0: "Neutral"}[decision["direction"]], "Completed price trend"),
         metric("Net GEX", compact(gamma.get("total"), currency=True, signed=True), "$ per 1% move", gamma.get("total")),
         metric("Options net flow", compact(net, currency=True, signed=True), "Completed intervals", net),
         metric("IV rank", ratio_pct(vol.obj.get("iv_rank")), f"30D ATM IV {ratio_pct(vol.obj.get('atm_iv_30d'))}"),
     ])
-    if plan["score"] is None and read["reasons"]:
-        st.caption(" ".join(read["reasons"]))
-    integrated_intraday_panel(ctx, read)
     left, right = st.columns([2.55, 1], gap="medium")
     with left:
         prints, prints_feed = price_panel(ctx, read)
@@ -1319,7 +1252,7 @@ def trade_plan(ctx):
     st.download_button("Download current trade plan (JSON)", json.dumps(shown, indent=2, allow_nan=False),
                        file_name=ctx.title("trade_plan_v26.json"), mime="application/json", key="qd25_plan_export")
     discord_history(ctx)
-    with st.expander("Detailed setup and market context", on_change="rerun", key="qd25_legacy_trade") as advanced:
+    with st.expander("Range and options flow context", on_change="rerun", key="qd25_legacy_trade") as advanced:
         if advanced.open:
             detailed_trade_plan(ctx, read)
 
@@ -1607,12 +1540,18 @@ def health_page(ctx):
         webull_bars = ctx.webull_price_feed("history")
         webull_error = webull_quote.error or webull_bars.error
         webull_status = q.get("status", "Index price unavailable" if ctx.ticker in INDEX_SYMBOLS and ctx.ticker != "SPX" else "Webull not configured")
+        if ctx.webull_store:
+            st.caption(f"Webull endpoint · {ctx.webull_store.settings.endpoint}")
+        if webull_quote.error:
+            st.caption(f"Webull quote · {webull_quote.error}")
+        if webull_bars.error:
+            st.caption(f"Webull candles · {webull_bars.error}")
         table([{"Source": "Preview" if ctx.preview else "Tradytics", "Price": positive(trad.get("price")),
                 "Quote time (ET)": et_time(stamp), "Age": age_text(trad_age), "Status": trad_status,
                 "Note": str(quote_feed.error or "")},
                {"Source": "Webull", "Price": q.get("price"), "Quote time (ET)": et_time(q.get("price_time_utc")),
-                "Age": age_text(q.get("price_age_seconds")), "Status": webull_status,
-                "Note": str(webull_error or q.get("price_kind", ""))}], height=112)
+                "Age": age_text(q.get("price_age_seconds")), "Status": webull_error.status if webull_error else webull_status,
+                "Note": q.get("price_kind", "")}], height=112)
         if trad_age is not None and q.get("price_age_seconds") is not None:
             difference = trad_age - q["price_age_seconds"]
             newer = "Webull" if difference >= 0 else "Tradytics"
@@ -1621,13 +1560,15 @@ def health_page(ctx):
                    f"Tradytics 5m flow close {et_time(read['flow_stamp'])} · {read['flow_state']}.")
         if q.get("reasons") and ctx.price_provider == "Webull":
             st.caption(" ".join(q["reasons"]))
-        if ctx.has_webull_options and ctx.expiry:
+        if ctx.has_webull_options and ctx.expiry and session_state(ctx.now)["status"] == "OPEN":
             chain, _ = ctx.option_chain(ctx.expiry, provider="Webull")
             root = "SPXW" if ctx.ticker == "SPX" else ctx.ticker
             rows = option_rows(chain, ctx.ticker, ctx.expiry)
             fresh = sum(quote_status(row, chain, ctx.now, max_age=ctx.option_max_age, paused=ctx.paused) == "Fresh quote" for row in rows)
             st.caption(f"Webull {root} options · {ctx.expiry} · {fresh}/{len(rows)} usable two-sided quotes. "
                        f"{chain.error or ''}")
+        elif ctx.has_webull_options and ctx.expiry:
+            st.caption("Option quote freshness is checked during the regular session.")
     with st.container(border=True):
         panel_header("Tradytics feed diagnostics", "health", "health", "Provider timestamps, access scopes and HTTP receipt times")
         queries = [

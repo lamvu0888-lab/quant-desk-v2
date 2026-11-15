@@ -11,7 +11,7 @@ from streamlit.testing.v1 import AppTest
 from decision_engine import ENTRY_STATES, make_trade_plan
 from discord_monitor import data_warning, deliver
 from monitor_engine import process_scan
-from movement_detector import CHECKS, ENTRY_COOLDOWN, price_movement
+from movement_detector import CHECKS, ENTRY_COOLDOWN, MIN_ENTRY_SCORE, price_movement
 from research_journal import Journal
 from signal_explain import discord_text
 from terminal_demo import DEMO_AT
@@ -32,12 +32,28 @@ def test_flow_confirmation_uses_two_matching_intervals():
     assert plan["flow"]["direction"] == 1
     assert plan["flow_confirmation"]["count"] == 1
     assert plan["status"] not in ENTRY_STATES
-
     changed["flow_rows"].pop()
     plan = make_trade_plan(**changed)
     assert not plan["flow_confirmation"]["intervals"]
     assert plan["status"] not in ENTRY_STATES
 
+
+def test_evidence_score_is_itemized_and_proxy_is_scoped():
+    inputs = synthetic_inputs()
+    baseline = make_trade_plan(**inputs)
+    assert MIN_ENTRY_SCORE == 71
+    assert sum(row["possible"] for row in baseline["score_details"]) == 100
+    assert baseline["score"] == sum(row["points"] for row in baseline["score_details"])
+    assert baseline["score"] > 70
+    observed = make_trade_plan(**{**inputs, "cvd_proxy": {"symbol": "ESZ6", "quality": "footprint", "delta": 120}})
+    estimated = make_trade_plan(**{**inputs, "cvd_proxy": {"symbol": "SPY", "quality": "estimated", "delta": 120}})
+    opposing = make_trade_plan(**{**inputs, "cvd_proxy": {"symbol": "ESZ6", "quality": "footprint", "delta": -120}})
+    assert observed["score"] == baseline["score"] + 10
+    assert estimated["score"] == baseline["score"] + 5
+    assert opposing["score"] == baseline["score"]
+    assert any("footprint pressure opposes" in text for text in opposing["conflicts"])
+    assert make_trade_plan(**{**inputs, "quality_reasons": ["Quote stale"],
+                              "cvd_proxy": {"quality": "footprint", "delta": 120}})["status"] == "WAIT"
 
 def test_sideways_and_compression_keep_directional_entries_pending():
     inputs = synthetic_inputs()

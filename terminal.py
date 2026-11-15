@@ -17,7 +17,7 @@ from terminal_data import et_time, expiration_date, first_listed_dte, listed_dte
 from terminal_demo import DEMO_AT, DemoStore
 from terminal_learn import learn_page
 from terminal_style import amount, esc, signed_pct, tag, theme_css
-from terminal_views import Desk, PAGES
+from terminal_views import Desk, PAGES, route_price
 from tradytics_feed import Feed, FeedError, FeedStore, TradyticsClient
 from discord_monitor import send_test as send_discord_test
 from monitor_storage import SharedStore, normalize_symbols
@@ -26,7 +26,7 @@ from option_quotes import age_text, quote_age
 from webull_feed import INDEX_SYMBOLS, WebullFeedStore, price_source
 
 UTC = timezone.utc
-VERSION = "2.8.4"
+VERSION = "2.8.6"
 WEBULL_CHART_PAGES = {"Overview", "Movement Detector"}
 PAGES_LABEL = {
     "Overview": ("Market overview", "Entry timing, market direction, flow and nearby levels.", "◈"),
@@ -231,15 +231,6 @@ def market_strip(ctx):
     st.markdown('<div class="qd-market-strip">' + ''.join(chunks) + '</div>', unsafe_allow_html=True)
 
 
-def view_price_source(ticker, selected, prices, tradytics_configured):
-    """Keep a read-only SPX chart available after a failed Webull candle request."""
-    history = (prices or {}).get("history")
-    if (ticker == "SPX" and selected == "Webull" and tradytics_configured and history is not None
-            and history.error and not history.obj.get("candles")):
-        return "Tradytics"
-    return selected
-
-
 def main():
     st.set_page_config(page_title="Quant Desk | Options Intelligence", page_icon="◈", layout="wide", initial_sidebar_state="auto")
     st.session_state.setdefault("desk_dark_mode", False)
@@ -288,9 +279,9 @@ def main():
         with st.expander("Feed controls"):
             selected_provider = st.selectbox("Price and candle source", ["Auto", "Webull", "Tradytics"], key="desk_price_provider",
                                              disabled=mode == "Preview",
-                                             help="Auto uses Webull for SPX, stocks and ETFs when configured; Tradytics supplies other indices.")
+                                             help="Auto prefers Webull and switches to fresh Tradytics candles if Webull is unavailable.")
             if ticker == "SPX" and mode != "Preview":
-                st.caption("SPX price and 1m candles use Webull US_INDEX when configured. Tradytics still supplies options flow and modeled exposure. Select Tradytics here if Webull index access is unavailable.")
+                st.caption("Auto tries the SPX index on Webull and can use Tradytics SPX when needed. Check Data Health for endpoint status.")
             elif ticker in INDEX_SYMBOLS and mode != "Preview":
                 st.caption("This index price uses Tradytics. Exact-expiry SPXW option quotes can use Webull for SPX.")
             paused = st.toggle("Pause requests", key="desk_paused", disabled=mode == "Preview")
@@ -370,13 +361,12 @@ def main():
             st.rerun()
         prices = (webull.prices([ticker], paused=paused).get(ticker) if webull and
                   (price_provider == "Webull" or page == "Data Health") else None)
-        effective_provider = view_price_source(ticker, price_provider, prices, bool(key))
-        if effective_provider != price_provider:
-            st.warning("Webull SPX candles are unavailable. Showing Tradytics SPX price and candles for this view. "
-                       "Live alerts still wait for valid Webull data; check Data Health or choose Tradytics in Feed controls.")
         ctx = Desk(ticker, DEMO_AT if preview else datetime.now(UTC), demo(ticker) if preview else store,
-                   preview, paused, dte, bool(key), effective_provider, config_error=config_error, journal=journal,
+                   preview, paused, dte, bool(key), price_provider, config_error=config_error, journal=journal,
                    shared=shared, webull_store=webull, webull_prices=prices)
+        ctx, _ = route_price(ctx, selected_provider)
+        if ctx.price_fallback:
+            st.caption(f"Using Tradytics {ticker} price data. {ctx.price_fallback}")
         if expiry_mode == "Nearest listed":
             listing = ctx.get("expirations", symbol=ticker)
             ctx.dte = first_listed_dte(listing, ticker, ctx.session, ctx.now)

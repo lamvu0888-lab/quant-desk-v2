@@ -8,10 +8,8 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from market_session import rth_bounds
-from terminal_charts import rolling_chart_flow
 from terminal_data import chart_buckets, chart_flow_rows, price_bars, quote_row, snapshot_forecast_gate, status
 from terminal_demo import DEMO_AT, DemoStore
-from terminal_views import integrated_state
 from tradytics_feed import BASE_URL, Feed, FeedError, FeedStore, Snapshot, TradyticsClient
 
 
@@ -169,18 +167,7 @@ def test_learn_chart_catalog_and_holding_periods(monkeypatch):
         assert any("Worked example" in item.value for item in app.markdown)
 
 
-def test_integrated_chart_watch_state_is_confirmation_only():
-    rows = [{"close": 103.0, "ema21": 101.5, "session_vwap": 101.0}]
-    state, cue = integrated_state(rows, 150_000)
-    assert state == "LONG WATCH"
-    assert "hold" in cue.lower()
-    state, cue = integrated_state([{**rows[0], "close": 95.0}], -150_000)
-    assert state == "SHORT WATCH"
-    assert "retest" in cue.lower()
-    assert integrated_state(rows, None)[0] == "WAIT"
-
-
-def test_three_minute_flow_omits_incomplete_bins_and_resets_rolling_sum_after_gap():
+def test_three_minute_flow_omits_incomplete_bins():
     day = DEMO_AT.date()
     opened, _ = rth_bounds(day)
     minute = timedelta(minutes=1)
@@ -188,34 +175,28 @@ def test_three_minute_flow_omits_incomplete_bins_and_resets_rolling_sum_after_ga
             for i in range(15) if i != 4]
     buckets = chart_flow_rows(rows, day, opened + 14 * minute, "3m")
     assert [row["time"] for row in buckets] == [(opened + i * minute).isoformat() for i in (0, 6, 9)]
-    assert rolling_chart_flow(buckets, "3m") == [None, None, None]
     buckets = chart_flow_rows(rows, day, opened + 15 * minute, "3m")
-    assert rolling_chart_flow(buckets, "3m") == [None, None, None, 9000]
+    assert buckets[-1]["time"] == (opened + 12 * minute).isoformat()
+    assert buckets[-1]["net_premium_usd"] == 3000
 
 
-def test_integrated_overview_draws_aligned_flow_and_separate_profiles(monkeypatch):
+def test_overview_price_chart_owns_ema_overlays(monkeypatch):
     for name in ("TRADYTICS_API_KEY", "WEBULL_APP_KEY", "WEBULL_APP_SECRET", "DEFAULT_TICKER"):
         monkeypatch.delenv(name, raising=False)
     app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "terminal.py"), default_timeout=30).run()
 
     def chart_spec():
-        chart = next(item.proto for item in app.get("plotly_chart") if "overview_integrated_chart" in item.proto.id)
+        chart = next(item.proto for item in app.get("plotly_chart") if "price_action_chart" in item.proto.id)
         return json.loads(chart.spec)
 
     for timeframe in ("1m", "3m", "5m"):
-        app.segmented_control(key="integrated_timeframe").set_value(timeframe).run()
+        app.segmented_control(key="overview_timeframe").set_value(timeframe).run()
         assert not app.exception
-        spec = chart_spec()
-        traces = {trace["name"]: trace for trace in spec["data"]}
-        assert {"EMA 21", "Session VWAP", "Volume profile", "Interval net premium", "Estimated share CVD"} <= traces.keys()
-        assert "Net GEX" not in traces
-        assert traces["SPY"]["x"][-1] == traces["Interval net premium"]["x"][-1]
-        assert spec["layout"]["yaxis2"]["matches"] == "y"
-        assert any(block.label == "What to look for on these charts" for block in app.expander)
-    app.segmented_control(key="integrated_profile_SPY").set_value("GEX").run()
-    names = {trace["name"] for trace in chart_spec()["data"]}
-    assert "Net GEX" in names and "Volume profile" not in names
+        assert {"EMA 9", "EMA 21", "SPY"} <= {trace["name"] for trace in chart_spec()["data"]}
+    assert all("overview_integrated_chart" not in item.proto.id for item in app.get("plotly_chart"))
+    app.toggle(key="price_ema").set_value(False).run()
+    assert all(not trace["name"].startswith("EMA ") for trace in chart_spec()["data"])
     app.button(key="watch_SPX").click().run()
-    names = {trace["name"] for trace in chart_spec()["data"]}
-    assert "Estimated share CVD" not in names and "Net GEX" in names
+    assert "Volume" not in {trace["name"] for trace in chart_spec()["data"]}
+    assert app.selectbox(key="cvd_proxy_SPX").options == ["Off", "SPY", "ES", "MES"]
     assert not app.exception

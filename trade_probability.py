@@ -7,11 +7,12 @@ import numpy as np
 
 from data_utils import DataError, utc
 from desk_analytics import MINUTE
+from ema_trend import EMA_PULLBACK
 from market_session import ET, rth_bounds
 from terminal_data import positive
 
 MODEL_VERSION = "qd25-block-v1"
-STRATEGIES = ("Immediate", "Breakout and retest", "EMA 8/10 pullback", "VWAP retest")
+STRATEGIES = ("Immediate", "Breakout and retest", EMA_PULLBACK, "VWAP retest")
 TRAINING_MINUTES = 120
 
 
@@ -132,7 +133,7 @@ def path_outcomes(paths, plan, strategy):
     break_level = plan.get("range", (None, None))[1 if direction > 0 else 0]
     if plan.get("break_at") and plan.get("break_level") and plan.get("setup") in ("Breakout and retest", "Breakout close"):
         break_level = plan["break_level"]
-    level = {"Breakout and retest": break_level, "EMA 8/10 pullback": plan.get("ema_level"),
+    level = {"Breakout and retest": break_level, EMA_PULLBACK: plan.get("ema_level"),
              "VWAP retest": plan.get("vwap")}.get(strategy)
     if strategy != "Immediate" and level is None:
         return None

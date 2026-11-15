@@ -1,5 +1,6 @@
 """Hybrid provider regressions at the quote, dashboard and worker boundaries."""
 from concurrent.futures import Future
+from dataclasses import replace
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -16,12 +17,12 @@ from movement_detector import early_price_move
 from option_quotes import atm_iv_sample
 from research_journal import Journal
 from settings import Settings
-from terminal_charts import integrated_intraday_figure
+from terminal_charts import price_figure
 from terminal_data import chart_buckets, price_bars, time_or_none
 from terminal_demo import DEMO_AT, DemoStore
-from terminal_views import Desk, read_workspace
+from terminal_views import Desk, read_workspace, route_price
 from test_v25 import synthetic_inputs
-from tradytics_feed import Feed, Snapshot
+from tradytics_feed import Feed, FeedError, Snapshot
 from webull_feed import WebullFeedStore, price_source, webull_price_quality
 
 
@@ -168,9 +169,9 @@ def test_spx_dashboard_uses_webull_price_and_leaves_index_volume_blank():
     assert ctx.quote()["price"] == 7561.67
     assert ctx.history()[0] == candles
     assert ctx.chart_quote["source"] == "Webull"
-    fig = integrated_intraday_figure(chart_buckets(candles, 5), "SPX", "5m", profile="GEX", quote=ctx.chart_quote)
+    fig = price_figure(chart_buckets(candles, 5), "SPX", "5m", quote=ctx.chart_quote, show_ema=True)
     assert any(trace.name == "Webull quote" for trace in fig.data)
-    assert all(trace.name != "Volume profile" for trace in fig.data)
+    assert all(trace.name != "Volume" for trace in fig.data)
 
 
 def test_webull_server_error_is_safe_and_identifiable():
@@ -186,17 +187,49 @@ def test_webull_server_error_is_safe_and_identifiable():
     assert "must-not-appear" not in message
 
 
-def test_spx_chart_falls_back_only_after_failed_empty_webull_history():
-    from terminal import view_price_source
-    from tradytics_feed import FeedError
+def test_auto_spx_recovers_after_invalid_webull_symbol():
+    args = synthetic_inputs()
+    now = args["now"]
+    observed = [{**b, "time": b["time_utc"], "symbol": "SPX"} for b in args["candles"]]
+    tradytics = SimpleNamespace(get=lambda name, **_: snapshot(observed, now, symbol="SPX") if name == "bars" else Feed())
+    webull = SimpleNamespace(settings=Settings())
+    error = FeedError("SYMBOL UNAVAILABLE", "HTTP 417 (INVALID_SYMBOL)")
+    feeds = webull_prices(args["candles"], now)
+    feeds["history"] = Feed(feeds["history"].snapshot, error)
+    ctx = Desk("SPX", now, tradytics, False, False, 0, True, "Webull", webull_store=webull, webull_prices=feeds)
 
-    broken = Feed(error=FeedError("WEBULL UNAVAILABLE", "Webull index rejected"))
-    assert view_price_source("SPX", "Webull", {"history": broken}, True) == "Tradytics"
-    assert view_price_source("SPX", "Webull", {"history": broken}, False) == "Webull"
-    assert view_price_source("SPY", "Webull", {"history": broken}, True) == "Webull"
-    assert view_price_source("SPX", "Webull", {"history": Feed()}, True) == "Webull"
-    cached = Feed(Snapshot({"candles": [{"close": 7500}]}, {}, DEMO_AT), broken.error)
-    assert view_price_source("SPX", "Webull", {"history": cached}, True) == "Webull"
+    fallback, prices = route_price(ctx, "Auto")
+    assert fallback.price_provider == "Tradytics" and fallback.price_fallback == str(error)
+    assert prices["bars_ready"] and prices["candles"][-1]["volume"] is None
+    assert route_price(ctx, "Webull")[0].price_provider == "Webull"
+
+    feeds["history"] = snapshot({**feeds["history"].obj, "delay_minutes": 0}, now)
+    assert route_price(replace(ctx), "Auto")[0].price_provider == "Webull"
+
+
+def test_worker_ema_trend_on_auto_fallback_even_when_options_flow_is_unavailable(tmp_path):
+    args = synthetic_inputs()
+    opened, _ = rth_bounds(args["session"])
+    now = opened + 84 * MINUTE
+    candles = []
+    for i, row in enumerate(args["candles"][:84]):
+        close = 7500 + max(0, i - 77) * 2
+        candles.append({**row, "time": row["time_utc"], "symbol": "SPX", "open": close - .1,
+                        "close": close, "low": close - .2, "high": close + .2})
+    store = SimpleNamespace(get=lambda name, **_: snapshot(candles, now, symbol="SPX") if name == "bars" else Feed())
+    error = Feed(error=FeedError("SYMBOL UNAVAILABLE", "HTTP 417 (INVALID_SYMBOL)"))
+    webull = SimpleNamespace(settings=Settings(), prices=lambda _: {"SPX": {"history": error}})
+    journal = Journal(tmp_path / "trend.sqlite3", dsn="")
+    worker = MonitorScan(store, webull, "Auto", journal)
+
+    assert worker.run(["SPX"], now - timedelta(seconds=1), 30)[0] == []
+    alerts = worker.run(["SPX"], now + timedelta(seconds=1), 30)[0]
+    assert [payload["status"] for _, payload in alerts] == ["EMA TREND"]
+    trend = alerts[0][1]
+    assert trend["direction"] == "UP" and trend["source"] == "Tradytics" and trend["bar"] == now.isoformat()
+    assert worker.run(["SPX"], now + timedelta(seconds=5), 30)[0] == []
+    latest = journal.records("SPX", "decision", limit=1)[0]["payload"]
+    assert latest["status"] == "WAIT" and latest["feed_timing"]["flow_state"] == "Waiting for flow"
 
 
 def test_new_receipt_cannot_refresh_delayed_or_sandbox_prices():
@@ -223,7 +256,7 @@ def test_dashboard_webull_marker_moves_between_completed_candles():
     def charts(feeds, at=now, paused=False):
         ctx = Desk("SPY", at, None, False, paused, None, True, price_provider="Webull",
                    webull_store=store, webull_prices=feeds)
-        return (integrated_intraday_figure(bars, "SPY", "5m", quote=ctx.chart_quote),
+        return (price_figure(bars, "SPY", "5m", quote=ctx.chart_quote, show_ema=True),
                 chart_for_stage(1, ctx, read, {}))
 
     first = charts(prices)
@@ -236,7 +269,7 @@ def test_dashboard_webull_marker_moves_between_completed_candles():
         assert list(closes) == [row["close"] for row in bars]
         old_marker = next(trace for trace in original.data if trace.name == "Webull quote")
         new_marker = next(trace for trace in refreshed.data if trace.name == "Webull quote")
-        assert old_marker.x[0] < new_marker.x[0]
+        assert old_marker.text[0] != new_marker.text[0]
         assert new_marker.y[0] - old_marker.y[0] > .2
 
     delayed = snapshot(prices["quote"].obj, now, delay_minutes=15)

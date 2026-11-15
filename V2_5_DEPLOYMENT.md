@@ -1,4 +1,4 @@
-# Deploy Quant Desk 2.8.4
+# Deploy Quant Desk 2.8.6
 
 Keep your existing repository, Streamlit URL and Render worker. The dashboard entry point remains `terminal.py`. The Render worker runs independently of the dashboard browser.
 
@@ -7,7 +7,7 @@ Keep your existing repository, Streamlit URL and Render worker. The dashboard en
 In Windows PowerShell, set `$src` to the folder containing the **new** `terminal.py` and set `$repo` to your existing Git checkout. The paths below use your previous checkout location and an example Downloads path.
 
 ```powershell
-$src = "$env:USERPROFILE\Downloads\Quant_Desk_V2_8_4_ES_MES_Proxy"
+$src = "$env:USERPROFILE\Downloads\Quant_Desk_V2_8_5_EMA_Alerts"
 $repo = "E:\Webull autotrade\github\quant_options_agent"
 Set-Location -LiteralPath $repo
 git remote -v
@@ -25,7 +25,7 @@ After the pull succeeds, copy the contents of the extracted folder into the repo
 ```powershell
 if (!(Test-Path -LiteralPath (Join-Path $src "terminal.py") -PathType Leaf) -or
     !(Test-Path -LiteralPath (Join-Path $src "decision_engine.py") -PathType Leaf)) {
-    throw "Set src to the extracted V2.8.4 folder containing terminal.py and decision_engine.py."
+    throw "Set src to the extracted V2.8.6 folder containing terminal.py and decision_engine.py."
 }
 robocopy $src $repo /E /R:2 /W:2 /XD ".git" ".venv" "__pycache__" ".pytest_cache" "monitor_data" /XF ".git" ".env" "secrets.toml" "*.sqlite3*"
 if ($LASTEXITCODE -ge 8) { throw "Folder copy failed. Check the Robocopy output." }
@@ -33,10 +33,10 @@ git add -A
 git diff --cached --name-status
 ```
 
-Confirm that the staged list includes `webull_feed.py`, `option_quotes.py`, `discord_monitor.py`, `terminal.py` and `render.yaml`. Keep `.env`, `.streamlit/secrets.toml`, webhook URLs, and token values out of Git.
+Confirm that the staged list includes `webull_feed.py`, `ema_trend.py`, `discord_monitor.py`, `terminal.py` and `render.yaml`. Keep `.env`, `.streamlit/secrets.toml`, webhook URLs, and token values out of Git.
 
 ```powershell
-git commit -m "Upgrade Quant Desk to V2.8.4"
+git commit -m "Upgrade Quant Desk to V2.8.6"
 git push origin main
 git log -1 --format="%h %s"
 ```
@@ -45,7 +45,7 @@ If another worker commit lands before your push, rerun `git pull --rebase origin
 
 ## 2. Update the existing Streamlit app
 
-Use the existing app connected to branch `main` and `terminal.py`. After the repository update, look for **Options intelligence · 2.8.4** in the sidebar. Refresh tabs that were open during the update. If the old version persists, verify the connected repository, branch and main file in the Community Cloud workspace. Check its logs before restarting it.
+Use the existing app connected to branch `main` and `terminal.py`. After the repository update, look for **Options intelligence · 2.8.6** in the sidebar. Refresh tabs that were open during the update. If the old version persists, verify the connected repository, branch and main file in the Community Cloud workspace. Check its logs before restarting it.
 
 Keep your current **App settings → Secrets** values. Streamlit expects TOML. The following block shows the format. Replace the placeholder values only in the Streamlit settings.
 
@@ -58,7 +58,7 @@ MONITOR_GITHUB_BRANCH = "main"
 MONITOR_GITHUB_TOKEN = "your_existing_repository_scoped_token"
 ```
 
-Add your existing `WEBULL_APP_KEY` and `WEBULL_APP_SECRET` to Streamlit Secrets. Leave `WEBULL_ENDPOINT` at its production default, `api.webull.com`, for live signals. Select **Feed controls → Price and candle source → Auto** to route SPX, stocks and ETFs to Webull and other indices to Tradytics. The SPX `US_INDEX` category worked through the connected Webull API but is absent from the public stock endpoint enum. If the deployment credentials reject it, select Tradytics for SPX and inspect Data Health.
+Add your existing `WEBULL_APP_KEY` and `WEBULL_APP_SECRET` to Streamlit Secrets. Set `WEBULL_ENDPOINT` to `api.sandbox.webull.com` for PaperTrade credentials or `api.webull.com` for production market data credentials. Select **Feed controls → Price and candle source → Auto**. Auto prefers Webull, with a fresh same-symbol Tradytics fallback. The worker and Streamlit each need their own environment settings. Use **Data Health** to see which Webull requests the endpoint accepts. [Webull API environment and endpoint guide](https://developer.webull.com/apis/docs/market-data-api/data-api/)
 
 Overview and Movement Detector target a two-second Webull quote poll during the regular session. If Streamlit Secrets already contain `QUOTE_REFRESH_SECONDS`, set it to `"2"` to use this cadence. The quote diamond and its market timestamp update between candle closes.
 
@@ -79,7 +79,7 @@ Open your existing **quant-desk-discord-worker**. Deploy the latest commit from 
 
 Keep the same Tradytics, Discord and shared GitHub settings shown above. Enter each as a Render environment variable with its value. The GitHub token needs repository-scoped **Contents read and write** access for watchlist edits and log commits. The included Blueprint supports a fresh worker and includes the ignored build path. If you configured the existing worker manually, add that build filter in its settings so the worker's own history commits do not trigger redeployments. [Render background workers](https://render.com/docs/background-workers) · [Render Blueprint reference](https://render.com/docs/blueprint-spec)
 
-Add the same `WEBULL_APP_KEY` and `WEBULL_APP_SECRET` to the Render worker environment. `MONITOR_PRICE_SOURCE=Auto` selects Webull for covered stocks and ETFs when configured and Tradytics for indices. Dashboard secrets are separate from Render environment variables. Check authorization in the Webull OpenAPI console if either host reports a token or entitlement error.
+Add `WEBULL_APP_KEY`, `WEBULL_APP_SECRET` and the matching `WEBULL_ENDPOINT` to the Render worker environment if you use Webull there. `MONITOR_PRICE_SOURCE=Auto` applies the same price selection rules as the dashboard. The worker startup log identifies its version and which Webull endpoint is configured. PaperTrade data can be delayed or synthetic. Auto uses current Tradytics candles for alerts if Webull is in PaperTrade mode. [Webull PaperTrade API application](https://developer.webull.com/apis/docs/authentication/IndividualApplicationAPI/)
 
 The default watchlist is **SPY, SPX**. Set your preferred symbols, the enable switch and routine scan interval in **Feed controls → Discord ticker monitoring**. Completed price and flow updates can trigger earlier checks. Provider delays and request throttling affect timing. Without shared GitHub settings the worker uses the default list. An unreachable configured watchlist pauses alerts until it returns.
 
@@ -93,9 +93,9 @@ The worker writes watchlist settings, delivered signal history and a bounded res
 
 ## 4. Verify the deployment
 
-1. Open **Live → Data Health** during regular U.S. market hours. Check **SPY** and another stock or ETF for Webull quote and candle times. Check **SPX** for Webull index price and a completed 1-minute candle with an explicit zero-delay response, alongside Tradytics flow and Webull SPXW contracts. Choose an exact expiry to see options coverage.
-2. Set the dashboard expiration to **Nearest listed** to compare its plan with the worker. Review the price and flow timestamps in **Movement Detector**. **Trade Plan** shows contract readiness and the latest worker alerts.
-3. Click **Feed controls → Send Discord test message** once and check the channel. This checks the dashboard webhook. Check Render's logs for worker scans and any data or delivery errors.
+1. Open **Live → Data Health** during regular U.S. market hours. Check **SPY** and **SPX** for the selected source, current 1m candle time and any Webull endpoint error. Choose an exact expiry to see options quote coverage.
+2. Set the dashboard expiration to **Nearest listed** to compare its plan with the worker. **Movement Detector** shows price and flow timestamps. **Trade Plan** shows contract readiness and the latest worker alerts, including EMA 9/21 trend changes.
+3. Confirm the Render startup log shows **Quant Desk 2.8.6 worker**. Use the feed and setup reasons in its scan log to diagnose a missing alert. The Dashboard's **Send Discord test message** checks its webhook.
 4. Open **Monte Carlo → Trade probability**, select a usable plan and click **Evaluate trade plan**. For quoted option P&L, use an exact expiry with current quotes. In **Validation**, look for the prospective sample count.
 
 For a local check, double-click `START_QUANT_DASHBOARD.cmd` and open `http://localhost:8501`. An existing `.env` is used by the launcher. To inspect worker feed readiness without posting or writing history, run the following from a configured environment. The first pass can still be warming up, and premarket checks show a closed-session state.

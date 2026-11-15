@@ -15,6 +15,7 @@ from data_utils import utc
 from desk_analytics import candles_on
 from market_session import ET
 from terminal_charts import exposure_figure, quote_marker
+from ema_trend import ema_lines
 from terminal_data import chart_buckets, chart_flow_rows, display_exposure_unit, interval_length, numeric, time_or_none
 from terminal_style import AMBER, BLUE, INK, RED, TEAL, VIOLET, style_chart
 from movement_detector import MIN_ENTRY_SCORE, MIN_RELATIVE_VOLUME
@@ -42,6 +43,12 @@ def _price(ctx, read, plan, *, structure_minutes=None):
     fig = go.Figure()
     fig.add_scatter(x=x, y=[bar["close"] for bar in bars], name="Completed close",
                     line=dict(color=INK, width=2), hovertemplate="%{x|%H:%M} ET · %{y:,.2f}<extra>Close</extra>")
+    if structure_minutes is None:
+        lines = ema_lines(read["buckets"][-210:], timedelta(minutes=5))[-len(bars):]
+        for values, name, color in zip(zip(*lines), ("EMA 9", "EMA 21"), (BLUE, AMBER)):
+            if any(value is not None for value in values):
+                fig.add_scatter(x=x, y=values, name=name, line=dict(color=color, width=1.4),
+                                hovertemplate="%{x|%H:%M} ET · %{y:,.2f}<extra>%{fullData.name}</extra>")
     quote = ctx.chart_quote
     if quote and quote["at"] >= utc(bars[-1]["time_utc"]) + timedelta(minutes=minutes):
         at = quote["at"].astimezone(ET).replace(tzinfo=None)

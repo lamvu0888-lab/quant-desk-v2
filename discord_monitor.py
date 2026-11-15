@@ -12,16 +12,17 @@ from urllib.parse import parse_qs, urlsplit
 
 import requests
 from dotenv import dotenv_values
-from decision_engine import ENTRY_STATES
+from decision_engine import ENTRY_STATES, RULES_VERSION
 from desk_analytics import FIVE_MINUTES
+from ema_trend import TREND_ALERT_AGE
 from market_session import active_session, session_state
 from movement_detector import ENTRY_COOLDOWN
-from terminal_views import Desk, read_price, read_workspace
+from terminal_views import Desk, read_workspace, route_price
 from tradytics_feed import TradyticsClient, FeedStore
 from monitor_storage import SharedStore
 from signal_explain import discord_text
 from decision_flow import build_decision, price_quote_issues
-from monitor_engine import price_move_watch, process_scan
+from monitor_engine import price_alert, process_scan
 from research_journal import Journal
 from research_snapshot import publish_snapshot
 from settings import Settings
@@ -132,7 +133,7 @@ def deliver(journal, shared, webhook, alert_id, alert, *, deadline=None):
             fields = ("symbol", "status", "bias", "score", "bar", "entry_bar", "triggered_at_utc", "price", "scope",
                       "setup", "entry", "trigger", "invalidation", "stop", "tp1", "tp2", "rr", "rr2",
                       "regime", "validation", "outcome", "aligned_crossings", "rule_version", "source", "dte",
-                      "direction", "window", "change_pct", "previous_price", "option_quote")
+                      "direction", "window", "change_pct", "previous_price", "option_quote", "ema9", "ema21")
             event = {key: alert[key] for key in fields if key in alert}
             shared.append_event({**event, "id": alert_id, "explanation": str(alert.get("explanation", ""))[:220]})
         except Exception:
@@ -150,6 +151,7 @@ class MonitorScan:
         self.store, self.webull, self.preference, self.journal = store, webull, preference, journal
         self.scans = {}
         self.move_closes = {}
+        self.last_status = {}
 
     def run(self, symbols, now, interval, *, dry_run=False):
         session = session_state(now)
@@ -167,21 +169,22 @@ class MonitorScan:
                 dte = monitor_dte(self.store, symbol, day, now)
                 ctx = Desk(symbol, now, self.store, False, False, dte, True, sources[symbol],
                            webull_store=self.webull, webull_prices=snapshots.get(symbol))
-                prices = read_price(ctx)
+                ctx, prices = route_price(ctx, self.preference)
                 minute_close = prices["minute_close"]
-                if market_open and not dry_run and prices["bars_ready"] and self.move_closes.get(symbol) != minute_close:
-                    watch = price_move_watch(self.journal, ctx, prices)
+                candle_key = (ctx.price_provider, minute_close)
+                if market_open and not dry_run and prices["bars_ready"] and self.move_closes.get(symbol) != candle_key:
+                    watch = price_alert(self.journal, ctx, prices)
                     if watch:
                         alerts.append(watch)
-                    self.move_closes[symbol] = minute_close
+                    self.move_closes[symbol] = candle_key
 
                 timeline = ctx.timeline() if market_open else None
                 flow_close = source_stamp("timeline", timeline, symbol) if timeline else None
                 quote = ctx.quote()
                 flow_key = tuple((row.get("time"), row.get("net_premium_usd")) for row in timeline.rows[-2:]) if timeline else ()
-                state = (day, dte, sources[symbol], prices["bars_ready"], minute_close,
+                state = (day, dte, ctx.price_provider, prices["bars_ready"], minute_close,
                          completed_boundary(now, day, FIVE_MINUTES), flow_key,
-                         not price_quote_issues(ctx, quote), bool(timeline and timeline.error))
+                         not price_quote_issues(ctx, quote, setup_close=minute_close), bool(timeline and timeline.error))
                 before, due = self.scans.get(symbol, (None, now))
                 if not dry_run and state == before and now < due:
                     continue
@@ -189,30 +192,40 @@ class MonitorScan:
                 if dry_run:
                     plan, _ = build_decision(ctx, read)
                     chain = ctx.option_chain(ctx.expiry, provider="Webull")[0] if ctx.has_webull_options and ctx.expiry else None
-                    diagnostics.append({"symbol": symbol, "price_source": sources[symbol], "expiration": ctx.expiry,
+                    diagnostics.append({"symbol": symbol, "price_source": ctx.price_provider, "expiration": ctx.expiry,
+                                        "fallback": ctx.price_fallback,
                                         "quote_at": plan["quote_at"], "candle_at": minute_close.isoformat() if minute_close else None,
                                         "flow_at": flow_close.isoformat() if isinstance(flow_close, datetime) else None,
                                         "flow_status": read["flow_state"], "status": plan["status"],
+                                        "ema_trend": read["price_trend"],
+                                        "webull_candle_error": str(ctx.webull_price_feed("history").error or "") or None,
                                         "webull_contracts": len(chain.rows) if chain is not None else None,
                                         "webull_option_error": str(chain.error) if chain and chain.error else None,
                                         "option_check": (plan.get("option_quote") or {}).get("status"),
-                                        "waiting": plan["data_reasons"]})
+                                        "waiting": plan["missing"], "blocks": plan["blocks"]})
                     continue
                 candidates, plan = process_scan(self.journal, ctx, read, check_move=False)
                 alerts.extend(candidates)
                 delay = min(interval, 5) if plan["status"] == "GET READY" else interval
                 self.scans[symbol] = state, now + timedelta(seconds=delay)
-                if candidates or before is None:
-                    print(f"{now.isoformat()} {symbol}: {plan['status']} · {sources[symbol]} · {len(candidates)} setup or exit alerts", flush=True)
+                blocker = next(iter(plan["data_reasons"] or plan["blocks"] or plan["missing"]), None)
+                status_key = (day, ctx.price_provider, ctx.price_fallback, plan["status"])
+                if candidates or self.last_status.get(symbol) != status_key:
+                    print(json.dumps({"at": now.isoformat(), "symbol": symbol, "state": plan["status"],
+                                      "source": ctx.price_provider, "fallback": ctx.price_fallback, "reason": blocker}), flush=True)
+                    self.last_status[symbol] = status_key
             except Exception as exc:
                 print(f"{symbol}: monitor scan error ({type(exc).__name__}).", flush=True)
         for removed in self.scans.keys() - set(symbols):
             self.scans.pop(removed)
             self.move_closes.pop(removed, None)
+            self.last_status.pop(removed, None)
         return alerts, diagnostics
 
 
 def alert_deadline(alert, now):
+    if alert["status"] == "EMA TREND":
+        return (time_or_none(alert.get("bar")) or now) + TREND_ALERT_AGE
     if alert["status"] == "MOVE WATCH":
         return (time_or_none(alert.get("bar")) or now) + timedelta(seconds=75)
     return now + timedelta(seconds=45 if alert["status"] in ENTRY_STATES else 180)
@@ -259,7 +272,7 @@ def main():
         raise SystemExit("Set both shared GitHub settings, or leave both empty for the default watchlist.")
     journal = None if args.dry_run else Journal(path=secret("MONITOR_JOURNAL_PATH"), dsn=secret("MONITOR_JOURNAL_DSN"))
     scanner = MonitorScan(store, webull, preference, journal)
-    print(f"Quant Desk 2.7.0 worker · price source {preference} · Webull {'configured' if webull else 'unconfigured'}", flush=True)
+    print(f"Quant Desk {RULES_VERSION} worker · price source {preference} · Webull {webull.settings.endpoint if webull else 'unconfigured'}", flush=True)
     retry = {}
     resume_sends = 0.
     next_snapshot = 0.

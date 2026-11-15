@@ -13,6 +13,12 @@ services:
         sync: false
       - key: DISCORD_WEBHOOK_URL
         sync: false
+      - key: WEBULL_APP_KEY
+        sync: false
+      - key: WEBULL_APP_SECRET
+        sync: false
+      - key: WEBULL_ENDPOINT
+        sync: false
       - key: MONITOR_GITHUB_REPO
         sync: false
       - key: MONITOR_GITHUB_TOKEN

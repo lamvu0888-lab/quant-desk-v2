@@ -39,6 +39,24 @@ def activity(bars_payload, footprint_payload, contract, now, day):
         if stamp in delta:
             cumulative += delta[stamp]
         points.append({'time': (stamp + timedelta(minutes=1)).isoformat(), 'volume': volume,
-                       'cvd': cumulative if stamp in delta else None})
+                       'delta': delta.get(stamp), 'cvd': cumulative if stamp in delta else None})
         previous = stamp
     return points
+
+
+def recent_pressure(points, close, *, count=10):
+    """Return a synchronized footprint window; never derive delta from OHLCV."""
+    from terminal_data import time_or_none
+    target = time_or_none(close)
+    if target is None:
+        return None
+    matching = [p for p in points if time_or_none(p.get('time')) is not None
+                and time_or_none(p['time']) <= target]
+    tail = matching[-count:]
+    if (len(tail) != count or time_or_none(tail[-1]['time']) != target
+            or any(time_or_none(b['time']) - time_or_none(a['time']) != timedelta(minutes=1)
+                   for a, b in zip(tail, tail[1:]))
+            or any(p.get('delta') is None for p in tail)):
+        return None
+    return {'delta': sum(p['delta'] for p in tail), 'close': target.isoformat(),
+            'volume': sum(p['volume'] for p in tail), 'count': count}

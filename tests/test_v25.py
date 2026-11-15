@@ -32,21 +32,21 @@ def synthetic_inputs(direction=1):
     day = DEMO_AT.date()
     opened, _ = rth_bounds(day)
     candles = []
-    for i in range(80):
+    for i in range(120):
         price = 100 + direction * i * .04
         candles.append({"time_utc": (opened + i * MINUTE).isoformat(), "open": price - direction * .04,
                         "close": price, "high": max(price, price - direction * .04) + .025,
                         "low": min(price, price - direction * .04) - .025,
-                        "vwap": price, "volume": 2500 if i >= 75 else 1000, "closed": True})
+                        "vwap": price, "volume": 2500 if i >= 115 else 1000, "closed": True})
     buckets = chart_buckets(candles, 5)
-    flow = [{"time": bar["time_utc"], "net_premium_usd": direction * (100000 if i < 13 else 500000)}
+    flow = [{"time": bar["time_utc"], "net_premium_usd": direction * (100000 if i < len(buckets) - 3 else 500000)}
             for i, bar in enumerate(buckets)]
-    now = opened + 80 * MINUTE
+    now = opened + len(candles) * MINUTE
     return dict(candles=candles, buckets=buckets, flow_rows=flow, levels=price_levels(buckets, day),
                 now=now, session=day, expiry=day.isoformat(), dte=0, spot=candles[-1]["close"],
                 regime={"label": "Expanding", "atr": .5},
                 iv={"valuation": "Unavailable", "atm": None, "ratio": None, "remaining_up": None, "remaining_down": None},
-                gamma={}, quality_reasons=[], quote_at=now.isoformat(), minutes_left=310, source="Tradytics")
+                gamma={}, quality_reasons=[], quote_at=now.isoformat(), minutes_left=270, source="Tradytics")
 
 
 @pytest.mark.parametrize("direction,state", [(1, "ENTER LONG"), (-1, "ENTER SHORT")])
@@ -261,8 +261,9 @@ def test_worker_transitions_settlement_and_duplicate_suppression(tmp_path, monke
     assert journal.records("SPY", "candidate", pending=True)
     closed = {**read, "candles": [*args["candles"], stop_bar]}
     second, _ = process_scan(journal, ctx, closed)
-    assert [event["status"] for _, event in second] == ["EXIT"]
+    assert [event["status"] for _, event in second] == ["EXIT", "MOVE WATCH"]
     assert second[0][1]["outcome"]["state"] == "STOP"
+    assert second[1][1]["direction"] == "DOWN"
     assert journal.records("SPY", "candidate", settled=True)[0]["outcome"]["r"] < 0
     assert not process_scan(journal, ctx, closed)[0]
 

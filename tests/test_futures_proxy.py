@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 
-from futures_proxy import activity, choose_contract
-from terminal_charts import integrated_intraday_figure
+from futures_proxy import activity, choose_contract, recent_pressure
+from datetime import timedelta
+from terminal_charts import futures_activity_figure
 
 
 def test_contract_roll_and_cvd_entitlement():
@@ -23,13 +24,21 @@ def test_contract_roll_and_cvd_entitlement():
     assert all(p['cvd'] is None for p in activity(bars,footprint,'ESZ6',now,'2026-11-13'))
 
 
-def test_spx_proxy_draws_contract_volume_without_moving_spx_price():
-    now=datetime(2026,11,13,15,31,tzinfo=timezone.utc)
-    candles=[{'time_utc':datetime(2026,11,13,15,i,tzinfo=timezone.utc).isoformat(),
-              'open':7550+i,'high':7552+i,'low':7549+i,'close':7551+i,'volume':None} for i in (25,30)]
-    fig=integrated_intraday_figure(candles,'SPX','5m',profile='GEX',
-        proxy_points=[{'time':now.isoformat(),'volume':120,'cvd':30}],proxy_label='ES')
-    assert any(t.name=='ES volume' for t in fig.data)
-    assert any(t.name=='ES footprint CVD' for t in fig.data)
-    assert all(t.name!='Volume profile' for t in fig.data)
-    assert list(fig.data[0].close)==[7576,7581]
+def test_es_proxy_draws_only_returned_contract_data():
+    now = datetime(2026, 11, 13, 15, 31, tzinfo=timezone.utc)
+    point = {"time": now.isoformat(), "volume": 120, "cvd": 30}
+    fig = futures_activity_figure([point], "ESZ6")
+    assert [trace.name for trace in fig.data] == ["ESZ6 volume", "ESZ6 footprint CVD"]
+    volume_only = futures_activity_figure([{**point, "cvd": None}], "ESZ6")
+    assert [trace.name for trace in volume_only.data] == ["ESZ6 volume"]
+
+
+def test_pressure_requires_ten_matching_observed_footprint_minutes():
+    end = datetime(2026, 11, 13, 15, 40, tzinfo=timezone.utc)
+    rows = [{"time": (end - timedelta(minutes=9-i)).isoformat(), "volume": 100,
+             "delta": 10, "cvd": (i+1)*10} for i in range(10)]
+    assert recent_pressure(rows, end.isoformat()) == {"delta": 100, "volume": 1000,
+                                                       "count": 10, "close": end.isoformat()}
+    assert recent_pressure(rows, (end - timedelta(minutes=1)).isoformat()) is None
+    assert recent_pressure([{**rows[0], "delta": None}, *rows[1:]], end.isoformat()) is None
+    assert recent_pressure([*rows[:4], {**rows[4], "time": rows[3]["time"]}, *rows[5:]], end.isoformat()) is None

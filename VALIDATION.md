@@ -1,3 +1,12 @@
+# Validation — Quant Desk 2.8.6
+
+- All 113 local automated checks passed, including Streamlit page rendering and worker fallback tests. New cases verify that the entry score totals 100 possible rule points, that observed ES/MES footprint pressure can earn ten points, estimated share CVD at most five, and that ten synchronized completed footprint minutes are required. Stale quote/data remains a hard WAIT even when the raw evidence score is above 70. No live Webull futures entitlement or Discord entry delivery was verified in this environment.
+
+- The saved Friday, November 13, Discord history recorded eight SPY and eight SPX alerts. All were Tradytics Move Watches. The retained late-session decisions include stale underlying quotes, missing directional agreement and risk blocks such as limited room to the next level. The shared snapshot contains a bounded subset of decision transitions.
+- Replayed 390 completed Friday Webull minutes for each symbol with the prior session as warmup. Per symbol, the new price alert logic produced EMA 9/21 transitions at 9:42 a.m. down, 12:12 p.m. up, 3:39 p.m. down and 3:57 p.m. up ET. The first bullish 5m EMA reading was 12:35 p.m. ET. The replay observed each minute after its close. It measures candle logic and does not use Friday's live options flow, quote arrival delays or trade outcomes.
+- The connected Webull service returned both `US_INDEX` SPX and `US_ETF` SPY M1 data with `delay_minutes: 0` and a same-symbol SPX quote. The `US_STOCK` SPX bars request returned `INVALID_SYMBOL`. The pinned SDK redirects its single-stock bar method to the batch path. The deployment's own PaperTrade index entitlement still requires a check with its configured credentials.
+- The worker regression injects a Webull `INVALID_SYMBOL` response, live Tradytics SPX candles and no flow. It checks the fresh EMA alert, repeat suppression and simultaneous Trade Plan WAIT. UI checks cover the replacement price chart and the ES/MES selection in CVD.
+
 # Validation — Quant Desk 2.8.3
 
 - Added regression checks for a failed, empty Webull SPX history, retained cached bars, missing Tradytics access, and sanitized SDK server errors. The dashboard fallback is visual only; it does not silently change the cloud worker's signal source.

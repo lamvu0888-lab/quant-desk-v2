@@ -1,3 +1,16 @@
+# Quant Desk 2.8.6
+
+- Trade Plan and Movement Detector now expose a ten-factor 100-point entry evidence breakdown. Enter states need at least 71 points as well as existing hard gates. The score is not a probability of winning.
+- SPX uses ten synchronized minutes of zero-delay Webull ES footprint buy-minus-sell contracts as CVD evidence, falling back to MES. Missing/delayed footprint awards zero, without manufacturing index volume or a price-derived CVD. Webull futures volume/CVD appears below the options-flow detector stage. SPY estimated share CVD remains comparison only for SPX.
+- Dealer walls and expected-move headroom are modest conditional score factors; modeled gamma/vanna/charm/delta remain context until forward validation supports a directional rule. Old version paper samples are not used to qualify the new score.
+
+# Quant Desk 2.8.5
+
+- Replaced EMA 8/10 with EMA 9/21 in Trade Plan, Movement Detector and the scenario entry comparison. Added the two EMA lines to the price chart.
+- Added a short Discord alert when two completed 3m closes confirm a new EMA trend direction. It evaluates current price candles before the quote and flow checks for a Trade Plan setup. A move watch cooldown now applies separately to each direction.
+- Applied Auto price selection to both the worker and dashboard. Auto falls back to fresh Tradytics candles and returns to Webull when eligible. An explicit Webull `INVALID_SYMBOL` receives a longer retry interval and appears in Data Health with the endpoint.
+- Removed the integrated intraday chart. SPX keeps ES/MES contract activity as an option in the CVD panel.
+
 # Quant Desk 2.8.3
 
 - If Webull SPX candle requests fail with no cached bars, the dashboard shows clearly labeled Tradytics SPX candles instead of a blank chart. The Discord monitor retains its live-data gate.

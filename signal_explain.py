@@ -37,6 +37,12 @@ def discord_text(signal):
     from terminal_style import amount
 
     f = signal.get
+    if signal["status"] == "EMA TREND":
+        up = f("direction") == "UP"
+        next_step = "Watch for EMA 9 to hold on a pullback." if up else "Watch for a bounce to reject at EMA 9."
+        return (f"**{signal['symbol']} · EMA 9/21 trend {'up' if up else 'down'}**\n"
+                f"{amount(f('price'))} · 3m close {et_time(f('bar'), short=True)} ET · {f('source', 'Market')}\n"
+                f"{next_step}")
     if signal["status"] == "MOVE WATCH":
         return (f"**{signal['symbol']} · {'📈' if f('direction') == 'UP' else '📉'} Move watch**\n"
                 f"{f('window')} move {f('change_pct'):+.2f}% · {amount(f('previous_price'))} → {amount(f('price'))}\n"
@@ -54,6 +60,6 @@ def discord_text(signal):
                         f"{amount(quote['bid'])} bid / {amount(quote['ask'])} ask · Flow confirmed") if quote.get("ready") else "Price and flow confirmed"
         return (f"**{signal['symbol']} · {side}**\n"
                 f"Price {amount(f('price'))} · Trigger {amount(f('trigger'))} · {et_time(f('triggered_at_utc'), short=True)} ET\n"
-                f"Stop {amount(f('stop'))} · Target {amount(f('tp1'))}\n"
+                f"Stop {amount(f('stop'))} · Target {amount(f('tp1'))} · Evidence {f('score')}/100\n"
                 f"{confirmation}")
     return f"**{signal['symbol']} · {signal['status']}**\nCheck the dashboard for details."

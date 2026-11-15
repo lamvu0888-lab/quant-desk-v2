@@ -162,12 +162,12 @@ def command_panel(ctx, plan, iv, candles, *, key, track=False, bar_ok=True):
         f'<div class="qd-eyebrow">{esc("ENTRY COMMAND CENTER" + demo)}</div><h2>{esc(headline)}</h2>'
         f'<p>{esc(reasons[0] if reasons else "Check the trigger, stop and targets.")}</p></div>'
         f'<span class="qd-status {TINT.get(shown["status"], "")}">{esc(shown["status"])}</span></div>'
-        f'<div class="qd-timeframes">{steps}</div></section>',
+        f'<div class="qd-timeframes"><span><b>EMA 9/21</b></span>{steps}</div></section>',
         unsafe_allow_html=True,
     )
     flow = plan["flow"].get("recent_net")
     kpis([metric("Market bias", plan["bias"], plan["regime"] or "Regime pending"),
-          metric("Entry quality", f"{plan['score']}/100", "Evidence score", plan["direction"]),
+          metric("Entry evidence", f"{plan['score']}/100", "Rule points · entry above 70", plan["direction"]),
           metric("15m options flow", compact(flow, currency=True, signed=True),
                  "Confirms trend" if plan["direction"] and plan["flow"].get("direction") == plan["direction"] else
                  "Opposes trend" if plan["bias"] == "Mixed" else "Awaiting directional agreement", flow),
@@ -177,6 +177,9 @@ def command_panel(ctx, plan, iv, candles, *, key, track=False, bar_ok=True):
                f"Tradytics 5m flow {age_text(timing['flow_age'])} old · {timing['flow_state']}.")
     if watch := plan.get("price_watch"):
         st.caption(f"Price move watch · {watch['window']} {watch['change_pct']:+.2f}% · {et_time(watch['bar'])}.")
+    if trend := plan.get("price_trend"):
+        st.caption(f"EMA 9/21 trend {trend['direction'].lower()} · 3m close {et_time(trend['bar'])} · {plan['source']}. "
+                   "Check 5m alignment and the next pullback in Trade Plan.")
     st.caption(f"{plan['dealer_note']} · Option premium {iv['valuation'].lower()}.")
     if shown.get("trigger") is not None:
         kpis([metric("Trigger / entry", f"{amount(shown['trigger'])} / {amount(shown['entry'])}", f"{shown['hold']}m plan · {shown['scope']}"),
@@ -191,6 +194,19 @@ def command_panel(ctx, plan, iv, candles, *, key, track=False, bar_ok=True):
     if shown.get("outcome") and shown["outcome"].get("r") is not None:
         st.caption(f"Paper result {shown['outcome']['r']:+.2f}R after modeled costs.")
     with st.expander("Evidence and entry conditions", expanded=key == "trade"):
+        st.caption("This is a 0–100 rule score, not a 70% chance of winning. An entry needs more than 70 points AND every mandatory price, flow, quote and risk check.")
+        if plan.get("score_details"):
+            show_table([{"Evidence": row["factor"], "Points": f"{row['points']}/{row['possible']}",
+                         "Reading": row["state"]} for row in plan["score_details"]], 390)
+        proxy = plan.get("cvd_proxy")
+        if proxy:
+            st.caption(f"CVD evidence · {proxy['symbol']} {proxy['quality']} · 10m net {compact(proxy['delta'], signed=True)} contracts"
+                       if proxy['quality'] == 'footprint' else
+                       f"CVD context · {proxy['symbol']} estimated share pressure · 10m {compact(proxy['delta'], signed=True)} shares")
+        elif plan.get("symbol") == "SPX":
+            st.caption("SPX CVD evidence is missing: a synchronized, zero-delay ES or MES footprint is required. SPY estimated CVD is comparison only.")
+        st.caption("EMA 9/21 sets 5m bias and 3m and 1m timing. For a pullback, a 1m candle tests the EMA area and "
+                   "closes back through EMA 9 in the trend direction. The plan also checks flow, levels and trade risk.")
         left, right = st.columns(2)
         with left:
             st.markdown("**What agrees**")

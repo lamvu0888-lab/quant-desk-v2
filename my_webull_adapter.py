@@ -4,12 +4,16 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
-from data_utils import DataError, BudgetPause, field, number, records, reported_delay, utc
+from data_utils import DataError, BudgetPause, field, number, records, reported_delay, safe_error, utc
 from market_session import ET, rth_bounds
 from settings import Settings
 
 UTC = timezone.utc
 ETF_SYMBOLS = {'SPY','QQQ','IWM','DIA','VOO','IVV','SPLG','SPYM','VTI','TLT','GLD','IBIT','TQQQ','SQQQ','SOXL','SOXS'}
+
+
+class WebullSymbolUnavailable(DataError):
+    """Webull explicitly rejected the symbol in this request's category."""
 
 
 def category_for(ticker, configured='AUTO'):
@@ -66,7 +70,8 @@ def normalize_candles(payload,ticker,*,interval_minutes=1,now=None):
     parsed=[]
     for row in records(payload,ticker):
         if not isinstance(row,dict): raise DataError('Invalid candle record')
-        if row.get('closed') is False or row.get('forming') is True or row.get('trading_sessions') not in (None, 'RTH'):
+        if (row.get('closed') is False or row.get('forming') is True
+                or field(row, 'trading_session', 'trading_sessions') not in (None, 'RTH')):
             continue
         ts=utc(field(row,'time','timestamp','time_utc'))
         if ts.second or ts.microsecond: raise DataError('Bar timestamp is not a whole minute')
@@ -144,8 +149,12 @@ class WebullSDKAdapter:
         except Exception as exc:
             getter=getattr(exc,'get_http_status',None)
             status=getter() if callable(getter) else None
+            code_getter = getattr(exc, 'get_error_code', None)
+            if callable(code_getter) and code_getter() == 'INVALID_SYMBOL':
+                status_text = f'HTTP {status} ' if isinstance(status, int) and 400 <= status < 600 else ''
+                raise WebullSymbolUnavailable(f'{label}: {status_text}(INVALID_SYMBOL). '
+                                              'This endpoint rejected the symbol and category.') from None
             if status not in (401,403,429):
-                from data_utils import safe_error
                 raise DataError(safe_error(exc)) from None
         if status==429:
             try: wait=max(5,min(300,float(getattr(response,'headers',{}).get('Retry-After',60))))

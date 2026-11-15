@@ -9,6 +9,7 @@ from dealer_hedging import hedge_change, hedge_scenarios, level_crossings
 from decision_engine import ENTRY_STATES
 from decision_flow import apply_model_gate, build_decision, get_hedge, model_summary
 from desk_analytics import FIVE_MINUTES, MINUTE, candles_on
+from ema_trend import TREND_ALERT_AGE, ema_trend
 from market_session import ET, session_state
 from movement_detector import ENTRY_COOLDOWN, MIN_ENTRY_SCORE, early_price_move
 from research_journal import plan_scope
@@ -41,23 +42,37 @@ def tracked_entry(payload):
         "entry_alert_id" not in payload or bool(payload["entry_alert_id"]))
 
 
-def price_move_watch(journal, ctx, read):
-    """Price-only watch on fresh completed candles, independent of options feeds."""
+def price_alert(journal, ctx, read):
+    """Observe price before the option, quote and model checks for a paper entry."""
     if (not read.get("bars_ready", True) or read["bars"].error or feed_has_delay(read["bars"])
             or session_state(ctx.now)["status"] != "OPEN"):
         return None
+    source = getattr(ctx, "price_provider", "Tradytics")
+    scope = str(ctx.session)
+    trend = ema_trend(read["candles"], ctx.session, ctx.now)
+    if trend and trend["new"] and ctx.now - utc(trend["bar"]) < TREND_ALERT_AGE:
+        recent = journal.records(ctx.ticker, "ema_trend", scope=scope, limit=1)
+        if not recent or recent[0]["payload"]["direction"] != trend["direction"]:
+            ident = event_id("ema921", ctx.ticker, scope, trend["bar"])
+            payload = {**trend, "symbol": ctx.ticker, "status": "EMA TREND", "source": source,
+                       "triggered_at_utc": ctx.now.isoformat(), "scope": scope,
+                       "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."}
+            if journal.insert(ident, ctx.ticker, "ema_trend", scope, ctx.now, payload):
+                return ident, payload
+
     move = early_price_move(read["candles"], ctx.session, ctx.now)
     if not move:
         return None
-    recent = journal.records(ctx.ticker, "move_watch", scope=str(ctx.session), limit=1)
-    if recent and ctx.now - utc(recent[0]["origin"]) < timedelta(minutes=15):
+    recent = journal.records(ctx.ticker, "move_watch", scope=scope, limit=12)
+    if any(row["payload"].get("direction") == move["direction"] and
+           ctx.now - utc(row["origin"]) < timedelta(minutes=15) for row in recent):
         return None
-    ident = event_id("move", ctx.ticker, str(ctx.session), move["bar"])
-    payload = {**move, "symbol": ctx.ticker, "status": "MOVE WATCH", "source": getattr(ctx, "price_provider", "Tradytics"),
+    ident = event_id("move", ctx.ticker, scope, move["bar"])
+    payload = {**move, "symbol": ctx.ticker, "status": "MOVE WATCH", "source": source,
                "triggered_at_utc": ctx.now.isoformat(),
-               "scope": str(ctx.session), "quote_verified": False,
+               "scope": scope, "quote_verified": False,
                "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."}
-    return (ident, payload) if journal.insert(ident, ctx.ticker, "move_watch", str(ctx.session), ctx.now, payload) else None
+    return (ident, payload) if journal.insert(ident, ctx.ticker, "move_watch", scope, ctx.now, payload) else None
 
 
 def process_scan(journal, ctx, read, *, check_move=True):
@@ -67,7 +82,7 @@ def process_scan(journal, ctx, read, *, check_move=True):
     alerts = []
     entry_alert = None
     # Candles must be usable for outcomes even when options flow is missing.
-    if (not read["bars"].error and not feed_has_delay(read["bars"]) and read["candles"]
+    if (read.get("bars_usable", True) and not read["bars"].error and not feed_has_delay(read["bars"]) and read["candles"]
             and not (read["bars"].snapshot and read["bars"].snapshot.meta.get("sandbox"))):
         for event, outcome in settle_candidates(journal, symbol, read["candles"], now):
             payload = event["payload"]
@@ -88,7 +103,7 @@ def process_scan(journal, ctx, read, *, check_move=True):
     if not market_open:
         return alerts, plan
 
-    move_alert = price_move_watch(journal, ctx, read) if check_move else None
+    move_alert = price_alert(journal, ctx, read) if check_move else None
     if move_alert:
         alerts.append(move_alert)
 

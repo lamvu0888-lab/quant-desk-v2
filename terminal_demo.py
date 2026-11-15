@@ -39,6 +39,9 @@ class DemoStore:
             for i in range(min(int((end - start).total_seconds() // 60), int((DEMO_AT - start).total_seconds() // 60))):
                 stamp = start + timedelta(minutes=i)
                 delta = .000013 + .00013 * math.sin(i / 22 + d) + float(rng.normal(0, .00028))
+                # Give the SPY learning example a late uptrend with enough history for EMA 21.
+                if ticker == "SPY" and day == str(self.day) and DEMO_AT - stamp <= timedelta(minutes=36):
+                    delta += .00028
                 close = price * math.exp(delta)
                 spread = price * float(rng.uniform(.000045, .00023))
                 self.bars.append({

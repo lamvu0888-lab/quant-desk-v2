@@ -8,12 +8,11 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 
-from data_utils import BudgetPause, DataError, reported_delay, safe_error
+from data_utils import BudgetPause, DataError, records, reported_delay, safe_error
 from futures_proxy import activity, choose_contract
-from data_utils import records
 from live_chain import contract_symbol, occ_info, unwrap
 from market_session import ET, rth_bounds, session_state
-from my_webull_adapter import WebullSDKAdapter, category_for, normalize_candles, normalize_quote
+from my_webull_adapter import WebullSDKAdapter, WebullSymbolUnavailable, category_for, normalize_candles, normalize_quote
 from rate_control import RequestBudget
 from terminal_data import INDICES, numeric, time_or_none, valid_date
 from tradytics_feed import Feed, FeedError, Snapshot
@@ -54,6 +53,8 @@ def _symbol_in_payload(payload, symbol):
 def _error(exc):
     if isinstance(exc, BudgetPause):
         return FeedError("COOLDOWN", str(exc), exc.seconds)
+    if isinstance(exc, WebullSymbolUnavailable):
+        return FeedError("SYMBOL UNAVAILABLE", safe_error(exc), 300)
     return FeedError("WEBULL UNAVAILABLE", safe_error(exc), 20)
 
 
@@ -200,13 +201,16 @@ class WebullFeedStore:
 
     def _read_futures(self, key):
         root, day = key
+        opened, closed = rth_bounds(day)
+        now = datetime.now(UTC)
         client = self._client()
         instruments = client.request("Futures contracts", client.data.instrument.get_futures_instrument,
                                      self.budget, category="US_FUTURES", code=root, status="OC")
         contract = choose_contract(records(instruments), root, day)
         bars = client.request("Futures candles", client.data.futures_market_data.get_futures_history_bars,
                               self.budget, symbols=contract, category="US_FUTURES", timespan="M1",
-                              count="420", real_time_required=False)
+                              count="420", real_time_required=False,
+                              start_time=int(opened.timestamp() * 1000), end_time=int(min(now, closed).timestamp() * 1000))
         footprint = None
         try:
             footprint = client.request("Futures footprint", client.data.futures_market_data.get_futures_footprint,
@@ -215,11 +219,11 @@ class WebullFeedStore:
         except (DataError, BudgetPause):
             pass
         try:
-            points = activity(bars, footprint, contract, datetime.now(UTC), day)
+            points = activity(bars, footprint, contract, now, day)
         except DataError:
             if footprint is None:
                 raise
-            points = activity(bars, None, contract, datetime.now(UTC), day)
+            points = activity(bars, None, contract, now, day)
         return {key: Snapshot({"contract": contract, "points": points},
                               {"symbol": contract, "delay_minutes": reported_delay(bars, contract)}, datetime.now(UTC))}
 
@@ -367,7 +371,7 @@ class WebullFeedStore:
         return {key: Snapshot(list(parsed.values()), meta, received)}
 
 
-def webull_price_quality(quote, bars, settings, now, *, paused=False):
+def webull_price_quality(quote, bars, settings, now, *, paused=False, ticker=None):
     """Use observed market times. Missing delay metadata is reported separately."""
     q, h = quote.obj, bars.obj
     day = now.astimezone(ET).date()
@@ -384,7 +388,7 @@ def webull_price_quality(quote, bars, settings, now, *, paused=False):
     allowed = not paused and settings.endpoint == "api.webull.com"
     # An index snapshot may omit the delay field. Require the same-symbol M1
     # response to explicitly report zero delay before using an SPX quote.
-    index_delay_verified = (q.get("ticker") != "SPX" or
+    index_delay_verified = ((ticker or q.get("ticker")) != "SPX" or
                             (h.get("delay_minutes") == 0 and bar_close is not None and
                              bar_close.astimezone(ET).date() == day and bar_age is not None and 0 <= bar_age <= 120))
     quote_ok = bool(allowed and not quote.error and price and stamp and stamp.astimezone(ET).date() == day

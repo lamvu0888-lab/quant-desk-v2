@@ -7,10 +7,12 @@ from statistics import median
 
 from data_utils import utc
 from desk_analytics import FIVE_MINUTES, MINUTE, share_cvd, sign
+from ema_trend import EMA_PULLBACK
 from market_session import ET
 from terminal_data import numeric, positive, time_or_none
 
-MIN_ENTRY_SCORE = 80
+# A rules score, not a calibrated probability. "Above 70" means at least 71/100.
+MIN_ENTRY_SCORE = 71
 MIN_RELATIVE_VOLUME = 1.25
 ENTRY_COOLDOWN = 10 * MINUTE
 DIRECTION = {-1: "Down", 0: "Flat", 1: "Up"}
@@ -60,9 +62,9 @@ CHECKS = ("Market State", "Volatility", "GEX / Dealer Positioning", "Netflow / C
           "Price Structure", "Momentum / Volume", "Movement Decision", "Trade Trigger", "Data Quality")
 
 PLAYBOOKS = {
-    "Trend continuation": ("EMA 8/10 pullback", "VWAP reclaim or rejection", "Liquidity sweep"),
-    "Breakout and retest": ("Breakout and retest", "Breakout close", "EMA 8/10 pullback"),
-    "Volatility expansion": ("Breakout and retest", "Breakout close", "EMA 8/10 pullback"),
+    "Trend continuation": (EMA_PULLBACK, "VWAP reclaim or rejection", "Liquidity sweep"),
+    "Breakout and retest": ("Breakout and retest", "Breakout close", EMA_PULLBACK),
+    "Volatility expansion": ("Breakout and retest", "Breakout close", EMA_PULLBACK),
     "Range mean reversion": ("Range-edge sweep", "VWAP reversion"),
     "Wait for direction": (),
 }

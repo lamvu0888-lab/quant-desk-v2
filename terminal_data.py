@@ -324,10 +324,10 @@ def price_bars(feed, ticker, now, *, daily=False):
                       (("open", "o"), ("high", "h"), ("low", "l"), ("close", "c")))
         if None in (o, h, l, c) or not (l <= min(o, c) <= max(o, c) <= h):
             continue
-        volume = numeric(field(row, "volume", "v"))
+        volume = None if ticker in INDICES else numeric(field(row, "volume", "v"))
         parsed[stamp] = {"time_utc": stamp.isoformat(), "open": o, "high": h, "low": l, "close": c,
                          "volume": volume if volume is not None and volume >= 0 else None,
-                         "vwap": positive(row.get("vwap")), "closed": True}
+                         "vwap": None if ticker in INDICES else positive(row.get("vwap")), "closed": True}
     return [parsed[stamp] for stamp in sorted(parsed)]
 
 

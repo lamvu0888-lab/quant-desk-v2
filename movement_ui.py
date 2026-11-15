@@ -16,6 +16,7 @@ from market_session import ET, session_state
 from movement_charts import chart_for_stage, next_cue
 from movement_detector import CHECKS, DIRECTION, MIN_ENTRY_SCORE, PLAYBOOKS, cvd_context, movement_status
 from option_quotes import age_text, quote_age
+from terminal_charts import futures_activity_figure
 from terminal_data import INDICES, et_time, feed_has_delay, positive, time_or_none
 from terminal_style import AMBER, amount, chart_quote_caption, compact, empty, esc, plot, ratio_pct, style_chart
 
@@ -28,7 +29,7 @@ LAB_MATCHES = {
 }
 
 CHART_GUIDANCE = (
-    "Follow the sequence of 5-minute closes. Rising or falling steps show follow-through. Overlapping closes suggest a range. The quote diamond shows where price is between closes.",
+    "Compare 5-minute closes with the blue EMA 9 and gold EMA 21. Look for the lines to separate in the direction of price. Repeated crosses suggest a range.",
     "Watch for true range to rise as completed candles hold outside the range. A brief spike that closes back inside gives weaker evidence of expansion.",
     "Find the largest modeled bars close to spot. Watch whether price stalls at a nearby wall, rejects it, or holds beyond it on completed candles.",
     "Watch for consecutive premium bars in the same direction as price. On the 5-minute view, the dotted lines show the premium floors used by the plan.",
@@ -195,6 +196,18 @@ def detector_view(ctx, read, plan, iv):
                       else "Waiting for agreement")
     show_stage(4, flow_label, flow_note, flow_interval=flow_interval, flow_feed=flow_feed)
     st.caption(f"Chart: completed {flow_interval} net premium. Trade Plan confirmation still uses two completed 5m intervals.")
+    proxy = plan.get("cvd_proxy")
+    if ctx.ticker == "SPX":
+        if proxy and proxy.get("quality") == "footprint":
+            contract = proxy["symbol"]
+            futures = ctx.webull_store.futures_activity("MES" if contract.startswith("MES") else "ES", ctx.now, ctx.session,
+                                                        paused=ctx.paused)
+            st.caption(f"SPX proxy · {contract} observed futures footprint · 10m buy minus sell {compact(proxy['delta'], signed=True)} contracts. "
+                       "This is futures order flow, not SPX volume or SPX options flow.")
+            plot(futures_activity_figure(futures.obj.get("points", []), contract), "movement_spx_futures_cvd")
+        else:
+            st.caption("SPX CVD proxy unavailable. ES footprint is preferred, MES is backup; both require current zero-delay Webull futures/footprint access. "
+                       "No price-derived CVD is substituted for observed futures buying and selling.")
     if cvd["delta"] is not None:
         st.caption("Compare estimated share CVD with those bars. Rising price alongside falling CVD calls for a closer look at the retest.")
     if two["intervals"]:
@@ -236,6 +249,12 @@ def detector_view(ctx, read, plan, iv):
     if model.get("p_tp1") is not None and model.get("ev_r") is not None:
         trigger += f" Monte Carlo estimate · TP1 first {ratio_pct(model['p_tp1'])} · {model['ev_r']:+.2f}R."
     show_stage(8, plan["status"], f"{trigger} Evidence {plan['score']}/100 · entry minimum {MIN_ENTRY_SCORE}.")
+    st.caption("Entry requires more than 70 rule points plus the mandatory checks. This score is not a win probability.")
+    if plan.get("score_details"):
+        with st.expander("How the entry evidence is scored"):
+            st.dataframe(pd.DataFrame([{"Factor": row["factor"], "Earned": row["points"], "Max": row["possible"],
+                                        "State": row["state"]} for row in plan["score_details"]]),
+                         hide_index=True, width="stretch")
     stamps = (f"{plan['source']} quote {et_time(plan['quote_at'], short=True)} · "
               f"5m close {et_time(plan['bar'], short=True)} · Tradytics flow close {et_time(plan['flow_at'], short=True)} · "
               f"GEX {et_time(plan['gamma_at'], short=True)} ET.")

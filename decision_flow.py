@@ -1,10 +1,11 @@
 """Shared assembly of live decision inputs and model risk checks."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from data_utils import DataError, field, utc
 from dealer_hedging import UNITS, hedge_snapshot, level_crossings
+from futures_proxy import recent_pressure
 from decision_engine import ENTRY_STATES, make_trade_plan
 from desk_analytics import FIVE_MINUTES, MINUTE, candles_on
 from iv_decision import iv_read
@@ -45,24 +46,25 @@ def get_hedge(ctx, gamma_feed=None):
     return hedge_snapshot(objects, ctx.now, preview=ctx.preview), feeds
 
 
-def price_quote_issues(ctx, quote):
+def price_quote_issues(ctx, quote, *, setup_close=None):
     if ctx.paused:
         return ["Price polling is paused."]
     stamp = time_or_none(field(quote, "price_at", "time"))
     if ctx.price_provider == "Webull":
-        if ctx.webull_quality.get("quote_ready"):
-            return []
-        return ["Waiting for a fresh Webull price."]
-    issues = []
-    quote_feed = ctx.quote_feed()
-    if (positive(quote.get("price")) is None or stamp is None or stamp.astimezone(ET).date() != ctx.session
-            or not 0 <= (ctx.now - stamp).total_seconds() <= 120 or quote.get("stale") is True
-            or quote.get("session") not in (None, "regular")):
-        issues.append("Waiting for a current Tradytics regular-session price.")
-    if quote_feed.error or feed_has_delay(quote_feed) or (numeric(quote.get("delay_minutes")) or 0) > 0:
-        issues.append("Tradytics price feed has a reported delay or error.")
-    if not quote_feed.snapshot:
-        issues.append("Waiting for a Tradytics quote snapshot.")
+        issues = [] if ctx.webull_quality.get("quote_ready") else ["Waiting for a fresh Webull price."]
+    else:
+        issues = []
+        quote_feed = ctx.quote_feed()
+        if (positive(quote.get("price")) is None or stamp is None or stamp.astimezone(ET).date() != ctx.session
+                or not 0 <= (ctx.now - stamp).total_seconds() <= 120 or quote.get("stale") is True
+                or quote.get("session") not in (None, "regular")):
+            issues.append("Waiting for a current Tradytics regular-session price.")
+        if quote_feed.error or feed_has_delay(quote_feed) or (numeric(quote.get("delay_minutes")) or 0) > 0:
+            issues.append("Tradytics price feed has a reported delay or error.")
+        if not quote_feed.snapshot:
+            issues.append("Waiting for a Tradytics quote snapshot.")
+    if not issues and setup_close and stamp and stamp < setup_close - timedelta(seconds=5):
+        issues.append(f"Waiting for a {ctx.price_provider} quote from the setup candle close or later.")
     return issues
 
 
@@ -88,7 +90,7 @@ def build_decision(ctx, read, *, warm_options=True):
     quote = ctx.quote()
     spot = positive(quote.get("price"))
     stamp = time_or_none(field(quote, "price_at", "time"))
-    quote_issues = price_quote_issues(ctx, quote)
+    quote_issues = price_quote_issues(ctx, quote, setup_close=read.get("minute_close"))
     quality = list(dict.fromkeys([*read["reasons"], *quote_issues]))
     gamma = usable_exposure(ctx, "gamma", read["gamma_feed"])
     use_webull_chain = bool(ctx.expiry and ctx.has_webull_options)
@@ -96,13 +98,30 @@ def build_decision(ctx, read, *, warm_options=True):
     iv = read_iv(ctx, read["vol"], read["regime"], spot, ctx.expiry, webull_chain=webull_chain)
     gamma_levels = dealer_levels(gamma, spot, 0)
     session = session_state(ctx.now)
+    minute_close = read.get("minute_close")
+    cvd_proxy = None
+    if (ctx.ticker == "SPX" and ctx.webull_store and
+            callable(getattr(ctx.webull_store, "futures_activity", None)) and minute_close and not ctx.paused):
+        for root in ("ES", "MES"):
+            feed = ctx.webull_store.futures_activity(root, ctx.now, ctx.session, paused=ctx.paused)
+            if feed.error or not feed.snapshot or feed_has_delay(feed) or feed.snapshot.meta.get("delay_minutes") != 0:
+                continue
+            value = recent_pressure(feed.obj.get("points", []), minute_close)
+            if value is not None:
+                cvd_proxy = {**value, "symbol": feed.obj.get("contract"), "quality": "footprint"}
+                break
+    elif ctx.ticker not in INDICES and minute_close:
+        value = cvd_context(read["candles"], ctx.session, minute_close, f"{ctx.ticker} estimated share CVD")
+        if value["delta"] is not None:
+            cvd_proxy = {**value, "symbol": ctx.ticker, "quality": "estimated"}
     def assemble(levels):
         return make_trade_plan(candles=read["candles"], buckets=read["buckets"], flow_rows=read["flow"].rows,
                                levels=levels, now=ctx.now, session=ctx.session, expiry=ctx.expiry, dte=ctx.dte,
                                spot=spot, regime=read["regime"], iv=iv, gamma=gamma, quality_reasons=quality,
                                quote_at=stamp.isoformat() if stamp else None, minutes_left=session["minutes_left"],
                                source=ctx.price_provider, preview=ctx.preview,
-                               flow_usable=read.get("flow_state", "Aligned") == "Aligned")
+                               flow_usable=read.get("flow_state", "Aligned") == "Aligned",
+                               cvd_proxy=cvd_proxy)
 
     levels = read["levels"] + gamma_levels
     plan = assemble(levels)
@@ -122,7 +141,6 @@ def build_decision(ctx, read, *, warm_options=True):
     plan["data_reasons"] = quality
     bar_at = time_or_none(plan["bar"])
     gamma_at = source_stamp("exposure", read["gamma_feed"], ctx.ticker) if gamma else None
-    minute_close = read.get("minute_close")
     flow_stamp = read.get("flow_stamp")
     plan["flow_at"] = flow_stamp.isoformat() if flow_stamp else plan["flow"].get("stamp")
     plan["gamma_at"] = gamma_at.isoformat() if gamma_at else None
@@ -134,13 +152,20 @@ def build_decision(ctx, read, *, warm_options=True):
                            "dealer_age": quote_age(gamma_at, ctx.now)}
     plan["iv_source"], plan["iv_at"] = iv["atm_source"], iv["atm_at"]
     plan["price_watch"] = read.get("price_watch")
+    plan["price_trend"] = read.get("price_trend")
     if use_webull_chain and (warm_options or plan["status"] in (*ENTRY_STATES, "GET READY")):
         review = option_review(webull_chain, "Webull", ctx.ticker, ctx.expiry, spot, plan["direction"], ctx.now,
                                max_age=ctx.option_max_age, paused=ctx.paused)
+        if not review["ready"] and plan["status"] in ENTRY_STATES and ctx.store:
+            alternate_chain, source = ctx.option_chain(ctx.expiry, provider="Tradytics")
+            alternate = option_review(alternate_chain, source, ctx.ticker, ctx.expiry, spot, plan["direction"], ctx.now,
+                                      max_age=ctx.option_max_age, paused=ctx.paused)
+            if alternate["ready"]:
+                review = alternate
         plan["option_quote"] = review
         if plan["status"] in ENTRY_STATES and not review["ready"]:
             plan["status"] = "GET READY"
-            plan["missing"].append(f"Webull option check: {review['status']}.")
+            plan["missing"].append(f"Awaiting a current exact-expiry option quote. Webull status · {review['status']}.")
     plan["cvd"] = cvd_context(read["candles"], ctx.session, time_or_none(plan["entry_bar"]),
                               f"{ctx.ticker} estimated share CVD")
     if ctx.ticker in INDICES:

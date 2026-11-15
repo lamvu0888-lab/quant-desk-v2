@@ -8,23 +8,21 @@
 
 **Example.** A rising 1-minute reading inside a neutral 5-minute range is a reason to watch the range high. If the next opposing level leaves little room above the trigger, the plan can still show AVOID. The evidence score summarizes rule agreement and carries no probability units.
 
-### Integrated intraday chart
-
-**Price and levels.** The gold diamond shows the latest fresh underlying quote and its market timestamp. Completed 1-, 3- or 5-minute candles determine EMA 21 and session VWAP. Look for a close and retest above or below both lines and the next nearby level. When visible, the opening range comes from the first 30 minutes of the regular session. Watch for repeated crossings, which can signal a range.
-
-**Side profile.** Volume groups the visible candles' share volume by their closing-price bins. Long bars highlight areas of concentrated volume. Switch to GEX to see modeled net gamma by strike on the same price axis. Look for a reaction to a nearby cluster or wall. Use the displayed expiry scope and snapshot time. Share-volume panels are blank when the instrument has no native share volume.
-
-**Net premium and CVD.** Green and red bars show completed Tradytics directional premium. The gold line is the rolling sum of the latest three consecutive intervals: 3, 9 or 15 minutes depending on the setting. Look for repeat flow in the direction of price. Estimated CVD adds or subtracts one-minute share volume based on candle direction. Compare its slope with price to identify moves where volume participation may be fading.
-
-**Example.** Webull shows a quote through the opening high during a forming candle. Watch for the next close to hold that level and for nearby completed premium bars to agree. Check each source timestamp before comparing the readings.
-
 ### Price action and large-order overlays
 
 **What you see.** Horizontal position is candle time, and the right scale is underlying price. The candle body spans open to close, and the wick spans low to high. The lower panel shows share volume when available. VWAP is volume-weighted session price. The chart can label a candle-based estimate when native VWAP is unavailable. Dashed price levels and optional C/P markers add context.
 
-**Look for.** Identify the range, trend and nearest opposing level on a slower view, then use 1- or 3-minute closes to see whether a break holds. Compare body size, wicks and available volume around the level. Hover a large print to see the option strike, expiry, premium and side. Its vertical position is the matched underlying price around the print.
+**Look for.** The blue EMA 9 responds faster than the gold EMA 21. For an uptrend, check that EMA 9 is above a rising EMA 21 and price holds above EMA 21. Reverse the reading for a downtrend. Tight or repeatedly crossing lines suggest a range. Use 5m for the bias, then use 1m or 3m to see whether price holds a pullback or breaks the nearby range. The gold diamond is a separately timestamped quote between closes. Hover a large print to see its option strike, expiry, premium and side.
 
 **Example.** A wick above 760 followed by a close at 759.75 shows a rejection at that moment. A second close above 760 after a retest gives stronger evidence of acceptance. A call bubble near 760 may represent a different strike or a leg of a spread. Treat it as a prompt to inspect the tape.
+
+### EMA 9/21 trend and entry timing
+
+**What you see.** A Discord **EMA 9/21 trend** message follows two consecutive 3m closes beyond both EMAs in the same direction. **Move watch** reports a quick price change. The **Trade Plan** separately checks 5m trend, aligned 5m flow, the underlying quote, and risk to the next price level.
+
+**Look for.** On a bullish pullback, watch the area between EMA 9 and 21 for price to stabilize. A completed 1m candle testing that area and closing back above EMA 9 supports continuation. On a bearish pullback, watch for rejection and a close back below EMA 9. Wait for the broad 5m bias to agree if the 3m alert arrived first.
+
+**Example.** A 3m trend turns up while the 5m EMAs are still falling. On the next pullback, see whether the 3m EMA 21 holds. If price keeps rising but the next resistance is close, check how much room remains to the Trade Plan target.
 
 ### Overview flow snapshot
 
@@ -44,7 +42,7 @@
 
 ### Estimated share-volume CVD
 
-**What you see.** The upper line accumulates signed share volume through the session. Lower bars show signed volume by interval. The dashboard estimates sign from completed price candles. For SPX, any separately labeled SPY comparison represents SPY shares.
+**What you see.** The upper line accumulates signed share volume through the session. Lower bars show signed volume by interval. The dashboard estimates sign from completed price candles. For SPX, select SPY to compare share activity or ES/MES to view futures contracts. The futures chart shows contract volume, with footprint CVD when Webull supplies usable buy and sell quantities for the displayed contract.
 
 **Look for.** Compare the line's slope and recent signed bars with underlying price. Rising price and rising CVD support broad directional activity in that ticker. If price makes a new high while CVD weakens, look for a failed retest or renewed activity before drawing a conclusion.
 
