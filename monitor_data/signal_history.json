@@ -4299,5 +4299,20 @@
     "direction": -1,
     "id": "entry:Tradytics:0:QQQ:2026-11-16T19:35:00+00:00:EMA 9/21 pullback",
     "explanation": "5m EMA 9/21 and price confirm a falling trend."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-16T19:52:00+00:00",
+    "triggered_at_utc": "2026-11-16T19:52:01.791139+00:00",
+    "price": 662.53,
+    "scope": "2026-11-16",
+    "source": "Tradytics",
+    "direction": "UP",
+    "window": "1m",
+    "change_pct": 0.11786928598411794,
+    "previous_price": 661.75,
+    "id": "move:QQQ:2026-11-16:2026-11-16T19:52:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
