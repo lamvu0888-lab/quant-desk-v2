@@ -4042,5 +4042,19 @@
     "previous_price": 746.49,
     "id": "move:SPY:2026-11-16:2026-11-16T16:38:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPY",
+    "status": "EMA TREND",
+    "bar": "2026-11-16T16:48:00+00:00",
+    "triggered_at_utc": "2026-11-16T16:48:01.027228+00:00",
+    "price": 745.6,
+    "scope": "2026-11-16",
+    "source": "Tradytics",
+    "direction": "DOWN",
+    "ema9": 746.0289230366851,
+    "ema21": 746.1367487562724,
+    "id": "ema921:SPY:2026-11-16:2026-11-16T16:48:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
