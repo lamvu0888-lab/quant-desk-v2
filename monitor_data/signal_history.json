@@ -4114,5 +4114,42 @@
     "direction": -1,
     "id": "entry:Tradytics:0:SPY:2026-11-16T18:05:00+00:00:Breakout close",
     "explanation": "5m EMA 9/21 and price confirm a falling trend."
+  },
+  {
+    "symbol": "SPY",
+    "status": "EXIT",
+    "bias": "Bearish",
+    "score": 90,
+    "bar": "2026-11-16T18:21:00+00:00",
+    "entry_bar": "2026-11-16T18:05:00+00:00",
+    "triggered_at_utc": "2026-11-16T18:21:01.348894+00:00",
+    "price": 741.91,
+    "scope": "2026-11-16",
+    "setup": "Breakout close",
+    "entry": 742.27,
+    "trigger": 742.71,
+    "invalidation": 742.71,
+    "stop": 742.8,
+    "tp1": 741.48,
+    "tp2": 740.95,
+    "rr": 1.49,
+    "rr2": 2.49,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "outcome": {
+      "state": "TIME LIMIT",
+      "at": "2026-11-16T18:21:00+00:00",
+      "price": 741.91,
+      "tp1_first": false,
+      "tp2_first": false,
+      "minutes": 15,
+      "r": 0.539194339622695
+    },
+    "rule_version": "2.8.6",
+    "source": "Tradytics",
+    "dte": 0,
+    "direction": -1,
+    "id": "exit:candidate:Tradytics:0:SPY:2026-11-16T18:05:00+00:00",
+    "explanation": "Tracked setup closed by time limit."
   }
 ]
