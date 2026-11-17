@@ -1,7 +1,8 @@
 {
   "symbols": [
     "SPY",
-    "SPX"
+    "SPX",
+    "QQQ"
   ],
   "enabled": true,
   "interval_seconds": 30
