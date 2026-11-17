@@ -3971,5 +3971,20 @@
     },
     "id": "entry:Webull:0:QQQ:2026-11-17T15:30:00+00:00:EMA 9/21 pullback",
     "explanation": "5m EMA 9/21 and price confirm a falling trend."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-17T15:32:00+00:00",
+    "triggered_at_utc": "2026-11-17T15:32:03.613993+00:00",
+    "price": 656.9,
+    "scope": "2026-11-17",
+    "source": "Webull",
+    "direction": "DOWN",
+    "window": "5m",
+    "change_pct": -0.4017890986278472,
+    "previous_price": 659.55,
+    "id": "move:QQQ:2026-11-17:2026-11-17T15:32:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
