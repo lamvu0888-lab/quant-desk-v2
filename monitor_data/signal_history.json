@@ -4379,5 +4379,19 @@
     "ema21": 7338.867495954956,
     "id": "ema921:SPX:2026-11-17:2026-11-17T18:00:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "SPY",
+    "status": "EMA TREND",
+    "bar": "2026-11-17T18:00:00+00:00",
+    "triggered_at_utc": "2026-11-17T18:00:04.009419+00:00",
+    "price": 731.52,
+    "scope": "2026-11-17",
+    "source": "Webull",
+    "direction": "DOWN",
+    "ema9": 731.9178761792638,
+    "ema21": 732.0243275860885,
+    "id": "ema921:SPY:2026-11-17:2026-11-17T18:00:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
