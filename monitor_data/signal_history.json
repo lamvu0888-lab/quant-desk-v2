@@ -5621,5 +5621,20 @@
     "ema21": 658.7208861723689,
     "id": "ema921:QQQ:2026-11-18:2026-11-18T20:48:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "SPX",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-18T20:59:00+00:00",
+    "triggered_at_utc": "2026-11-18T20:59:01.817685+00:00",
+    "price": 7321.69,
+    "scope": "2026-11-18",
+    "source": "Tradytics",
+    "direction": "DOWN",
+    "window": "1m",
+    "change_pct": -0.12059155340746752,
+    "previous_price": 7330.53,
+    "id": "move:SPX:2026-11-18:2026-11-18T20:59:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
