@@ -5406,5 +5406,19 @@
     },
     "id": "exit:candidate:Webull:0:QQQ:2026-11-18T17:30:00+00:00",
     "explanation": "Tracked setup closed by invalidated."
+  },
+  {
+    "symbol": "SPX",
+    "status": "EMA TREND",
+    "bar": "2026-11-18T18:15:00+00:00",
+    "triggered_at_utc": "2026-11-18T18:15:01.366453+00:00",
+    "price": 7318.27,
+    "scope": "2026-11-18",
+    "source": "Tradytics",
+    "direction": "DOWN",
+    "ema9": 7325.234465607666,
+    "ema21": 7327.047112694492,
+    "id": "ema921:SPX:2026-11-18:2026-11-18T18:15:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
