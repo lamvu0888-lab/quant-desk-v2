@@ -5462,5 +5462,19 @@
     "ema21": 658.6682767524171,
     "id": "ema921:QQQ:2026-11-18:2026-11-18T18:27:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "SPX",
+    "status": "EMA TREND",
+    "bar": "2026-11-18T18:30:00+00:00",
+    "triggered_at_utc": "2026-11-18T18:30:00.643286+00:00",
+    "price": 7339.09,
+    "scope": "2026-11-18",
+    "source": "Tradytics",
+    "direction": "UP",
+    "ema9": 7331.76020185032,
+    "ema21": 7329.7981071360455,
+    "id": "ema921:SPX:2026-11-18:2026-11-18T18:30:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
