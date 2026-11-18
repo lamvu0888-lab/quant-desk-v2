@@ -245,8 +245,9 @@ def _print_time(row):
 class FeedStore:
     """One worker pool for all pages. Only requested feeds refresh."""
 
-    def __init__(self, client):
+    def __init__(self, client, *, cadence=None):
         self.client = client
+        self._cadence = cadence
         self._pool = ThreadPoolExecutor(max_workers=5, thread_name_prefix="tradytics")
         self._lock = threading.RLock()
         self._entries = OrderedDict()
@@ -328,4 +329,5 @@ class FeedStore:
             else:
                 entry.feed = Feed(snapshot)
                 entry.head_at, entry.market_day = head_at, day
-                entry.next_due = time.monotonic() + ENDPOINTS[name].refresh_seconds
+                delay = self._cadence(name, snapshot) if self._cadence else ENDPOINTS[name].refresh_seconds
+                entry.next_due = time.monotonic() + delay

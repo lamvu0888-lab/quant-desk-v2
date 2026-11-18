@@ -22,6 +22,7 @@ from movement_detector import early_price_move
 from movement_ui import detector_view, nav_button
 from monte_carlo import forecast, walk_forward
 from option_quotes import age_text, option_rows, quote_age, quote_status, sample_exposure, spread_fraction
+from schwab_feed import quote_status as schwab_quote_status
 from terminal_charts import (bubble_figure, cvd_figure, dark_figure, exposure_figure, flow_desk_figure, flow_figure,
                              forecast_figure, futures_activity_figure, money_map_figure, price_figure, series_figure)
 from terminal_data import (INDICES, chart_buckets, completed_boundary, display_exposure_unit, et_time, expiration_date, exposure_obj,
@@ -58,6 +59,7 @@ class Desk:
     webull_prices: dict | None = None
     expiry_waiting: bool = False
     price_fallback: str | None = None
+    schwab_store: object | None = None
 
     def get(self, name, **params):
         params = {key: value for key, value in params.items() if value is not None}
@@ -96,6 +98,23 @@ class Desk:
     def quote_feed(self):
         return self._quote_feed
 
+    def schwab_feed(self, name, **params):
+        if self.preview or self.ticker != "SPX" or not self.schwab_store:
+            return Feed(error=FeedError("NOT CONFIGURED", "Configure Schwab for cash SPX in the private app settings."))
+        return self.schwab_store.get(name, paused=self.paused, **params)
+
+    @cached_property
+    def schwab_quote(self):
+        return self.schwab_feed("quote")
+
+    @cached_property
+    def schwab_bars(self):
+        return self.schwab_feed("history")
+
+    @cached_property
+    def schwab_quote_state(self):
+        return schwab_quote_status(self.schwab_quote, self.now, self.paused)
+
     @cached_property
     def webull_quality(self):
         if not self.webull_store or (self.ticker in INDEX_SYMBOLS and self.ticker != "SPX"):
@@ -107,6 +126,8 @@ class Desk:
         return (self.webull_prices or {}).get(kind, Feed())
 
     def quote(self):
+        if self.price_provider == "Schwab":
+            return self.schwab_quote.obj
         if self.price_provider == "Webull":
             q = self.webull_price_feed("quote").obj
             price = self.webull_quality.get("price")
@@ -135,6 +156,8 @@ class Desk:
 
     @cached_property
     def _current_history(self):
+        if self.price_provider == "Schwab":
+            return self.schwab_bars.obj.get("candles", []), self.schwab_bars
         if self.price_provider == "Webull":
             feed = self.webull_price_feed("history")
             return feed.obj.get("candles", []), feed
@@ -143,6 +166,11 @@ class Desk:
     def history(self, daily=False, *, session=None, symbol=None):
         if not daily and session is None and symbol is None:
             return self._current_history
+        if self.price_provider == "Schwab" and symbol in (None, "SPX"):
+            if not daily and session in (None, self.session):
+                return self._current_history
+            feed = self.schwab_feed("daily") if daily else self.schwab_feed("history", session=str(session))
+            return feed.obj.get("candles", []), feed
         return self._tradytics_history(daily=daily, session=session, symbol=symbol)
 
     def _tradytics_history(self, daily=False, *, session=None, symbol=None):
@@ -259,7 +287,7 @@ def default_premium(ticker):
 
 def read_price(ctx):
     candles, bars = ctx.history()
-    # Both adapters normalize completed RTH candles. Trim a newer cache update
+    # Providers return completed RTH candles. Trim a newer cache update
     # if it arrived after this scan's evaluation time.
     end = len(candles)
     while end and utc(candles[end - 1]["time_utc"]) + MINUTE > ctx.now:
@@ -271,16 +299,24 @@ def read_price(ctx):
                   and not (bars.snapshot and bars.snapshot.meta.get("sandbox")))
     if ctx.price_provider == "Webull" and ctx.ticker == "SPX":
         usable = usable and bars.obj.get("delay_minutes") == 0
+    if ctx.price_provider == "Schwab":
+        usable = usable and not ctx.schwab_quote.error and ctx.schwab_quote.obj.get("realtime") is True
     ready = bool(usable and close
                  and close.astimezone(ET).date() == ctx.session and 0 <= (ctx.now - close).total_seconds() <= 120)
     if ctx.price_provider == "Webull":
         ready = ready and ctx.webull_quality.get("bars_ready", False)
+    elif ctx.price_provider == "Schwab":
+        ready = ready and ctx.schwab_quote_state == "FRESH QUOTE"
     return {"candles": candles, "bars": bars, "minute_close": close, "bars_ready": ready, "bars_usable": usable}
 
 
 def route_price(ctx, preference):
     """Share Auto price selection between the dashboard and the Discord worker."""
     prices = read_price(ctx)
+    if preference == "Schwab" and ctx.ticker != "SPX":
+        preference = "Auto"
+    if ctx.price_provider == "Schwab" and preference == "Auto" and not ctx.preview and not ctx.paused:
+        return route_schwab_spx(ctx, prices)
     if (ctx.price_provider != "Webull" or preference != "Auto" or ctx.preview or ctx.paused or not ctx.store
             or prices["bars_ready"]):
         return ctx, prices
@@ -301,6 +337,49 @@ def route_price(ctx, preference):
     else:
         fallback.price_fallback = "Waiting for current Webull minute candles."
     return fallback, alternate
+
+
+def route_schwab_spx(ctx, prices):
+    opened, closed = rth_bounds(ctx.session)
+    regular = opened <= ctx.now < closed
+    first_minute = regular and ctx.now < opened + MINUTE
+    if regular:
+        if prices["bars_ready"] or (first_minute and ctx.schwab_quote_state == "FRESH QUOTE"):
+            return ctx, prices
+    elif prices["bars_usable"] and prices["minute_close"] == closed and ctx.schwab_quote_state == "SESSION CLOSE":
+        return ctx, prices
+
+    # Check a whole alternate pair. A Schwab quote and another provider's candles must
+    # never be published as one Schwab observation or stored under its journal scope.
+    for source, store in (("Webull", ctx.webull_store), ("Tradytics", ctx.store)):
+        if not store:
+            continue
+        fallback = replace(ctx, price_provider=source)
+        if source == "Webull" and fallback.webull_prices is None:
+            fallback.webull_prices = store.prices(["SPX"]).get("SPX")
+        alternate = read_price(fallback)
+        if regular:
+            valid = (alternate["bars_ready"] or first_minute) and fallback.chart_quote
+        else:
+            quote = fallback.quote()
+            at = time_or_none(field(quote, "price_at", "time"))
+            feed = fallback.webull_price_feed("quote") if source == "Webull" else fallback.quote_feed()
+            valid = (alternate["bars_usable"] and alternate["minute_close"] == closed and positive(quote.get("price"))
+                     and at and at.astimezone(ET).date() == ctx.session and closed - 2 * MINUTE <= at <= ctx.now
+                     and not feed.error and not feed_has_delay(feed) and not quote.get("stale")
+                     and (numeric(feed.obj.get("delay_minutes")) or 0) <= 0
+                     and (numeric(quote.get("delay_minutes")) or 0) <= 0)
+        if valid:
+            issue = ctx.schwab_quote.error or ctx.schwab_bars.error
+            if issue:
+                reason = str(issue)
+            elif ctx.schwab_quote_state not in ("FRESH QUOTE", "SESSION CLOSE"):
+                reason = "Quote status · " + ctx.schwab_quote_state
+            else:
+                reason = "Waiting for a current completed one-minute candle."
+            fallback.price_fallback = f"Schwab $SPX · {reason}"
+            return fallback, alternate
+    return ctx, prices
 
 
 def read_workspace(ctx, *, include_flow=True, prices=None, timeline=None):
@@ -325,7 +404,11 @@ def read_workspace(ctx, *, include_flow=True, prices=None, timeline=None):
     if not regular:
         reasons.append("Regular session is closed.")
     if not prices["bars_ready"]:
-        reasons.append(f"Waiting for fresh completed {ctx.price_provider} candles.")
+        opened, _ = rth_bounds(ctx.session)
+        if opened <= ctx.now < opened + MINUTE:
+            reasons.append(f"Waiting for the first completed {ctx.price_provider} minute at {et_time(opened + MINUTE, short=True)} ET.")
+        else:
+            reasons.append(f"Waiting for fresh completed {ctx.price_provider} candles.")
     if ctx.expiry_waiting:
         reasons.append("Waiting for the nearest listed expiration.")
     if ctx.paused:
@@ -439,9 +522,12 @@ def price_panel(ctx, read):
         if not daily:
             chart_quote_caption(ctx)
         render_chart(fig, "price_action_chart", feed, "Waiting for completed candles in this timeframe.")
-        if using_webull:
+        if ctx.price_provider == "Schwab" and daily:
+            last = time_or_none(rows[-1]["time_utc"]).date() if rows else "—"
+            st.caption(f"Schwab $SPX · latest completed daily candle {last}")
+        elif using_webull or ctx.price_provider == "Schwab":
             close = read["minute_close"]
-            st.caption(f"Webull · latest completed minute {et_time(close)} · {age_text(quote_age(close, ctx.now))} old.")
+            st.caption(f"{ctx.price_provider} · latest completed minute {et_time(close)} · {age_text(quote_age(close, ctx.now))} old.")
         else:
             feed_stamp("bars", feed, ctx)
         if show_orders and not daily:
@@ -1077,6 +1163,13 @@ def price_forecast_page(ctx):
     if ctx.price_provider == "Webull":
         session = session_state(ctx.now)
         reasons = [] if ctx.webull_quality.get("forecast_ready") else ctx.webull_quality.get("reasons") or ["Waiting for a fresh Webull quote and candles."]
+    elif ctx.price_provider == "Schwab":
+        session = session_state(ctx.now)
+        reasons = price_quote_issues(ctx, quote)
+        if not read_price(ctx)["bars_ready"]:
+            reasons.append("Waiting for current completed Schwab SPX candles.")
+        if len(candles) < 121:
+            reasons.append("At least 121 completed one-minute candles are needed.")
     else:
         session, reasons = snapshot_forecast_gate(quote, candles, ctx.quote_feed(), bar_feed, ctx.now, ctx.paused)
     with st.container(border=True):
@@ -1352,7 +1445,7 @@ def discord_history(ctx):
             if not events:
                 st.caption("No delivered Discord alerts recorded for this ticker.")
                 return
-            table([{"Detected UTC": e.get("triggered_at_utc"), "Signal": e.get("status"),
+            table([{"Detected UTC": e.get("triggered_at_utc"), "Signal": e.get("status"), "Price source": e.get("source"),
                     "Bias": e.get("bias"), "Price": e.get("price"), "Trigger": e.get("trigger"),
                     "Invalidation": e.get("invalidation"), "Stop": e.get("stop"), "TP1": e.get("tp1"),
                     "TP2": e.get("tp2"), "Completed bar UTC": e.get("bar"), "Explanation": e.get("explanation")}
@@ -1490,7 +1583,11 @@ def replay_page(ctx):
     else:
         empty(bars, "No matching events with a usable underlying reference price.")
     st.caption("Returns measure the underlying. Empty outcomes are outside the session, still forming, or missing a close.")
-    feed_stamp("bars", bars, ctx)
+    if ctx.price_provider == "Schwab":
+        close = utc(candles[-1]["time_utc"]) + MINUTE if candles else None
+        st.caption(f"Schwab cash SPX · latest completed minute {et_time(close)} · {bars.error or ''}")
+    else:
+        feed_stamp("bars", bars, ctx)
 
 
 def history_page(ctx):
@@ -1546,12 +1643,29 @@ def health_page(ctx):
             st.caption(f"Webull quote · {webull_quote.error}")
         if webull_bars.error:
             st.caption(f"Webull candles · {webull_bars.error}")
-        table([{"Source": "Preview" if ctx.preview else "Tradytics", "Price": positive(trad.get("price")),
+        comparison = [{"Source": "Preview" if ctx.preview else "Tradytics", "Price": positive(trad.get("price")),
                 "Quote time (ET)": et_time(stamp), "Age": age_text(trad_age), "Status": trad_status,
                 "Note": str(quote_feed.error or "")},
                {"Source": "Webull", "Price": q.get("price"), "Quote time (ET)": et_time(q.get("price_time_utc")),
                 "Age": age_text(q.get("price_age_seconds")), "Status": webull_error.status if webull_error else webull_status,
-                "Note": q.get("price_kind", "")}], height=112)
+                "Note": q.get("price_kind", "")}]
+        if ctx.ticker == "SPX" and not ctx.preview:
+            sq, sb = ctx.schwab_quote, ctx.schwab_bars
+            at = sq.obj.get("price_at")
+            entitlement = {True: "Real-time", False: "Delayed"}.get(sq.obj.get("realtime"), "Unverified")
+            comparison.append({"Source": "Schwab", "Price": sq.obj.get("price"), "Quote time (ET)": et_time(at),
+                               "Age": age_text(quote_age(at, ctx.now)), "Status": ctx.schwab_quote_state,
+                               "Note": str(sq.error) if sq.error else f"Cash $SPX · {entitlement}"})
+            if ctx.schwab_store:
+                rows = sb.obj.get("candles", [])
+                last = utc(rows[-1]["time_utc"]) + MINUTE if rows else None
+                opened, _ = rth_bounds(ctx.session)
+                if opened <= ctx.now < opened + MINUTE and (last is None or last <= opened):
+                    note = "Waiting for the first completed regular-session minute."
+                else:
+                    note = "Latest completed regular-session minute " + et_time(last)
+                st.caption(f"Schwab $SPX candles · {note}" + (f" · {sb.error}" if sb.error else ""))
+        table(comparison, height=147 if len(comparison) > 2 else 112)
         if trad_age is not None and q.get("price_age_seconds") is not None:
             difference = trad_age - q["price_age_seconds"]
             newer = "Webull" if difference >= 0 else "Tradytics"

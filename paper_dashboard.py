@@ -18,6 +18,7 @@ from settings import Settings
 from terminal_data import time_or_none
 from tradytics_feed import FeedStore, TradyticsClient
 from webull_feed import WebullFeedStore
+from schwab_feed import feed_store as make_schwab_store
 
 ROOT = Path(__file__).resolve().parent
 LOCAL = dotenv_values(ROOT / ".env")
@@ -37,7 +38,8 @@ def run_worker(once=False):
     ledger = PaperLedger(journal)
     webull = WebullFeedStore(settings, app_key, secret, config("WEBULL_REGION", "us"))
     tradytics = FeedStore(TradyticsClient(key, config("TRADYTICS_AUTH_MODE", "query")))
-    worker = PaperWorker(ledger, webull, tradytics)
+    schwab = make_schwab_store(config)
+    worker = PaperWorker(ledger, webull, tradytics, schwab=schwab)
     last_review = None
     try:
         with ledger.lock() as assert_lock:
@@ -67,6 +69,8 @@ def run_worker(once=False):
                 time.sleep(5 if session_state()["status"] == "OPEN" else 15)
     finally:
         webull.close()
+        if schwab:
+            schwab.close()
         tradytics.close()
 
 

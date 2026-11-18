@@ -24,7 +24,11 @@ MINUTE = timedelta(minutes=1)
 INDEX_SYMBOLS = INDICES | {"SPXW"}
 
 
-def price_source(symbol, preference, webull):
+def price_source(symbol, preference, webull, schwab=False):
+    if symbol == "SPX" and (preference == "Schwab" or preference == "Auto" and schwab):
+        return "Schwab"
+    if preference == "Schwab":
+        preference = "Auto"
     if (symbol == "SPX" or symbol not in INDEX_SYMBOLS) and (preference == "Webull" or preference == "Auto" and webull):
         return "Webull"
     return "Tradytics"

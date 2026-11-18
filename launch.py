@@ -15,7 +15,12 @@ def main():
         print('Python 3.11 or newer is required. Python 3.12 is recommended.');return 2
     os.chdir(ROOT)
     diagnostic='--diagnose' in sys.argv
-    if not diagnostic:
+    schwab_command = None
+    if '--schwab-authorize' in sys.argv:
+        schwab_command = 'authorize'
+    elif '--schwab-check' in sys.argv:
+        schwab_command = 'check'
+    if not diagnostic and not schwab_command:
         with socket.socket() as sock:
             if sock.connect_ex(('127.0.0.1',8501))==0:
                 print('Port 8501 already has an app running. Open http://localhost:8501, or stop your old dashboard first.');return 1
@@ -32,14 +37,16 @@ def main():
     config=ROOT/'.env'
     if not config.exists():
         config.write_bytes((ROOT/'.env.example').read_bytes())
-        print('Created .env. Add your Tradytics key there. Webull credentials are optional.',flush=True)
+        print('Created .env for your private provider settings.',flush=True)
     if diagnostic:
         return subprocess.call([str(python),str(ROOT/'diagnose_webull.py')],cwd=ROOT)
+    if schwab_command:
+        return subprocess.call([str(python), str(ROOT/'schwab_setup.py'), schwab_command], cwd=ROOT)
     classic='--classic' in sys.argv
     script='dashboard.py' if classic else 'terminal.py'
     theme=['--theme.base','light','--theme.backgroundColor','#F7F9FB','--theme.secondaryBackgroundColor','#FFFFFF',
            '--theme.textColor','#172B3A'] if classic else []
-    print('Quant Desk 2.6 · http://localhost:8501 · press Ctrl+C to stop.',flush=True)
+    print('Quant Desk · http://localhost:8501 · press Ctrl+C to stop.',flush=True)
     return subprocess.call([str(python),'-m','streamlit','run',str(ROOT/script),
         '--server.address','127.0.0.1','--server.port','8501','--browser.gatherUsageStats','false',*theme],cwd=ROOT)
 

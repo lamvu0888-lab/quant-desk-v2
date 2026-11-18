@@ -334,7 +334,7 @@
 
 ### Source comparison and data readiness
 
-**What you see.** The tables show source price, market timestamp, age, provider status and request diagnostics. Separate lines show latest 1-minute price close, 5-minute flow close and Webull options coverage. Auto routes SPX, supported stocks and ETFs to configured Webull price data; other indices use Tradytics. SPX quote use also requires a current completed Webull candle with an explicit zero-delay response.
+**What you see.** The tables show source price, market timestamp, age, provider status and request diagnostics. Separate lines show latest 1-minute price close, 5-minute flow close and Webull options coverage. Auto tries Schwab for cash SPX when configured, then Webull and Tradytics. Supported stocks and ETFs use Webull first. Other indices use Tradytics. Schwab shows a real-time entitlement and the market timestamp alongside completed regular-session candles. The Webull cash SPX route checks for a current completed candle with an explicit zero-delay response.
 
 **Look for.** Check market time first, then provider status, matching expiry and session. For Webull options, compare usable two-sided quotes with returned coverage and verify SPXW separately for SPX. Distinguish closed session, a missing permission, a stale observation and a rate-limit cooldown.
 

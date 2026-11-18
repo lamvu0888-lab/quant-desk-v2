@@ -1,4 +1,8 @@
-# Deploy Quant Desk 2.8.6
+# Deploy Quant Desk 2.8.7
+
+For the Schwab SPX release, use the publisher from the extracted ZIP to apply the update to your existing repository. The step-by-step guide covers local sign-in, Streamlit and worker settings, and a read-only cash index check. [Deploy and verify Schwab SPX](SCHWAB_SPX_SETUP.md)
+
+# Earlier full release deployment for Quant Desk 2.8.6
 
 Keep your existing repository, Streamlit URL and Render worker. The dashboard entry point remains `terminal.py`. The Render worker runs independently of the dashboard browser.
 
