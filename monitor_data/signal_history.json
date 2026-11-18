@@ -4798,5 +4798,20 @@
     "previous_price": 7362.36,
     "id": "move:SPX:2026-11-18:2026-11-18T14:37:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPY",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-18T14:37:00+00:00",
+    "triggered_at_utc": "2026-11-18T14:37:03.947704+00:00",
+    "price": 732.4,
+    "scope": "2026-11-18",
+    "source": "Webull",
+    "direction": "DOWN",
+    "window": "5m",
+    "change_pct": -0.27639125258924757,
+    "previous_price": 734.4299,
+    "id": "move:SPY:2026-11-18:2026-11-18T14:37:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
