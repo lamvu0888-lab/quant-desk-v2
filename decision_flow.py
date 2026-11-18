@@ -50,7 +50,9 @@ def price_quote_issues(ctx, quote, *, setup_close=None):
     if ctx.paused:
         return ["Price polling is paused."]
     stamp = time_or_none(field(quote, "price_at", "time"))
-    if ctx.price_provider == "Webull":
+    if ctx.price_provider == "Schwab":
+        issues = [] if ctx.schwab_quote_state == "FRESH QUOTE" else [f"Schwab cash SPX quote · {ctx.schwab_quote_state}."]
+    elif ctx.price_provider == "Webull":
         issues = [] if ctx.webull_quality.get("quote_ready") else ["Waiting for a fresh Webull price."]
     else:
         issues = []
@@ -197,6 +199,11 @@ def build_decision(ctx, read, *, warm_options=True):
         delay = ctx.webull_quality.get("delay_minutes")
         plan["delay_status"] = ("Webull reports zero delay" if delay == 0 else "Webull reports delay" if delay else
                                 "Webull quote freshness is checked using its market timestamp")
+    elif ctx.price_provider == "Schwab":
+        realtime = quote.get("realtime")
+        plan["delay_status"] = ("Schwab marks the index quote real-time" if realtime is True else
+                                "Schwab marks the index quote delayed" if realtime is False else
+                                "Schwab quote entitlement is unverified")
     day = candles_on(read["buckets"], ctx.session)
     plan["crossings"] = (level_crossings(day[-2]["close"], day[-1]["close"], plan["gamma_levels"])
                          if len(day) >= 2 and not quality and gamma_at and gamma_at <= utc(day[-1]["time_utc"]) else [])

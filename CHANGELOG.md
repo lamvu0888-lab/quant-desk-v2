@@ -1,3 +1,8 @@
+# Quant Desk 2.8.7
+
+- Added Schwab Market Data Production for cash SPX quotes and completed regular-session candles. Auto checks Schwab, Webull and Tradytics in that order for SPX. The dashboard and monitoring worker use the same source selection.
+- Data Health shows Schwab's real-time indicator, market timestamp and last completed minute. A private authorization helper checks both quote and history access for the owner's account. See [Schwab SPX setup](SCHWAB_SPX_SETUP.md).
+
 # Quant Desk 2.8.6
 
 - Trade Plan and Movement Detector now expose a ten-factor 100-point entry evidence breakdown. Enter states need at least 71 points as well as existing hard gates. The score is not a probability of winning.

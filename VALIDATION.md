@@ -1,3 +1,9 @@
+# Quant Desk 2.8.7 verification
+
+- The full suite passed 133 tests, including rendered Streamlit pages, monitor and paper-worker checks, and token rotation across independent readers using both SQLite and PostgreSQL.
+- Schwab HTTP responses in the tests are fixtures. The private authorization helper checks account-specific quote access, the real-time indicator and completed cash SPX minute bars with the owner's credentials.
+- The release patch applies to the existing source tree and leaves the live monitor journal outside the update.
+
 # Validation — Quant Desk 2.8.6
 
 - All 113 local automated checks passed, including Streamlit page rendering and worker fallback tests. New cases verify that the entry score totals 100 possible rule points, that observed ES/MES footprint pressure can earn ten points, estimated share CVD at most five, and that ten synchronized completed footprint minutes are required. Stale quote/data remains a hard WAIT even when the raw evidence score is above 70. No live Webull futures entitlement or Discord entry delivery was verified in this environment.

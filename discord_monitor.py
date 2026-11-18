@@ -28,6 +28,7 @@ from research_snapshot import publish_snapshot
 from settings import Settings
 from terminal_data import completed_boundary, first_listed_dte, source_stamp, time_or_none
 from webull_feed import WebullFeedStore, price_source
+from schwab_feed import feed_store as make_schwab_store
 
 ROOT = Path(__file__).resolve().parent
 UTC = timezone.utc
@@ -147,8 +148,9 @@ def monitor_dte(store, symbol, session, now):
 
 
 class MonitorScan:
-    def __init__(self, store, webull, preference, journal):
+    def __init__(self, store, webull, preference, journal, schwab=None):
         self.store, self.webull, self.preference, self.journal = store, webull, preference, journal
+        self.schwab = schwab
         self.scans = {}
         self.move_closes = {}
         self.last_status = {}
@@ -161,14 +163,14 @@ class MonitorScan:
         if not (market_open or closeout or dry_run):
             return [], []
         day = active_session(now)
-        sources = {symbol: price_source(symbol, self.preference, self.webull) for symbol in symbols}
+        sources = {symbol: price_source(symbol, self.preference, self.webull, self.schwab) for symbol in symbols}
         snapshots = self.webull.prices([symbol for symbol, source in sources.items() if source == "Webull"]) if self.webull else {}
         alerts, diagnostics = [], []
         for symbol in symbols:
             try:
                 dte = monitor_dte(self.store, symbol, day, now)
                 ctx = Desk(symbol, now, self.store, False, False, dte, True, sources[symbol],
-                           webull_store=self.webull, webull_prices=snapshots.get(symbol))
+                           webull_store=self.webull, webull_prices=snapshots.get(symbol), schwab_store=self.schwab)
                 ctx, prices = route_price(ctx, self.preference)
                 minute_close = prices["minute_close"]
                 candle_key = (ctx.price_provider, minute_close)
@@ -257,9 +259,9 @@ def main():
     if args.interval < 30:
         raise SystemExit("Minimum interval is 30 seconds.")
     preference = secret("MONITOR_PRICE_SOURCE", "Auto").strip().lower()
-    preference = {"auto": "Auto", "webull": "Webull", "tradytics": "Tradytics"}.get(preference)
+    preference = {"auto": "Auto", "webull": "Webull", "tradytics": "Tradytics", "schwab": "Schwab"}.get(preference)
     if not preference:
-        raise SystemExit("Set MONITOR_PRICE_SOURCE to Auto, Webull or Tradytics.")
+        raise SystemExit("Set MONITOR_PRICE_SOURCE to Auto, Schwab, Webull or Tradytics.")
     app_key, app_secret = secret("WEBULL_APP_KEY"), secret("WEBULL_APP_SECRET")
     if preference == "Webull" and not (app_key and app_secret):
         raise SystemExit("Set WEBULL_APP_KEY and WEBULL_APP_SECRET for Webull price monitoring.")
@@ -271,7 +273,8 @@ def main():
     if bool(shared.repo) != bool(shared.token):
         raise SystemExit("Set both shared GitHub settings, or leave both empty for the default watchlist.")
     journal = None if args.dry_run else Journal(path=secret("MONITOR_JOURNAL_PATH"), dsn=secret("MONITOR_JOURNAL_DSN"))
-    scanner = MonitorScan(store, webull, preference, journal)
+    schwab = make_schwab_store(secret)
+    scanner = MonitorScan(store, webull, preference, journal, schwab)
     print(f"Quant Desk {RULES_VERSION} worker · price source {preference} · Webull {webull.settings.endpoint if webull else 'unconfigured'}", flush=True)
     retry = {}
     resume_sends = 0.
@@ -335,6 +338,8 @@ def main():
     finally:
         io.shutdown(wait=False, cancel_futures=True)
         store.close()
+        if schwab:
+            schwab.close()
         if webull:
             webull.close()
 

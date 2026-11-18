@@ -14,6 +14,7 @@ from plotly.subplots import make_subplots
 from data_utils import utc
 from desk_analytics import candles_on
 from market_session import ET
+from schwab_feed import QUOTE_AGE as SCHWAB_QUOTE_AGE
 from terminal_charts import exposure_figure, quote_marker
 from ema_trend import ema_lines
 from terminal_data import chart_buckets, chart_flow_rows, display_exposure_unit, interval_length, numeric, time_or_none
@@ -189,6 +190,8 @@ def _trigger(ctx, plan):
 
 def _quality(ctx, plan):
     quote_limit = ctx.webull_store.settings.quote_max_age if ctx.webull_store and ctx.price_provider == "Webull" else 120
+    if ctx.price_provider == "Schwab":
+        quote_limit = SCHWAB_QUOTE_AGE
     checks = [("Quote", plan.get("quote_at"), quote_limit), ("5m price", plan.get("bar"), 420),
               ("Flow", plan.get("flow_at"), 420), ("GEX", plan.get("gamma_at"), 420)]
     fig = go.Figure()

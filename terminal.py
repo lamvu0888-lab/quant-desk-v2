@@ -13,6 +13,7 @@ from dotenv import dotenv_values
 from data_utils import DataError
 from market_session import active_session, session_state
 from settings import ROOT, Settings
+from schwab_feed import feed_store as make_schwab_store
 from terminal_data import et_time, expiration_date, first_listed_dte, listed_dtes, numeric, quote_row, status, ticker_symbol
 from terminal_demo import DEMO_AT, DemoStore
 from terminal_learn import learn_page
@@ -26,7 +27,7 @@ from option_quotes import age_text, quote_age
 from webull_feed import INDEX_SYMBOLS, WebullFeedStore, price_source
 
 UTC = timezone.utc
-VERSION = "2.8.6"
+VERSION = "2.8.7"
 WEBULL_CHART_PAGES = {"Overview", "Movement Detector"}
 PAGES_LABEL = {
     "Overview": ("Market overview", "Entry timing, market direction, flow and nearby levels.", "◈"),
@@ -51,7 +52,7 @@ NAV_LABELS = {"Options Flow": "Flow & Bubbles", "Positioning": "Dealer Positioni
 @st.cache_resource
 def resources():
     return {"lock": threading.RLock(), "store": None, "token": None, "webull": None, "webull_config": None,
-            "discord_tests": {}}
+            "schwab": None, "schwab_config": None, "discord_tests": {}}
 
 
 @st.cache_resource(ttl=90, max_entries=4, show_spinner=False)
@@ -115,6 +116,20 @@ def webull_store(local, key, secret):
         return registry["webull"]
 
 
+def schwab_store(local):
+    names = ("SCHWAB_CLIENT_ID", "SCHWAB_CLIENT_SECRET", "SCHWAB_TOKEN_DSN", "SCHWAB_TOKEN_PATH")
+    config = {name: config_value(local, name) for name in names}
+    identity = hashlib.sha256("\0".join(config.values()).encode()).digest()
+    registry = resources()
+    with registry["lock"]:
+        if registry["schwab_config"] != identity:
+            if registry["schwab"]:
+                registry["schwab"].close()
+            registry["schwab"] = make_schwab_store(config.get)
+            registry["schwab_config"] = identity
+        return registry["schwab"]
+
+
 def choose_ticker(symbol):
     st.session_state["desk_ticker"] = symbol
     st.session_state["desk_symbol_input"] = symbol
@@ -139,6 +154,8 @@ def refresh():
         registry["store"].refresh()
     if registry["webull"]:
         registry["webull"].refresh()
+    if registry["schwab"]:
+        registry["schwab"].refresh()
 
 
 @st.cache_data(ttl=300, max_entries=64, show_spinner="Loading listed expirations…")
@@ -195,13 +212,15 @@ def symbol_bar(ctx):
     quote = ctx.quote()
     if ctx.price_provider == "Webull":
         quote_badge = "FRESH QUOTE" if ctx.webull_quality.get("quote_ready") else ctx.webull_quality.get("status", "Waiting for quote")
+    elif ctx.price_provider == "Schwab":
+        quote_badge = ctx.schwab_quote_state
     else:
         quote_badge, stamp = status(ctx.quote_endpoint, ctx.quote_feed(), ctx.now, ctx.ticker, preview=ctx.preview, paused=ctx.paused)
     session = session_state(ctx.now)["status"]
     mode = tag("DEMO · SYNTHETIC", "preview") if ctx.preview else tag("LIVE WORKSPACE")
     symbol = f'<span class="qd-ticker">{esc(ctx.ticker)}</span><span class="qd-symbol-name">{esc(quote.get("name") or ctx.ticker)}</span>'
     label = "REGULAR SESSION" if session == "OPEN" else "PREMARKET" if session == "PREMARKET" else "SESSION CLOSED"
-    if ctx.price_provider == "Webull":
+    if ctx.price_provider in ("Webull", "Schwab"):
         stamp = et_time(quote.get("price_at"))
     age = age_text(quote_age(quote.get("price_at") or quote.get("time"), ctx.now))
     basis = "Preview" if ctx.preview else ctx.price_provider
@@ -240,6 +259,7 @@ def main():
     auth = config_value(local, "TRADYTICS_AUTH_MODE", "query").lower()
     app_key, app_secret = config_value(local, "WEBULL_APP_KEY"), config_value(local, "WEBULL_APP_SECRET")
     webull_configured = bool(app_key and app_secret)
+    schwab_configured = bool(config_value(local, "SCHWAB_CLIENT_ID") and config_value(local, "SCHWAB_CLIENT_SECRET"))
     try:
         shared = SharedStore(repo=config_value(local, "MONITOR_GITHUB_REPO"),
                              token=config_value(local, "MONITOR_GITHUB_TOKEN"),
@@ -257,7 +277,7 @@ def main():
             choose_ticker(ticker_symbol(config_value(local, "DEFAULT_TICKER", "SPY")))
         except DataError:
             choose_ticker("SPY")
-    st.session_state.setdefault("desk_mode", "Live" if key or webull_configured else "Preview")
+    st.session_state.setdefault("desk_mode", "Live" if key or webull_configured or schwab_configured else "Preview")
     st.session_state.setdefault("desk_price_provider", "Auto")
     st.session_state.setdefault("desk_expiry_mode", "Nearest listed" if key and webull_configured else "All DTE")
     if st.session_state.get("desk_page") not in PAGES_LABEL:
@@ -277,11 +297,16 @@ def main():
                         format_func=lambda p: f"{PAGES_LABEL[p][2]}  {NAV_LABELS.get(p, p)}",
                         key="desk_page", label_visibility="collapsed", width="stretch")
         with st.expander("Feed controls"):
-            selected_provider = st.selectbox("Price and candle source", ["Auto", "Webull", "Tradytics"], key="desk_price_provider",
+            providers = ["Auto", "Webull", "Tradytics"]
+            if ticker == "SPX":
+                providers.insert(1, "Schwab")
+            elif st.session_state.get("desk_price_provider") == "Schwab":
+                st.session_state["desk_price_provider"] = "Auto"
+            selected_provider = st.selectbox("Price and candle source", providers, key="desk_price_provider",
                                              disabled=mode == "Preview",
-                                             help="Auto prefers Webull and switches to fresh Tradytics candles if Webull is unavailable.")
+                                             help="Auto tries Schwab for cash SPX when configured. Webull and Tradytics supply the other supported price feeds.")
             if ticker == "SPX" and mode != "Preview":
-                st.caption("Auto tries the SPX index on Webull and can use Tradytics SPX when needed. Check Data Health for endpoint status.")
+                st.caption("Auto checks Schwab $SPX, then Webull SPX and Tradytics SPX. Data Health shows each source.")
             elif ticker in INDEX_SYMBOLS and mode != "Preview":
                 st.caption("This index price uses Tradytics. Exact-expiry SPXW option quotes can use Webull for SPX.")
             paused = st.toggle("Pause requests", key="desk_paused", disabled=mode == "Preview")
@@ -326,7 +351,7 @@ def main():
             st.caption("Tradytics key configured" if key else "Set your Tradytics key in .env")
         st.caption(f"Quant Options Agent · {VERSION}")
     preview = mode == "Preview"
-    price_provider = "Tradytics" if preview else price_source(ticker, selected_provider, webull_configured)
+    price_provider = "Tradytics" if preview else price_source(ticker, selected_provider, webull_configured, schwab_configured)
     paused = bool(paused and not preview)
     if page == "Learn":
         header(page)
@@ -347,11 +372,15 @@ def main():
             st.warning(str(exc))
     if price_provider == "Webull" and webull is None and not webull_configured:
         st.info("Add WEBULL_APP_KEY and WEBULL_APP_SECRET in .env or Streamlit Secrets.")
+    schwab = schwab_store(local) if ticker == "SPX" and not preview and schwab_configured else None
+    if price_provider == "Schwab" and not schwab:
+        st.info("Set SCHWAB_CLIENT_ID and SCHWAB_CLIENT_SECRET privately, then run AUTHORIZE_SCHWAB_SPX.cmd.")
     journal = None
     if not preview and page in ("Overview", "Movement Detector", "Trade Plan", "Forecast", "Positioning"):
         journal = journal_resource(config_value(local, "MONITOR_JOURNAL_PATH"), config_value(local, "MONITOR_JOURNAL_DSN"))
 
-    fast_quotes = bool(webull and not paused and price_provider == "Webull" and page in WEBULL_CHART_PAGES)
+    fast_quotes = bool(not paused and page in WEBULL_CHART_PAGES and
+                       (webull and price_provider == "Webull" or schwab and price_provider == "Schwab"))
     fast_open = fast_quotes and session_state(datetime.now(UTC))["status"] == "OPEN"
     refresh_seconds = (1 if fast_open else 4) if not preview and not paused else None
 
@@ -363,10 +392,10 @@ def main():
                   (price_provider == "Webull" or page == "Data Health") else None)
         ctx = Desk(ticker, DEMO_AT if preview else datetime.now(UTC), demo(ticker) if preview else store,
                    preview, paused, dte, bool(key), price_provider, config_error=config_error, journal=journal,
-                   shared=shared, webull_store=webull, webull_prices=prices)
+                   shared=shared, webull_store=webull, webull_prices=prices, schwab_store=schwab)
         ctx, _ = route_price(ctx, selected_provider)
         if ctx.price_fallback:
-            st.caption(f"Using Tradytics {ticker} price data. {ctx.price_fallback}")
+            st.caption(f"Using {ctx.price_provider} {ticker} price data. {ctx.price_fallback}")
         if expiry_mode == "Nearest listed":
             listing = ctx.get("expirations", symbol=ticker)
             ctx.dte = first_listed_dte(listing, ticker, ctx.session, ctx.now)

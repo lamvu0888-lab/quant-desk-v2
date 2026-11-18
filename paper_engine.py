@@ -356,8 +356,9 @@ def unrealized(trade, now):
 
 
 class PaperWorker:
-    def __init__(self, ledger, webull, tradytics, get_now=clock):
+    def __init__(self, ledger, webull, tradytics, get_now=clock, *, schwab=None):
         self.ledger, self.webull, self.tradytics, self.get_now = ledger, webull, tradytics, get_now
+        self.schwab = schwab
 
     def poll(self, assert_lock=lambda: None):
         book, now = self.ledger, self.get_now()
@@ -379,7 +380,7 @@ class PaperWorker:
             symbol = trade["symbol"]
             return Desk(symbol, self.get_now(), self.tradytics, False, False, None, True,
                         trade["plan"].get("source") or "Tradytics",
-                        webull_store=self.webull, webull_prices=snapshots.get(symbol))
+                        webull_store=self.webull, webull_prices=snapshots.get(symbol), schwab_store=self.schwab)
 
         for trade in open_rows:
             try:
