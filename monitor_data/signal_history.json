@@ -5272,5 +5272,56 @@
     "previous_price": 7316.13,
     "id": "move:SPX:2026-11-18:2026-11-18T17:25:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "ENTER LONG",
+    "bias": "Bullish",
+    "score": 95,
+    "bar": "2026-11-18T17:30:00+00:00",
+    "entry_bar": "2026-11-18T17:30:00+00:00",
+    "triggered_at_utc": "2026-11-18T17:30:46.820567+00:00",
+    "price": 661.42,
+    "scope": "2026-11-18",
+    "setup": "Breakout close",
+    "entry": 661.42,
+    "trigger": 660.48,
+    "invalidation": 660.48,
+    "stop": 660.2,
+    "tp1": 663.25,
+    "tp2": 664.47,
+    "rr": 1.5,
+    "rr2": 2.5,
+    "regime": "Normal",
+    "validation": "Unvalidated",
+    "aligned_crossings": [
+      {
+        "level": "Gamma flip",
+        "price": 661.164,
+        "direction": "above"
+      }
+    ],
+    "rule_version": "2.8.6",
+    "source": "Webull",
+    "dte": 0,
+    "direction": 1,
+    "option_quote": {
+      "source": "Tradytics",
+      "expiry": "2026-11-18",
+      "right": "call",
+      "ready": true,
+      "contract": "QQQ261118C00661000",
+      "strike": 661.0,
+      "bid": 2.82,
+      "ask": 2.84,
+      "spread": 0.007067137809187285,
+      "iv": 0.4666,
+      "delta": 0.5477,
+      "gamma": 0.06424,
+      "quote_at": "2026-11-18T17:30:22Z",
+      "status": "Fresh quote"
+    },
+    "id": "entry:Webull:0:QQQ:2026-11-18T17:30:00+00:00:Breakout close",
+    "explanation": "5m EMA 9/21 and price confirm a rising trend."
   }
 ]
