@@ -5593,5 +5593,19 @@
     "ema21": 731.9284520823147,
     "id": "ema921:SPY:2026-11-18:2026-11-18T19:12:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "EMA TREND",
+    "bar": "2026-11-18T19:15:00+00:00",
+    "triggered_at_utc": "2026-11-18T19:15:04.115610+00:00",
+    "price": 659.32,
+    "scope": "2026-11-18",
+    "source": "Webull",
+    "direction": "DOWN",
+    "ema9": 659.6961831223299,
+    "ema21": 659.8286883292777,
+    "id": "ema921:QQQ:2026-11-18:2026-11-18T19:15:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
