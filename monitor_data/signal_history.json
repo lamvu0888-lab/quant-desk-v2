@@ -8130,5 +8130,20 @@
     "previous_price": 644.5401,
     "id": "move:QQQ:2026-11-19:2026-11-19T20:17:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-19T20:17:00+00:00",
+    "triggered_at_utc": "2026-11-19T20:17:08.124806+00:00",
+    "price": 147.545,
+    "scope": "2026-11-19",
+    "source": "Webull",
+    "direction": "UP",
+    "window": "5m",
+    "change_pct": 0.5143402139110353,
+    "previous_price": 146.79,
+    "id": "move:NVDA:2026-11-19:2026-11-19T20:17:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
