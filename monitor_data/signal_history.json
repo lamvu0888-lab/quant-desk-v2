@@ -8370,5 +8370,19 @@
     "previous_price": 146.93,
     "id": "move:NVDA:2026-11-19:2026-11-19T20:54:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPCX",
+    "status": "EMA TREND",
+    "bar": "2026-11-19T20:54:00+00:00",
+    "triggered_at_utc": "2026-11-19T20:54:05.809294+00:00",
+    "price": 138.12,
+    "scope": "2026-11-19",
+    "source": "Webull",
+    "direction": "UP",
+    "ema9": 137.4029093139212,
+    "ema21": 137.24591243078495,
+    "id": "ema921:SPCX:2026-11-19:2026-11-19T20:54:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
