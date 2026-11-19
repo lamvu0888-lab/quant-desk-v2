@@ -7224,5 +7224,20 @@
     "ema21": 378.7086808023358,
     "id": "ema921:TSLA:2026-11-19:2026-11-19T17:36:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "TSLA",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-19T17:37:00+00:00",
+    "triggered_at_utc": "2026-11-19T17:37:05.624363+00:00",
+    "price": 380.335,
+    "scope": "2026-11-19",
+    "source": "Webull",
+    "direction": "DOWN",
+    "window": "5m",
+    "change_pct": -0.38866583381131914,
+    "previous_price": 381.819,
+    "id": "move:TSLA:2026-11-19:2026-11-19T17:37:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
