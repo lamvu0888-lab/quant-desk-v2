@@ -2,7 +2,10 @@
   "symbols": [
     "SPY",
     "SPX",
-    "QQQ"
+    "QQQ",
+    "NVDA",
+    "TSLA",
+    "SPCX"
   ],
   "enabled": true,
   "interval_seconds": 30
