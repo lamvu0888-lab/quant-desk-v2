@@ -7627,5 +7627,19 @@
     "ema21": 378.3533233466345,
     "id": "ema921:TSLA:2026-11-19:2026-11-19T18:39:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "SPCX",
+    "status": "EMA TREND",
+    "bar": "2026-11-19T18:39:00+00:00",
+    "triggered_at_utc": "2026-11-19T18:39:11.206444+00:00",
+    "price": 138.03,
+    "scope": "2026-11-19",
+    "source": "Webull",
+    "direction": "UP",
+    "ema9": 137.48181347049362,
+    "ema21": 137.39572716276928,
+    "id": "ema921:SPCX:2026-11-19:2026-11-19T18:39:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
