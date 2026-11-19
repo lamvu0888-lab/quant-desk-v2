@@ -384,9 +384,4 @@ class FeedStore:
                 entry.feed = Feed(snapshot)
                 entry.head_at, entry.market_day = head_at, day
                 delay = self._cadence(name, snapshot) if self._cadence else ENDPOINTS[name].refresh_seconds
-<<<<<<< HEAD
-                entry.next_due = time.monotonic() + delay
-=======
                 entry.next_due = time.monotonic() + self.client.refresh_delay(delay)
-
->>>>>>> 0831299 (Update Quant Desk)
