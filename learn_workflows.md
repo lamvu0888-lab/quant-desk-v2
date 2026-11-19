@@ -18,6 +18,14 @@ Plan a price invalidation, a premium loss budget and a time exit. Recalculate if
 
 **Worked example.** SPY breaks 760 with a 759 stop and 762 first target. A retest entry near 760 has roughly 2:1 gross underlying reward to risk. At 761, the same plan has 0.5:1. Wait for price and flow agreement, then compare the actual contract cost and spread. If the move is already near the target, the original geometry no longer applies.
 
+### Range reversals
+
+1. Open **Trade Plan** or **Movement Detector**. After at least one regular-session hour, look for support, midpoint and resistance. The prior twelve completed 5m candles must span at least 0.30% of the midpoint and 2.5 times their average true range. Price must visit alternating edges at least three times with limited net drift.
+2. At support, a completed 3m candle must reject the low and close back inside. A later 1m candle must clear that candle’s high. Reverse these conditions at resistance. The setup expires after six minutes. A held break, a move to the midpoint, or a protective-stop touch cancels that rejection.
+3. Check **Evidence and entry conditions**. The 1m and 3m EMA 9/21 readings must turn inward. The latest two completed 5m signed options-flow intervals and recent aggregate flow must agree. Current quotes, target room, at least 71/100 points and the existing price-path checks are required. CVD, available dealer data, volume, expected move and nearby levels contribute evidence. A score measures rule agreement.
+4. The protective stop sits beyond the rejected edge. TP1 aims toward the midpoint and needs at least 1.35 times the entry-to-stop distance. TP2 can extend to the opposite edge. A closer wall, support, resistance, dark-pool level or expected-move boundary can shorten the targets.
+5. A confirmed long or short uses the existing Discord worker and its ticker/setup cooldown. Read the underlying provider, the option quote source, the stop and both targets in the alert. A watch or a quiet session can be the expected result.
+
 ## Swing trade
 
 ### Build the multi-session thesis

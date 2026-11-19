@@ -116,11 +116,14 @@ def process_scan(journal, ctx, read, *, check_move=True):
         plan["active_paper"] = True
         plan["status"] = "WAIT"
         plan["missing"].insert(0, "A prior paper setup is still being tracked.")
+    box = plan.get("range_reversal")
+    price_confirmed = box.get("follow_through", False) if box else plan["movement"]["price_confirmed"]
+    option_ready = not box or (plan.get("option_quote") or {}).get("ready")
     if plan["status"] in ENTRY_STATES and (
-            plan["score"] < MIN_ENTRY_SCORE or not plan["movement"]["price_confirmed"]
+            plan["score"] < MIN_ENTRY_SCORE or not price_confirmed or not option_ready
             or not plan["flow_confirmation"]["confirmed"] or plan["data_reasons"]):
         plan["status"] = "GET READY"
-        plan["missing"].append("The worker is waiting for completed price, flow and score confirmation.")
+        plan["missing"].append("The worker is waiting for the setup’s price, flow, quote and score checks.")
     if plan["status"] in ENTRY_STATES:
         last = journal.records(symbol, "candidate", scope=scope, limit=1)
         prior_candidate = last[0]["payload"]["plan"] if last else {}
@@ -137,7 +140,8 @@ def process_scan(journal, ctx, read, *, check_move=True):
             plan = apply_model_gate(plan, model, validation)
             if model.get("p_tp1") is not None:
                 candidate_id = event_id("candidate", scope, symbol, candidate["entry_bar"])
-                alert_id = event_id("entry", scope, symbol, plan["bar"], plan["setup"])
+                signal_bar = box["rejection_at"] if box else plan["bar"]
+                alert_id = event_id("entry", scope, symbol, signal_bar, plan["setup"])
                 is_entry = plan["status"] in ENTRY_STATES
                 payload = {"plan": candidate, "model": model, "decision_status": plan["status"]}
                 inserted, reserved = journal.record_candidate(candidate_id, symbol, scope, now, payload,

@@ -33,7 +33,7 @@ CHART_GUIDANCE = (
     "Watch for true range to rise as completed candles hold outside the range. A brief spike that closes back inside gives weaker evidence of expansion.",
     "Find the largest modeled bars close to spot. Watch whether price stalls at a nearby wall, rejects it, or holds beyond it on completed candles.",
     "Watch for consecutive premium bars in the same direction as price. On the 5-minute view, the dotted lines show the premium floors used by the plan.",
-    "Watch for closes beyond the range boundary and a retest that holds. Repeated crosses of VWAP or a close back inside the range suggest a weaker break.",
+    "Compare the close with the range edge. A held retest supports a breakout. A 3m rejection followed by an inward 1m close supports a reversal.",
     "Compare the size of successive 5-minute moves and their share volume where available. Shrinking bars on a new high or low can show momentum fading.",
     "Read the thresholds separately. The bars show progress toward the price, flow, and score requirements. The card above explains the current blocker.",
     "Compare the current quote and trigger, then check the distance to the stop and first target. Structural invalidation is checked on a close.",
@@ -122,7 +122,12 @@ def detector_view(ctx, read, plan, iv):
         st.info(f"{watch['window']} price move {watch['change_pct']:+.2f}% · {plan['source']} completed candles · {et_time(watch['bar'])}")
 
     efficiency = ratio_pct(move["efficiency"])
-    show_stage(1, move["market"], f"5m bias {plan['bias'].lower()} · directional price efficiency {efficiency} · "
+    box = plan.get("range_reversal")
+    if box:
+        show_stage(1, move["market"], f"Prior hour rotated between {amount(box['low'])} and {amount(box['high'])} "
+                                      f"with {box['visits']} alternating edge visits. Midpoint {amount(box['midpoint'])}.")
+    else:
+        show_stage(1, move["market"], f"5m bias {plan['bias'].lower()} · directional price efficiency {efficiency} · "
                               f"same direction on {move['closed_bars']}/2 completed bars.")
     volatility = read["regime"]
     iv_minutes = st.segmented_control("IV change window", [1, 3, 5], default=3, key="movement_iv_window") or 3
@@ -138,7 +143,9 @@ def detector_view(ctx, read, plan, iv):
               f"{iv_delta:+.2f} vol points." if iv_delta is not None else
               f"5m ATR {amount(atr)} points · ATR versus baseline {amount(volatility.get('atr_ratio'))}×. "
               f"{iv_label} {ratio_pct(iv['atm'])} · {iv_minutes}m IV change awaiting two observed snapshots.")
-    if move["range_hold"]:
+    if box:
+        detail += " Expanding volatility with negative modeled GEX blocks the reversal."
+    elif move["range_hold"]:
         detail += " Wait for a held range break with expanding activity."
     show_stage(2, plan["regime"] or "Waiting for bars", detail)
     st.caption((f"IV change over {iv_minutes}m: {iv_delta:+.2f} vol points · "
@@ -224,8 +231,12 @@ def detector_view(ctx, read, plan, iv):
                        f"{et_time(context['close'], short=True)} ET. Comparison only.")
 
     low, high = plan["range"]
-    structure = f"Prior 5m range {amount(low)}–{amount(high)}."
-    if move["boundary_hold"]:
+    structure = f"Range from completed 5m bars {amount(low)}–{amount(high)}."
+    if box:
+        structure += f" Midpoint {amount(box['midpoint'])}."
+        if direction:
+            structure += f" Rejection trigger {amount(plan['trigger'])}."
+    elif move["boundary_hold"]:
         structure += f" Two closes held {amount(move['hold_level'])}."
     elif plan.get("failed_break"):
         structure += " Price returned through the last breakout level."
@@ -273,7 +284,8 @@ def strategy_panel(plan):
         if watch:
             st.caption("Setups to watch · " + " · ".join(watch))
         if playbook == "Range mean reversion":
-            st.caption("Range-reversion ideas are available for research. The entry rules wait for a directional release.")
+            st.caption("Trade Plan can confirm a support bounce or resistance rejection after a wide sideways hour. "
+                       "It waits for a 3m rejection, a later 1m close, inward EMA timing, aligned options flow and room to the target.")
         lab_candidates(plan)
         left, right = st.columns(2)
         with left:

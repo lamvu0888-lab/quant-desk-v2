@@ -134,7 +134,7 @@ def deliver(journal, shared, webhook, alert_id, alert, *, deadline=None):
             fields = ("symbol", "status", "bias", "score", "bar", "entry_bar", "triggered_at_utc", "price", "scope",
                       "setup", "entry", "trigger", "invalidation", "stop", "tp1", "tp2", "rr", "rr2",
                       "regime", "validation", "outcome", "aligned_crossings", "rule_version", "source", "dte",
-                      "direction", "window", "change_pct", "previous_price", "option_quote", "ema9", "ema21")
+                      "direction", "window", "change_pct", "previous_price", "option_quote", "ema9", "ema21", "range_reversal", "price_fallback")
             event = {key: alert[key] for key in fields if key in alert}
             shared.append_event({**event, "id": alert_id, "explanation": str(alert.get("explanation", ""))[:220]})
         except Exception:
@@ -199,7 +199,7 @@ class MonitorScan:
                                         "quote_at": plan["quote_at"], "candle_at": minute_close.isoformat() if minute_close else None,
                                         "flow_at": flow_close.isoformat() if isinstance(flow_close, datetime) else None,
                                         "flow_status": read["flow_state"], "status": plan["status"],
-                                        "ema_trend": read["price_trend"],
+                                        "ema_trend": read["price_trend"], "setup": plan.get("setup"),
                                         "webull_candle_error": str(ctx.webull_price_feed("history").error or "") or None,
                                         "webull_contracts": len(chain.rows) if chain is not None else None,
                                         "webull_option_error": str(chain.error) if chain and chain.error else None,

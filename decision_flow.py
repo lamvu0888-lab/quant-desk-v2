@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from data_utils import DataError, field, utc
-from dealer_hedging import UNITS, hedge_snapshot, level_crossings
+from dealer_hedging import UNITS, hedge_scenarios, hedge_snapshot, level_crossings
 from futures_proxy import recent_pressure
 from decision_engine import ENTRY_STATES, make_trade_plan
 from desk_analytics import FIVE_MINUTES, MINUTE, candles_on
@@ -116,6 +116,8 @@ def build_decision(ctx, read, *, warm_options=True):
         value = cvd_context(read["candles"], ctx.session, minute_close, f"{ctx.ticker} estimated share CVD")
         if value["delta"] is not None:
             cvd_proxy = {**value, "symbol": ctx.ticker, "quality": "estimated"}
+    dealer_scenario = None
+
     def assemble(levels):
         return make_trade_plan(candles=read["candles"], buckets=read["buckets"], flow_rows=read["flow"].rows,
                                levels=levels, now=ctx.now, session=ctx.session, expiry=ctx.expiry, dte=ctx.dte,
@@ -123,10 +125,20 @@ def build_decision(ctx, read, *, warm_options=True):
                                quote_at=stamp.isoformat() if stamp else None, minutes_left=session["minutes_left"],
                                source=ctx.price_provider, preview=ctx.preview,
                                flow_usable=read.get("flow_state", "Aligned") == "Aligned",
-                               cvd_proxy=cvd_proxy)
+                               cvd_proxy=cvd_proxy, dealer_scenario=dealer_scenario)
 
     levels = read["levels"] + gamma_levels
     plan = assemble(levels)
+    box = plan.get("range_reversal")
+    if box and box["direction"] and gamma and spot:
+        snapshot, _ = get_hedge(ctx, read["gamma_feed"])
+        if snapshot and snapshot["complete"]:
+            shock = "Down / IV up" if box["direction"] > 0 else "Up / IV down"
+            scenarios = hedge_scenarios(snapshot, spot, read["regime"]["atr"], session["minutes_left"])
+            dealer_scenario = next(({k: row[k] for k in ("scenario", "horizon", "total")} for row in scenarios
+                                    if row["horizon"] == 5 and row["scenario"] == shock and row["total"] is not None), None)
+            if dealer_scenario:
+                plan = assemble(levels)
     if plan["status"] in (*ENTRY_STATES, "GET READY") and ctx.ticker not in INDICES:
         dark = ctx.get("dark_levels", symbol=ctx.ticker, window=5, limit=30)
         dark_day = source_stamp("dark_levels", dark, ctx.ticker)
@@ -139,6 +151,8 @@ def build_decision(ctx, read, *, warm_options=True):
         if iv["atm_sample"]:
             plan = assemble(levels)
     plan["symbol"] = ctx.ticker
+    if box:
+        plan["price_fallback"] = bool(ctx.price_fallback)
     plan["underlying_cost_bps"] = 1.0
     plan["data_reasons"] = quality
     bar_at = time_or_none(plan["bar"])
@@ -155,6 +169,7 @@ def build_decision(ctx, read, *, warm_options=True):
     plan["iv_source"], plan["iv_at"] = iv["atm_source"], iv["atm_at"]
     plan["price_watch"] = read.get("price_watch")
     plan["price_trend"] = read.get("price_trend")
+    review = None
     if use_webull_chain and (warm_options or plan["status"] in (*ENTRY_STATES, "GET READY")):
         review = option_review(webull_chain, "Webull", ctx.ticker, ctx.expiry, spot, plan["direction"], ctx.now,
                                max_age=ctx.option_max_age, paused=ctx.paused)
@@ -164,10 +179,15 @@ def build_decision(ctx, read, *, warm_options=True):
                                       max_age=ctx.option_max_age, paused=ctx.paused)
             if alternate["ready"]:
                 review = alternate
+    elif box and plan["status"] in ENTRY_STATES:
+        chain, source = ctx.option_chain(ctx.expiry, provider="Tradytics") if ctx.expiry and ctx.store else (Feed(), "Tradytics")
+        review = option_review(chain, source, ctx.ticker, ctx.expiry, spot, plan["direction"], ctx.now,
+                               max_age=ctx.option_max_age, paused=ctx.paused)
+    if review is not None:
         plan["option_quote"] = review
         if plan["status"] in ENTRY_STATES and not review["ready"]:
             plan["status"] = "GET READY"
-            plan["missing"].append(f"Awaiting a current exact-expiry option quote. Webull status · {review['status']}.")
+            plan["missing"].append(f"Awaiting a current exact-expiry option quote. {review['source']} status · {review['status']}.")
     plan["cvd"] = cvd_context(read["candles"], ctx.session, time_or_none(plan["entry_bar"]),
                               f"{ctx.ticker} estimated share CVD")
     if ctx.ticker in INDICES:
