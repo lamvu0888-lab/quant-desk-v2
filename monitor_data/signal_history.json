@@ -7269,5 +7269,20 @@
     "previous_price": 150.475,
     "id": "move:NVDA:2026-11-19:2026-11-19T17:38:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPY",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-19T17:39:00+00:00",
+    "triggered_at_utc": "2026-11-19T17:39:03.511351+00:00",
+    "price": 723.79,
+    "scope": "2026-11-19",
+    "source": "Webull",
+    "direction": "DOWN",
+    "window": "5m",
+    "change_pct": -0.25219812022821975,
+    "previous_price": 725.62,
+    "id": "move:SPY:2026-11-19:2026-11-19T17:39:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
