@@ -6524,5 +6524,20 @@
     "previous_price": 379.01,
     "id": "move:TSLA:2026-11-19:2026-11-19T16:00:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPCX",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-19T16:00:00+00:00",
+    "triggered_at_utc": "2026-11-19T16:00:12.413190+00:00",
+    "price": 140.14,
+    "scope": "2026-11-19",
+    "source": "Webull",
+    "direction": "UP",
+    "window": "5m",
+    "change_pct": 0.7127652387885597,
+    "previous_price": 139.1482,
+    "id": "move:SPCX:2026-11-19:2026-11-19T16:00:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
