@@ -65,7 +65,7 @@ PLAYBOOKS = {
     "Trend continuation": (EMA_PULLBACK, "VWAP reclaim or rejection", "Liquidity sweep"),
     "Breakout and retest": ("Breakout and retest", "Breakout close", EMA_PULLBACK),
     "Volatility expansion": ("Breakout and retest", "Breakout close", EMA_PULLBACK),
-    "Range mean reversion": ("Range-edge sweep", "VWAP reversion"),
+    "Range mean reversion": ("Support bounce", "Resistance rejection"),
     "Wait for direction": (),
 }
 
@@ -181,6 +181,8 @@ def movement_status(plan):
         return "NO TRADE"
     if plan["status"] in ("ENTER LONG", "ENTER SHORT"):
         return "CONFIRMED MOVE"
+    if box := plan.get("range_reversal"):
+        return "REVERSAL WATCH" if box["direction"] or plan.get("near_boundary") else "SIDEWAYS"
     if plan.get("confirmed") and not price["range_hold"]:
         return "LONG TRIGGER" if plan["direction"] > 0 else "SHORT TRIGGER"
     if plan.get("near_boundary") and (price["range_hold"] or plan["setup"] == "Breakout watch"):

@@ -1,3 +1,10 @@
+# Quant Desk 2.8.8 verification
+
+- 143 automated tests passed. The optional PostgreSQL token-store test was skipped because a disposable PostgreSQL connection was unavailable.
+- Mirrored price fixtures produced both a support bounce and a resistance rejection, including a qualifying turn while the 5m EMA trend still pointed the other way. The tests also cover a tight range, midpoint entry, sustained breakout, stale or incomplete data, a 70-point score, nearby obstacles, and a price-path veto.
+- The Schwab SPX fixture checks cash index prices with missing share volume, a modeled dealer response, and a separately sourced, exact-expiry option quote. Streamlit rendered the range and midpoint. Both simulated alert directions passed through the existing worker, a mocked Discord transport and the paper journal, including duplicate suppression.
+- These checks exercise implementation and routing. Live channel receipt and strategy returns require observations from the deployed worker.
+
 # Quant Desk 2.8.7 verification
 
 - The full suite passed 133 tests, including rendered Streamlit pages, monitor and paper-worker checks, and token rotation across independent readers using both SQLite and PostgreSQL.

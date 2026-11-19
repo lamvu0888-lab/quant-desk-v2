@@ -8,11 +8,12 @@ import numpy as np
 
 from data_utils import utc
 from dealer_hedging import price_response
-from decision_engine import ENTRY_STATES, RULES_VERSION, make_trade_plan, paper_outcome
+from decision_engine import ENTRY_STATES, RULES_VERSION, TREND_RULES_VERSION, make_trade_plan, paper_outcome
 from decision_flow import model_summary
 from desk_analytics import FIVE_MINUTES, MINUTE, candles_on, price_levels, realized_regime
 from iv_decision import iv_read
 from market_session import ET, rth_bounds
+from range_reversal import RANGE_SETUP
 from terminal_data import chart_buckets, time_or_none
 from trade_probability import MODEL_VERSION, STRATEGIES, evaluate_plan, path_outcomes, summarize_paths
 
@@ -104,7 +105,8 @@ def paper_records(events, *, before=None, hold=None, setup=None):
     for record in sorted(events, key=lambda row: row["origin"]):
         p, result = record["payload"], record.get("outcome") or {}
         plan, pred = p["plan"], p["model"]
-        if (plan.get("demo") or plan.get("rule_version") != RULES_VERSION or pred.get("version") != MODEL_VERSION
+        expected_rules = RULES_VERSION if plan.get("setup") == RANGE_SETUP else TREND_RULES_VERSION
+        if (plan.get("demo") or plan.get("rule_version") != expected_rules or pred.get("version") != MODEL_VERSION
                 or result.get("r") is None or pred.get("p_tp1") is None or pred.get("baseline_p_tp1") is None
                 or (hold is not None and plan.get("hold") != hold) or (setup is not None and plan.get("setup") != setup)):
             continue

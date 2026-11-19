@@ -61,6 +61,7 @@ def _price(ctx, read, plan, *, structure_minutes=None):
         vwap_label = "VWAP" if native is not None else "Estimated VWAP"
         for label, value, color in (("Range high", plan["range"][1], TEAL),
                                     ("Range low", plan["range"][0], RED),
+                                    ("Range midpoint", (plan.get("range_reversal") or {}).get("midpoint"), AMBER),
                                     (vwap_label, vwap, VIOLET)):
             if value is not None:
                 fig.add_hline(y=value, line_color=color, line_dash="dot",
@@ -147,7 +148,10 @@ def _momentum(ctx, read, plan):
 
 def _decision(plan):
     move, flow = plan["movement"], plan["flow_confirmation"]
-    items = [("Price closes", min(2, move["closed_bars"]), 2),
+    price = ("Price closes", min(2, move["closed_bars"]), 2)
+    if box := plan.get("range_reversal"):
+        price = ("3m rejection + 1m close", int(bool(box["direction"])) + int(box.get("follow_through", False)), 2)
+    items = [price,
              ("Flow intervals", min(2, flow["count"]), 2),
              ("Evidence score", min(100, plan["score"]), MIN_ENTRY_SCORE)]
     fig = go.Figure()
@@ -233,6 +237,14 @@ def chart_for_stage(number, ctx, read, plan, *, flow_interval="5m", flow_feed=No
 def next_cue(number, ctx, plan, state):
     """Short next observation keyed to the current check's state."""
     move, two = plan["movement"], plan["flow_confirmation"]
+    if plan.get("range_reversal"):
+        cues = {1: "Watch support for a bounce or resistance for a rejection. Skip the middle.",
+                2: "Check whether volatility and modeled gamma favor a break through the edge.",
+                4: "Look for two completed premium bars in the direction of the rotation.",
+                5: "After a 3m rejection, watch for a later 1m close through that candle toward the midpoint.",
+                6: "Look for the 1m and 3m EMA 9/21 readings to turn back into the range."}
+        if number in cues:
+            return cues[number]
     if number == 1:
         return ("Watch the prior range edge and two completed 5m closes outside it; then check volatility."
                 if move["range_hold"] else "Price has direction. Check whether 5m volatility is expanding.")

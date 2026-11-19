@@ -84,7 +84,7 @@
 
 ### 5. Price structure
 
-**What you see.** A line plots completed 1-, 3- or 5-minute closes and the gold diamond marks the current fresh quote. Where available, dotted lines mark the plan's prior 5-minute range high, range low and session VWAP. A candle-based VWAP carries an estimated label.
+**What you see.** A line plots completed 1-, 3- or 5-minute closes and the gold diamond marks the current fresh quote. Dotted lines show the range high and low, the midpoint for a range reversal and session VWAP when available. A candle-based VWAP carries an estimated label.
 
 **Look for.** Look for a break, acceptance on closes, and a retest that stays on the expected side. A move back through the boundary or repeated VWAP crossings can indicate a failed break or a range. Switch to the candlestick view to inspect wicks.
 
@@ -100,7 +100,7 @@
 
 ### 7. Movement decision and evidence thresholds
 
-**What you see.** Horizontal bars show progress toward two price closes, two flow intervals and the minimum evidence score of 80. Hover for the actual count or score. A full bar means that row reached its threshold.
+**What you see.** Horizontal bars show price confirmation, two matching flow intervals and the 71-point evidence threshold. On a reversal, the first bar tracks the 3m rejection and a later 1m close through its trigger. Hover for the actual count or score. A full bar means that row reached its threshold.
 
 **Look for.** Find the unfinished check, then read the overall state and written blockers. Separate an early price watch, a setup getting ready and a confirmed entry. Session, price geometry, data freshness and the option quote check can independently hold confirmation.
 
@@ -275,6 +275,14 @@
 **Example.** A pattern with a +25% average and −5% median may depend on a few outliers. Compare it with a larger and more relevant settled sample before drawing conclusions.
 
 ## Trade Plan
+
+### Range reversal at support or resistance
+
+**What you see.** A qualifying sideways hour shows support, midpoint and resistance in Trade Plan and Movement Detector. A support bounce points long. A resistance rejection points short.
+
+**Look for.** A completed 3m candle rejects one edge and a later 1m close clears the rejection candle toward the middle. EMA 9/21 timing and two completed 5m options-flow intervals must turn inward. Check the stop beyond the edge and the available reward to TP1.
+
+**Example.** In a range from 100 to 104 the midpoint is 102. If price has already reached 102, the earlier bounce at 100 has played out. Wait for a fresh setup.
 
 ### Entry conditions, risk geometry and quote check
 

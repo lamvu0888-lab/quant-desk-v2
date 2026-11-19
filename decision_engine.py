@@ -8,9 +8,11 @@ from desk_analytics import FIVE_MINUTES, MINUTE, candles_on, flow_read
 from ema_trend import EMA_LABEL, EMA_PULLBACK, ema_timing
 from movement_detector import (MIN_ENTRY_SCORE, MIN_RELATIVE_VOLUME, SETUP_ORDER,
                                price_movement, signed_flow_confirmation)
+from range_reversal import range_context, reversal_plan
 from terminal_data import chart_buckets, closed_flow_rows, numeric, positive, time_or_none
 
-RULES_VERSION = "2.8.6"
+TREND_RULES_VERSION = "2.8.6"
+RULES_VERSION = "2.8.8"
 MIN_REWARD_R = 1.35
 ENTRY_STATES = ("ENTER LONG", "ENTER SHORT")
 
@@ -39,7 +41,7 @@ def range_break(bars, tolerance):
 
 def make_trade_plan(*, candles, buckets, flow_rows, levels, now, session, expiry, dte,
                     spot, regime, iv, gamma, quality_reasons, quote_at, minutes_left, source, preview=False,
-                    flow_usable=True, cvd_proxy=None):
+                    flow_usable=True, cvd_proxy=None, dealer_scenario=None):
     """Use completed bars only. Quote drift and structural room are separate gates."""
     minutes = [bar for bar in candles[-636:] if bar.get("closed", True) and not bar.get("forming")
                and utc(bar["time_utc"]) + MINUTE <= now]
@@ -65,6 +67,7 @@ def make_trade_plan(*, candles, buckets, flow_rows, levels, now, session, expiry
     prior_trend = ema_timing(history[:-1], FIVE_MINUTES)["direction"] if len(bars5) >= 2 else 0
     break_dir, break_level, break_at = range_break(bars5, noise)
     movement = price_movement(bars5, history, trend, prior_trend, atr, noise, regime.get("label"), break_dir, break_level)
+    box = range_context(bars5, bars3, bars1, atr, noise) if not movement["released"] else None
     flow_confirmation = signed_flow_confirmation(flow_rows if flow_usable else [], flow, trend, stamp5)
     levels_by_name = {level.label: level.price for level in levels}
     hi, lo = levels_by_name.get("Range high"), levels_by_name.get("Range low")
@@ -88,7 +91,7 @@ def make_trade_plan(*, candles, buckets, flow_rows, levels, now, session, expiry
               "break_at": break_at.isoformat() if break_at else None,
               "evidence": checks, "missing": missing, "conflicts": conflicts, "blocks": stops, "score": 0,
               "score_details": [], "cvd_proxy": cvd_proxy,
-              "demo": preview, "rule_version": RULES_VERSION, "validation": "Unvalidated"}
+              "demo": preview, "rule_version": RULES_VERSION if box else TREND_RULES_VERSION, "validation": "Unvalidated"}
     if not stamp1 or not 0 <= (now - stamp1).total_seconds() <= 120:
         missing.append("Recent completed 1-minute candles.")
     if not stamp3 or not 0 <= (now - stamp3).total_seconds() <= 240:
@@ -97,7 +100,8 @@ def make_trade_plan(*, candles, buckets, flow_rows, levels, now, session, expiry
         missing.append("Recent completed 5-minute candles.")
     if len(bars5) < 10 or not atr:
         missing.append("Ten contiguous 5-minute bars and a readable price regime.")
-    if any(reading["ema21"] is None for reading in tf.values()):
+    needed_frames = ("1m", "3m") if box else ("1m", "3m", "5m")
+    if any(tf[period]["ema21"] is None for period in needed_frames):
         missing.append(f"More completed candles to warm up {EMA_LABEL}.")
     if result["hold"] < 5:
         missing.append("At least five tradable minutes after the decision.")
@@ -105,6 +109,10 @@ def make_trade_plan(*, candles, buckets, flow_rows, levels, now, session, expiry
     result["confidence"] = "Synchronized" if core_ready else "Waiting for data"
     if not price or not atr or len(bars1) < 4 or len(bars5) < 6:
         return result
+    if box:
+        return reversal_plan(result, box, minutes=minutes, threes=three_history, flow_rows=flow_rows,
+                             flow_usable=flow_usable, levels=levels, atr=atr, noise=noise, iv=iv,
+                             dealer_scenario=dealer_scenario, min_reward=MIN_REWARD_R)
     if not trend:
         missing.append(f"Directional 5-minute {EMA_LABEL} trend.")
     else:

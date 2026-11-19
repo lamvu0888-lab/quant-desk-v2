@@ -58,6 +58,13 @@ def discord_text(signal):
         quote = f("option_quote") or {}
         confirmation = (f"{quote['source']} {amount(quote['strike'])} {quote['right']} · "
                         f"{amount(quote['bid'])} bid / {amount(quote['ask'])} ask · Flow confirmed") if quote.get("ready") else "Price and flow confirmed"
+        if box := f("range_reversal"):
+            edge_name = "Support bounce" if f("direction") == 1 else "Resistance rejection"
+            provider = f"{f('source')} fallback" if f("price_fallback") else f("source")
+            return (f"**{signal['symbol']} · Range reversal · {signal['status']}**\n"
+                    f"{edge_name} {amount(box['edge'])} · Entry {amount(f('entry'))} · {provider} price\n"
+                    f"Stop {amount(f('stop'))} · T1 {amount(f('tp1'))} · T2 {amount(f('tp2'))}\n"
+                    f"{f('score')}/100 · {confirmation} · {et_time(f('triggered_at_utc'), short=True)} ET")
         return (f"**{signal['symbol']} · {side}**\n"
                 f"Price {amount(f('price'))} · Trigger {amount(f('trigger'))} · {et_time(f('triggered_at_utc'), short=True)} ET\n"
                 f"Stop {amount(f('stop'))} · Target {amount(f('tp1'))} · Evidence {f('score')}/100\n"

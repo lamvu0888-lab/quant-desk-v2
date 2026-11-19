@@ -165,19 +165,24 @@ def command_panel(ctx, plan, iv, candles, *, key, track=False, bar_ok=True):
         f'<div class="qd-timeframes"><span><b>EMA 9/21</b></span>{steps}</div></section>',
         unsafe_allow_html=True,
     )
+    box = plan.get("range_reversal")
+    if box:
+        st.caption(f"Prior 60-minute range · Support {amount(box['low'])} · Midpoint {amount(box['midpoint'])} · "
+                   f"Resistance {amount(box['high'])} · Width {box['width_pct']:.2f}% ({box['width_atr']:.1f}× average 5m true range).")
     flow = plan["flow"].get("recent_net")
+    flow_agreement = plan["direction"] * (plan["flow"].get("direction") or 0)
     kpis([metric("Market bias", plan["bias"], plan["regime"] or "Regime pending"),
           metric("Entry evidence", f"{plan['score']}/100", "Rule points · entry above 70", plan["direction"]),
           metric("15m options flow", compact(flow, currency=True, signed=True),
-                 "Confirms trend" if plan["direction"] and plan["flow"].get("direction") == plan["direction"] else
-                 "Opposes trend" if plan["bias"] == "Mixed" else "Awaiting directional agreement", flow),
+                 "Confirms setup" if flow_agreement > 0 else
+                 "Opposes setup" if flow_agreement < 0 else "Awaiting directional agreement", flow),
           metric("Data confidence", plan["confidence"], f"5m {et_time(plan['bar'], short=True)} · {plan['source']}")], small=True)
     timing = plan["feed_timing"]
     st.caption(f"{plan['source']} price {age_text(timing['quote_age'])} old · 1m close {age_text(timing['minute_age'])} old · "
                f"Tradytics 5m flow {age_text(timing['flow_age'])} old · {timing['flow_state']}.")
     if watch := plan.get("price_watch"):
         st.caption(f"Price move watch · {watch['window']} {watch['change_pct']:+.2f}% · {et_time(watch['bar'])}.")
-    if trend := plan.get("price_trend"):
+    if not box and (trend := plan.get("price_trend")):
         st.caption(f"EMA 9/21 trend {trend['direction'].lower()} · 3m close {et_time(trend['bar'])} · {plan['source']}. "
                    "Check 5m alignment and the next pullback in Trade Plan.")
     st.caption(f"{plan['dealer_note']} · Option premium {iv['valuation'].lower()}.")
@@ -205,8 +210,15 @@ def command_panel(ctx, plan, iv, candles, *, key, track=False, bar_ok=True):
                        f"CVD context · {proxy['symbol']} estimated share pressure · 10m {compact(proxy['delta'], signed=True)} shares")
         elif plan.get("symbol") == "SPX":
             st.caption("SPX CVD evidence is missing: a synchronized, zero-delay ES or MES footprint is required. SPY estimated CVD is comparison only.")
-        st.caption("EMA 9/21 sets 5m bias and 3m and 1m timing. For a pullback, a 1m candle tests the EMA area and "
-                   "closes back through EMA 9 in the trend direction. The plan also checks flow, levels and trade risk.")
+        if box:
+            st.caption("Range reversal needs EMA 9 to turn inward on 1m and 3m bars, with the EMA 9/21 spread aligned or improving. "
+                       "The most recent 5m trend may still point toward the edge.")
+            if scenario := box.get("dealer_scenario"):
+                response = "supports" if scenario["total"] * box["direction"] > 0 else "opposes" if scenario["total"] else "is neutral for"
+                st.caption(f"The modeled 5m dealer response to a further edge test ({scenario['scenario']}) {response} this reversal.")
+        else:
+            st.caption("EMA 9/21 sets 5m bias and 3m and 1m timing. For a pullback, a 1m candle tests the EMA area and "
+                       "closes back through EMA 9 in the trend direction. The plan also checks flow, levels and trade risk.")
         left, right = st.columns(2)
         with left:
             st.markdown("**What agrees**")

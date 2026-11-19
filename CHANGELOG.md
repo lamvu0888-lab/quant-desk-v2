@@ -1,3 +1,8 @@
+# Quant Desk 2.8.8
+
+- Added long support bounces and short resistance rejections to Trade Plan. The setup combines a prior sideways hour, a completed 3m rejection, later 1m follow-through, 1m/3m EMA 9/21 timing and synchronized options flow.
+- Overview and Movement Detector show the range midpoint, entry evidence and reasons to wait. Confirmed reversals use the existing alert worker and paper journal, with the underlying provider and both targets in the Discord message.
+
 # Quant Desk 2.8.7
 
 - Added Schwab Market Data Production for cash SPX quotes and completed regular-session candles. Auto checks Schwab, Webull and Tradytics in that order for SPX. The dashboard and monitoring worker use the same source selection.
