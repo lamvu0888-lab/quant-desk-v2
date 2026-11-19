@@ -7895,5 +7895,19 @@
     "previous_price": 137.43,
     "id": "move:SPCX:2026-11-19:2026-11-19T19:41:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "EMA TREND",
+    "bar": "2026-11-19T19:45:00+00:00",
+    "triggered_at_utc": "2026-11-19T19:45:05.426055+00:00",
+    "price": 650.72,
+    "scope": "2026-11-19",
+    "source": "Webull",
+    "direction": "UP",
+    "ema9": 650.5091087343794,
+    "ema21": 650.3981685845248,
+    "id": "ema921:QQQ:2026-11-19:2026-11-19T19:45:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
