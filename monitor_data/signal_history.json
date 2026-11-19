@@ -6644,5 +6644,20 @@
     "previous_price": 152.655,
     "id": "move:NVDA:2026-11-19:2026-11-19T16:15:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPCX",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-19T16:17:00+00:00",
+    "triggered_at_utc": "2026-11-19T16:17:07.319925+00:00",
+    "price": 139.9,
+    "scope": "2026-11-19",
+    "source": "Webull",
+    "direction": "DOWN",
+    "window": "5m",
+    "change_pct": -0.3028683413504263,
+    "previous_price": 140.325,
+    "id": "move:SPCX:2026-11-19:2026-11-19T16:17:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
