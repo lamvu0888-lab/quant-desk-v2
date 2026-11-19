@@ -6049,5 +6049,20 @@
     "ema21": 144.15651036233547,
     "id": "ema921:SPCX:2026-11-19:2026-11-19T15:09:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-19T15:10:00+00:00",
+    "triggered_at_utc": "2026-11-19T15:10:10.220170+00:00",
+    "price": 155.56,
+    "scope": "2026-11-19",
+    "source": "Webull",
+    "direction": "DOWN",
+    "window": "5m",
+    "change_pct": -0.3650803817331627,
+    "previous_price": 156.13,
+    "id": "move:NVDA:2026-11-19:2026-11-19T15:10:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
