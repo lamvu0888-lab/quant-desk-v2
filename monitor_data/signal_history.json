@@ -6852,5 +6852,20 @@
     "ema21": 382.0491165695486,
     "id": "ema921:TSLA:2026-11-19:2026-11-19T16:45:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-19T16:46:00+00:00",
+    "triggered_at_utc": "2026-11-19T16:46:06.172661+00:00",
+    "price": 662.8385,
+    "scope": "2026-11-19",
+    "source": "Webull",
+    "direction": "DOWN",
+    "window": "5m",
+    "change_pct": -0.30704788834076124,
+    "previous_price": 664.88,
+    "id": "move:QQQ:2026-11-19:2026-11-19T16:46:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
