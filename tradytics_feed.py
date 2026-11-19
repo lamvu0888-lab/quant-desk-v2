@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import os
 import threading
 import time
 from collections import OrderedDict, deque
@@ -101,6 +102,13 @@ def _cooldown(headers, default):
     return default
 
 
+def _integer_setting(name, default):
+    try:
+        return int(os.getenv(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
 class TradyticsClient:
     def __init__(self, key, auth_mode="query", *, transport=requests.get):
         self._key = key.strip()
@@ -114,6 +122,12 @@ class TradyticsClient:
         self._blocked_error = None
         self._scope_errors = {}
         self._remaining = None
+        self._remaining_day = None
+        self._day_limit = None
+        self._quota_day = None
+        self._quota_observed_at = None
+        self._daily_reserve = max(0, min(10000, _integer_setting("TRADYTICS_DAILY_RESERVE", 1000)))
+        self._offhours_seconds = max(0, min(3600, _integer_setting("TRADYTICS_OFFHOURS_SECONDS", 300)))
 
     @property
     def configured(self):
@@ -127,7 +141,22 @@ class TradyticsClient:
                 "local_limit": 150,
                 "cooldown_seconds": max(0, round(self._blocked_until - now)),
                 "vendor_minute_remaining": self._remaining,
+                "vendor_day_remaining": self._remaining_day if self._quota_day == datetime.now(UTC).date() else None,
+                "vendor_day_limit": self._day_limit,
+                "quota_observed_at": self._quota_observed_at,
+                "daily_reserve": self._daily_reserve,
             }
+
+    def refresh_delay(self, seconds):
+        now = datetime.now(ET)
+        minute = now.hour * 60 + now.minute
+        if now.weekday() >= 5 or not 570 <= minute < 975:
+            seconds = max(seconds, self._offhours_seconds)
+        with self._lock:
+            if (self._quota_day == datetime.now(UTC).date() and self._remaining_day is not None
+                    and self._day_limit and self._remaining_day < self._day_limit * .20):
+                seconds *= 3
+        return seconds
 
     def _reserve(self, scope):
         if not self.configured:
@@ -137,6 +166,12 @@ class TradyticsClient:
             if now < self._blocked_until:
                 error = self._blocked_error
                 raise FeedError(error.status, str(error), self._blocked_until - now)
+            today = datetime.now(UTC).date()
+            if self._quota_day == today and self._remaining_day is not None:
+                if self._remaining_day <= self._daily_reserve:
+                    reset = datetime.combine(today + timedelta(days=1), datetime.min.time(), UTC)
+                    raise FeedError("DAILY QUOTA", "Tradytics daily reserve reached. Cached data stays available until 00:00 UTC.",
+                                    max(1, (reset - datetime.now(UTC)).total_seconds()))
             denied_until = self._scope_errors.get(scope, 0)
             if now < denied_until:
                 raise FeedError("SCOPE REQUIRED", f"Enable the {scope} scope on your Tradytics key.", denied_until - now)
@@ -145,6 +180,8 @@ class TradyticsClient:
             if len(self._recent_calls) >= 150:
                 raise FeedError("COOLDOWN", "Local Tradytics request budget is cooling down.", 60 - (now - self._recent_calls[0]))
             self._recent_calls.append(now)
+            if self._quota_day == today and self._remaining_day is not None:
+                self._remaining_day -= 1
 
     def _block(self, error):
         with self._lock:
@@ -165,6 +202,7 @@ class TradyticsClient:
             except (KeyError, TypeError, ValueError):
                 raise FeedError("INPUT", "Choose a signal to inspect.") from None
             path = path.format(id=signal_id)
+        requested_day = datetime.now(UTC).date()
         self._reserve(endpoint.scope)
         query = {key: str(value).lower() if isinstance(value, bool) else value
                  for key, value in params.items() if value is not None and key != "apiKey"}
@@ -190,13 +228,29 @@ class TradyticsClient:
         if isinstance(remaining, str) and remaining.isdecimal():
             with self._lock:
                 self._remaining = int(remaining)
+        today = datetime.now(UTC).date()
+        if requested_day == today:
+            remaining_day = response.headers.get("X-RateLimit-Remaining-Day")
+            limit_day = response.headers.get("X-RateLimit-Limit-Day")
+            with self._lock:
+                if isinstance(remaining_day, str) and remaining_day.isdecimal():
+                    value = int(remaining_day)
+                    if self._quota_day == today and self._remaining_day is not None:
+                        value = min(value, self._remaining_day)
+                    self._remaining_day = value
+                    self._quota_day = today
+                    self._quota_observed_at = datetime.now(UTC).isoformat()
+                if isinstance(limit_day, str) and limit_day.isdecimal():
+                    self._day_limit = int(limit_day)
         if status == 429:
             default = 60
             if code == "quota_exceeded":
                 now = datetime.now(UTC)
                 tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
                 default = (tomorrow - now).total_seconds()
-            raise self._block(FeedError("COOLDOWN", "Tradytics rate limit reached. Automatic retry is scheduled.", _cooldown(response.headers, default)))
+            message = ("Tradytics daily quota reached. Resumes at 00:00 UTC."
+                       if code == "quota_exceeded" else "Tradytics rate limit reached. Automatic retry is scheduled.")
+            raise self._block(FeedError("COOLDOWN", message, _cooldown(response.headers, default)))
         if status == 401:
             raise self._block(FeedError("CHECK KEY", "Tradytics rejected the key. Check it in .env and relaunch.", 300))
         if status == 403:
@@ -330,4 +384,9 @@ class FeedStore:
                 entry.feed = Feed(snapshot)
                 entry.head_at, entry.market_day = head_at, day
                 delay = self._cadence(name, snapshot) if self._cadence else ENDPOINTS[name].refresh_seconds
+<<<<<<< HEAD
                 entry.next_due = time.monotonic() + delay
+=======
+                entry.next_due = time.monotonic() + self.client.refresh_delay(delay)
+
+>>>>>>> 0831299 (Update Quant Desk)

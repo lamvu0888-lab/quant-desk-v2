@@ -1707,6 +1707,15 @@ def health_page(ctx):
         if ctx.store and not ctx.preview:
             budget = ctx.store.client.budget()
             st.caption(f"Tradytics local budget {budget['calls_last_minute']} / {budget['local_limit']} calls in the past minute · cooldown {budget['cooldown_seconds']}s.")
+            remaining = budget.get("vendor_day_remaining")
+            if remaining is not None:
+                limit = budget.get("vendor_day_limit")
+                total = f" / {limit:,}" if isinstance(limit, int) else ""
+                st.caption(f"Tradytics account quota · {remaining:,}{total} calls remaining today · resets 00:00 UTC. "
+                           f"Observed {budget.get('quota_observed_at') or 'on the last response'}.")
+            else:
+                st.caption("Daily quota will appear when Tradytics returns its daily usage headers.")
+
         if ctx.webull_store:
             budget = ctx.webull_store.budget.status()
             st.caption(f"Webull local budget {budget['requests_last_minute']}/{budget['limit']} requests in the past minute · cooldown {budget['cooldown_seconds']:g}s.")
@@ -1722,3 +1731,4 @@ def health_page(ctx):
 PAGES = {"Overview": overview, "Movement Detector": movement_page, "Options Flow": options_flow, "Money Map": money_map, "Positioning": positioning,
          "Volatility": volatility_page, "Dark Pool": dark_pool, "Trade Plan": trade_plan, "Signals": signals_page,
          "Forecast": forecast_page, "Scanner": scanner, "TradingView": tradingview_page, "Data Health": health_page}
+
