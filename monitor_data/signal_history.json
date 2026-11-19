@@ -8205,5 +8205,20 @@
     "previous_price": 147.59,
     "id": "move:NVDA:2026-11-19:2026-11-19T20:30:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "TSLA",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-19T20:30:00+00:00",
+    "triggered_at_utc": "2026-11-19T20:30:10.807942+00:00",
+    "price": 374.92,
+    "scope": "2026-11-19",
+    "source": "Webull",
+    "direction": "DOWN",
+    "window": "5m",
+    "change_pct": -0.25142005773349796,
+    "previous_price": 375.865,
+    "id": "move:TSLA:2026-11-19:2026-11-19T20:30:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
