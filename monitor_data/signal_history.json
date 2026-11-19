@@ -8041,5 +8041,19 @@
     "previous_price": 377.88,
     "id": "move:TSLA:2026-11-19:2026-11-19T19:56:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPCX",
+    "status": "EMA TREND",
+    "bar": "2026-11-19T20:03:00+00:00",
+    "triggered_at_utc": "2026-11-19T20:03:10.821352+00:00",
+    "price": 137.01,
+    "scope": "2026-11-19",
+    "source": "Webull",
+    "direction": "DOWN",
+    "ema9": 137.48314990989869,
+    "ema21": 137.57314610311218,
+    "id": "ema921:SPCX:2026-11-19:2026-11-19T20:03:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
