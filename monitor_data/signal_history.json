@@ -7982,5 +7982,19 @@
     "ema21": 649.9753708397689,
     "id": "ema921:QQQ:2026-11-19:2026-11-19T19:54:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "TSLA",
+    "status": "EMA TREND",
+    "bar": "2026-11-19T19:54:00+00:00",
+    "triggered_at_utc": "2026-11-19T19:54:05.824811+00:00",
+    "price": 376.0007,
+    "scope": "2026-11-19",
+    "source": "Webull",
+    "direction": "DOWN",
+    "ema9": 377.1823431159685,
+    "ema21": 377.37811607194374,
+    "id": "ema921:TSLA:2026-11-19:2026-11-19T19:54:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
