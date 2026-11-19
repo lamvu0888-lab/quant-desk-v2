@@ -7701,5 +7701,19 @@
     "previous_price": 722.8,
     "id": "move:SPY:2026-11-19:2026-11-19T18:49:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "TSLA",
+    "status": "EMA TREND",
+    "bar": "2026-11-19T18:54:00+00:00",
+    "triggered_at_utc": "2026-11-19T18:54:08.015905+00:00",
+    "price": 377.595,
+    "scope": "2026-11-19",
+    "source": "Webull",
+    "direction": "DOWN",
+    "ema9": 378.00034785889454,
+    "ema21": 378.13844422754863,
+    "id": "ema921:TSLA:2026-11-19:2026-11-19T18:54:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
