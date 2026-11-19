@@ -6285,5 +6285,19 @@
     "previous_price": 731.02,
     "id": "move:SPY:2026-11-19:2026-11-19T15:33:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "NVDA",
+    "status": "EMA TREND",
+    "bar": "2026-11-19T15:33:00+00:00",
+    "triggered_at_utc": "2026-11-19T15:33:10.622869+00:00",
+    "price": 152.66,
+    "scope": "2026-11-19",
+    "source": "Webull",
+    "direction": "DOWN",
+    "ema9": 154.12221854783954,
+    "ema21": 154.33464536615517,
+    "id": "ema921:NVDA:2026-11-19:2026-11-19T15:33:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
