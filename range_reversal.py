@@ -140,6 +140,7 @@ def reversal_plan(plan, box, *, minutes, threes, flow_rows, flow_usable, levels,
     evidence.append(f"The 3m candle rejected {location} and closed inside the range.")
     fast1 = ema_turn(minutes, MINUTE, plan["ema"]["1m"], side)
     fast3 = ema_turn(threes, 3 * MINUTE, plan["ema"]["3m"], side)
+    box["ema_turn_confirmed"] = fast1 and fast3
     agree = flow_usable and flow.get("direction") == side and plan["flow_confirmation"]["confirmed"]
     quote_ok = bool(spot and side * (spot - trigger) > 0 and abs(spot - price) <= max(.4 * atr, 3 * noise)
                     and 0 < side * (spot - edge) <= EDGE_FRACTION * box["width"])

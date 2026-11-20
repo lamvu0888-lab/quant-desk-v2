@@ -1,5 +1,6 @@
 """Separate Streamlit app and background worker for paper trading."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 import json
 import os
@@ -10,6 +11,8 @@ import time
 
 from dotenv import dotenv_values
 
+from gemini_advisor import AdvisorQueue, BASELINE, GeminiClient, MODEL
+from gemini_views import paper_comparison
 from market_session import ET, active_session, rth_bounds, session_state
 from paper_engine import PaperLedger, PaperWorker, clock, option_pnl, realized, stamp, unrealized
 from paper_review import day_report
@@ -35,12 +38,29 @@ def run_worker(once=False):
     if not all((key, app_key, secret)) or settings.endpoint != "api.webull.com":
         raise SystemExit("Set Tradytics and production Webull market-data keys. No brokerage orders are used.")
     journal = Journal(path=config("MONITOR_JOURNAL_PATH"), dsn=config("MONITOR_JOURNAL_DSN"))
-    ledger = PaperLedger(journal)
+    gemini_key = config("GEMINI_API_KEY")
+    advisor = AdvisorQueue(journal) if gemini_key else None
+    client = None
+    if advisor:
+        try:
+            advisor.start()
+            client = GeminiClient(gemini_key, config("GEMINI_MODEL", MODEL))
+        except Exception as exc:
+            print(f"Gemini setup unavailable ({type(exc).__name__}). Check the model and journal permissions.", flush=True)
+            advisor = None
+    ledger = PaperLedger(journal, advisor)
     webull = WebullFeedStore(settings, app_key, secret, config("WEBULL_REGION", "us"))
     tradytics = FeedStore(TradyticsClient(key, config("TRADYTICS_AUTH_MODE", "query")))
     schwab = make_schwab_store(config)
     worker = PaperWorker(ledger, webull, tradytics, schwab=schwab)
     last_review = None
+    reviews = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gemini-paper") if advisor else None
+    pending = None
+
+    def process_advice():
+        ledger.queue_reviews()
+        return advisor.process_one(client, clock)
+
     try:
         with ledger.lock() as assert_lock:
             ledger.start(clock())
@@ -58,16 +78,26 @@ def run_worker(once=False):
                         with journal.connection() as db:
                             review_key = "review:" + str(session)
                             if ledger.meta(db, review_key) is None:
-                                ledger.set_meta(db, review_key, day_report(ledger.rows(db), session))
+                                baseline = [r for r in ledger.rows(db) if r.get("track", BASELINE) == BASELINE]
+                                ledger.set_meta(db, review_key, day_report(baseline, session))
                         last_review = session
                 except Exception as exc:
                     print(f"Paper poll failed ({type(exc).__name__}).", flush=True)
                     if once:
                         raise
+                if advisor and (pending is None or pending.done()):
+                    if pending is not None:
+                        try:
+                            pending.result()
+                        except Exception as exc:
+                            print(f"Gemini queue unavailable ({type(exc).__name__}).", flush=True)
+                    pending = reviews.submit(process_advice)
                 if once:
                     return
                 time.sleep(5 if session_state()["status"] == "OPEN" else 15)
     finally:
+        if reviews:
+            reviews.shutdown(wait=True, cancel_futures=False)
         webull.close()
         if schwab:
             schwab.close()
@@ -116,8 +146,7 @@ def dashboard():
     is_demo = st.toggle("Show demo data", value=not config("PAPER_HIDE_DEMO"), help="Displays a fixed sample ledger.")
     st.caption("Simulated options · New York time · estimated $0.65 per contract per side")
 
-    def live_data():
-        now = clock()
+    def read_connection():
         try:
             dsn = st.secrets.get("MONITOR_JOURNAL_DSN") or config("MONITOR_JOURNAL_DSN")
         except FileNotFoundError:
@@ -126,9 +155,21 @@ def dashboard():
         # Read-only dashboard access. The worker initializes and writes the tables.
         if dsn:
             import psycopg
-            db = psycopg.connect(dsn, connect_timeout=4, options="-c statement_timeout=4500 -c default_transaction_read_only=on")
-        else:
-            db = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
+            return psycopg.connect(dsn, connect_timeout=4, options="-c statement_timeout=4500 -c default_transaction_read_only=on")
+        return sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
+
+    def read_reviews(day):
+        db = read_connection()
+        try:
+            param = "?" if isinstance(db, sqlite3.Connection) else "%s"
+            return db.execute("SELECT id,state,model,result,issue FROM qd_gemini_job WHERE kind='review' "
+                              f"AND session={param} ORDER BY created DESC,id", (day,)).fetchall()
+        finally:
+            db.close()
+
+    def live_data():
+        now = clock()
+        db = read_connection()
         try:
             rows = [json.loads(raw) for raw, in db.execute("SELECT body FROM qd_paper_trade ORDER BY origin,id")]
             reports, meta = [], {}
@@ -137,7 +178,9 @@ def dashboard():
                     reports.append(json.loads(raw))
                 else:
                     meta[name] = json.loads(raw)
-            return rows, reports, now, time_or_none(meta.get("heartbeat")), meta.get("loss_stop") == str(now.astimezone(ET).date())
+            today = str(now.astimezone(ET).date())
+            return (rows, reports, now, time_or_none(meta.get("heartbeat")),
+                    meta.get("loss_stop") == today, meta.get("gemini_loss_stop") == today)
         finally:
             db.close()
 
@@ -145,10 +188,11 @@ def dashboard():
     def view():
         if is_demo:
             trades, reports, now, heartbeat, halted = demo()
+            shadow_halted = False
             st.info("Demo data · example fills and P/L")
         else:
             try:
-                trades, reports, now, heartbeat, halted = live_data()
+                trades, reports, now, heartbeat, halted, shadow_halted = live_data()
             except Exception:
                 st.warning("Waiting for the paper worker and shared journal. Check the setup guide.")
                 return
@@ -156,6 +200,8 @@ def dashboard():
                 st.warning("The paper worker has not reported in the last minute.")
         if halted:
             st.warning("Daily paper loss stop reached. New entries are paused.")
+        all_trades = trades
+        trades = [t for t in trades if t.get("track", BASELINE) == BASELINE]
         opened = [t for t in trades if t["state"] == "OPEN"]
         marks = [value for t in opened if (value := unrealized(t, now)) is not None]
         closed = [t for t in trades if t["state"] == "CLOSED"]
@@ -171,25 +217,27 @@ def dashboard():
             at = time_or_none(value)
             return at.astimezone(ET).strftime("%b %d, %H:%M:%S") if at else ""
 
-        def table(rows):
+        def table(rows, *, compare=False):
             frame = pd.DataFrame([{"Ticker": t["symbol"], "State": t["state"], "Contract": t.get("contract"),
                                    "DTE": t.get("dte"), "Alert ET": display_time(t["origin"]),
                                    "Entry ET": display_time(t.get("opened")), "Exit ET": display_time(t.get("closed")),
                                    "Setup": t["plan"].get("setup"), "Price source": t["plan"].get("source"),
-                                   "Score": t["plan"].get("score"),
-                                   "Qty": t.get("qty"), "Remaining": t.get("remaining"),
+                                   "Score": t["plan"].get("score"), "Scenario": (t["plan"].get("gemini") or {}).get("leg"),
+                                   "Plan version": (t["plan"].get("gemini") or {}).get("revision"), "Qty": t.get("qty"), "Remaining": t.get("remaining"),
                                    "Entry ask": t.get("entry_ask"), "Last bid": t.get("mark_bid"),
                                    "Bid ET": display_time(t.get("mark_at")), "Stop": t["plan"].get("stop"),
                                    "TP1": t["plan"].get("tp1"), "TP2": t["plan"].get("tp2"),
                                    "Realized $": realized(t), "Unrealized $": unrealized(t, now),
                                    "Details": t["reason"]} for t in rows])
+            if compare:
+                frame.insert(0, "Paper strategy", [t.get("track", BASELINE) for t in rows])
             if frame.empty:
                 st.caption("No records yet.")
             else:
                 st.dataframe(frame, hide_index=True, width="stretch")
             return frame
 
-        positions, history, learning = st.tabs(["Open positions", "Trade history", "Daily learning"])
+        positions, history, learning, gemini = st.tabs(["Open positions", "Trade history", "Daily learning", "Gemini paper comparison"])
         with positions:
             table(opened)
         with history:
@@ -207,6 +255,11 @@ def dashboard():
                 st.line_chart(frame, x="ET", y="Cumulative P/L")
                 st.dataframe(frame, hide_index=True, width="stretch")
                 st.download_button("Download exit fills", frame.to_csv(index=False), "paper-exits.csv")
+        with gemini:
+            if is_demo:
+                st.caption("Live Gemini plans and reviews appear in journal mode.")
+            else:
+                paper_comparison(all_trades, table, read_reviews, realized, active_session(now), shadow_halted)
         with learning:
             if not reports:
                 st.caption("A report appears after a completed market session.")

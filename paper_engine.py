@@ -6,6 +6,8 @@ import math
 import sqlite3
 
 from data_utils import DataError, reported_delay
+from decision_engine import MIN_REWARD_R
+from gemini_advisor import BASELINE, SHADOW
 from live_chain import contract_symbol, occ_info, unwrap
 from market_session import ET, rth_bounds, session_state
 from option_quotes import fresh_option_rows, spread_fraction
@@ -42,8 +44,8 @@ def dump(value):
 
 
 class PaperLedger:
-    def __init__(self, journal):
-        self.journal = journal
+    def __init__(self, journal, advisor=None):
+        self.journal, self.advisor = journal, advisor
 
     def start(self, now):
         with self.journal.connection() as db:
@@ -54,6 +56,21 @@ class PaperLedger:
             db.execute("CREATE TABLE IF NOT EXISTS qd_paper_meta (key TEXT PRIMARY KEY, body TEXT NOT NULL)")
             self.execute(db, "INSERT INTO qd_paper_meta VALUES (?,?) ON CONFLICT(key) DO NOTHING",
                          "activated", dump(stamp(now)))
+            if self.advisor:
+                self.execute(db, "INSERT INTO qd_paper_meta VALUES (?,?) ON CONFLICT(key) DO NOTHING",
+                             "gemini_activated", dump(stamp(now)))
+
+    def queue_reviews(self):
+        """Closed positions are the durable outbox even if advisory tables or Google are unavailable."""
+        with self.journal.connection() as db:
+            since = self.meta(db, "gemini_activated")
+            if since:
+                missed = self.execute(db, """SELECT p.body FROM qd_paper_trade p
+                    WHERE p.state='CLOSED' AND p.updated>=? AND NOT EXISTS (SELECT 1 FROM qd_gemini_job g
+                    WHERE g.id=('review:' || p.id)) ORDER BY p.updated,p.id LIMIT 50""", since).fetchall()
+                for (body,) in missed:
+                    trade = json.loads(body)
+                    self.advisor.review(db, trade, time_or_none(trade["closed"]))
 
     def execute(self, db, sql, *args):
         return db.execute(self.journal.sql(sql), args)
@@ -90,13 +107,20 @@ class PaperLedger:
             WHERE o.kind='candidate' AND o.origin>=?
             AND NOT EXISTS (SELECT 1 FROM qd_paper_trade p WHERE p.id=d.id)
             ORDER BY o.origin,o.id LIMIT 200""", self.meta(db, "activated")).fetchall()
-        for ident, symbol, origin, raw in rows:
-            payload = json.loads(raw)
-            if payload.get("decision_status") not in ENTRY:
+        entries = [(ident, symbol, origin, json.loads(raw), BASELINE) for ident, symbol, origin, raw in rows]
+        if self.advisor:
+            shadow = self.execute(db, """SELECT o.id,o.symbol,o.origin,o.payload FROM qd25_observation o
+                WHERE o.kind='gemini_entry' AND o.origin>=?
+                AND NOT EXISTS (SELECT 1 FROM qd_paper_trade p WHERE p.id=o.id)
+                ORDER BY o.origin,o.id LIMIT 200""", self.meta(db, "activated")).fetchall()
+            entries.extend((ident, symbol, origin, json.loads(raw), SHADOW) for ident, symbol, origin, raw in shadow)
+        for ident, symbol, origin, payload, track in entries:
+            if track == BASELINE and payload.get("decision_status") not in ENTRY:
                 continue
             day = time_or_none(origin).astimezone(ET).date().isoformat()
-            trade = {"id": ident, "symbol": symbol, "origin": origin, "session": day,
-                     "plan": payload["plan"], "state": "PENDING",
+            trade = {"id": ident, "symbol": symbol, "origin": origin, "session": day, "track": track,
+                     "plan": {**payload["plan"], **({"model": payload["model"]} if payload.get("model") else {})},
+                     "state": "PENDING",
                      "reason": "Waiting for a paper fill", "fills": []}
             self.execute(db, "INSERT INTO qd_paper_trade VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING",
                          ident, origin, day, origin, trade["state"], dump(trade))
@@ -219,6 +243,8 @@ def attempt_entry(trade, ctx, webull, halted, get_now=clock):
     if (side * (spot - plan["trigger"]) <= 0 or side * (spot - plan["stop"]) <= 0
             or side * (plan["tp1"] - spot) <= 0):
         return skip(trade, "Underlying no longer inside entry setup")
+    if trade.get("track") == SHADOW and side * (plan["tp1"] - spot) < MIN_REWARD_R * side * (spot - plan["stop"]):
+        return skip(trade, "Scenario reward/risk fell below the minimum at fill time")
     day, fast = now.astimezone(ET).date(), fast_setup(plan)
     expiry = expiry_for(ctx, day, fast)
     if not expiry:
@@ -366,7 +392,8 @@ class PaperWorker:
         with book.journal.connection() as db:
             book.ingest(db)
             active = book.rows(db, "WHERE state IN ('OPEN','PENDING')")
-            halted = book.meta(db, "loss_stop") == str(day)
+            loss_keys = {BASELINE: "loss_stop", SHADOW: "gemini_loss_stop"}
+            halted = {track: book.meta(db, key) == str(day) for track, key in loss_keys.items()}
         open_rows = [trade for trade in active if trade["state"] == "OPEN"]
         symbols = [t["symbol"] for t in active if t["plan"].get("source") == "Webull"]
         snapshots = self.webull.prices(symbols) if symbols else {}
@@ -384,7 +411,7 @@ class PaperWorker:
 
         for trade in open_rows:
             try:
-                update_trade(trade, desk(trade), quotes.get(trade["contract"]), halted)
+                update_trade(trade, desk(trade), quotes.get(trade["contract"]), halted[trade.get("track", BASELINE)])
             except DataError:
                 trade["reason"] = "Waiting for verified market data"
         assert_lock()
@@ -393,26 +420,43 @@ class PaperWorker:
                 book.save(db, trade, self.get_now())
             local_midnight = now.astimezone(ET).replace(hour=0, minute=0, second=0, microsecond=0)
             today = book.rows(db, "WHERE state='OPEN' OR updated>=?", stamp(local_midnight))
-            pnl = sum(fill["pnl"] for t in today for fill in t["fills"]
-                      if time_or_none(fill["at"]).astimezone(ET).date() == day)
-            pnl += sum(unrealized(t, self.get_now()) or 0 for t in today)
-            halted = halted or pnl <= DAILY_STOP
-            if halted:
-                book.set_meta(db, "loss_stop", str(day))
+            pnl = {track: 0. for track in loss_keys}
+            for row in today:
+                track = row.get("track", BASELINE)
+                pnl[track] += sum(fill["pnl"] for fill in row["fills"] if time_or_none(fill["at"]).astimezone(ET).date() == day)
+                pnl[track] += unrealized(row, self.get_now()) or 0
+            for track, value in pnl.items():
+                if value <= DAILY_STOP:
+                    halted[track] = True
+                    book.set_meta(db, loss_keys[track], str(day))
 
+        shadow_open = {t["symbol"] for t in open_rows if t["state"] == "OPEN" and t.get("track") == SHADOW}
         for trade in active:
             if trade["state"] != "PENDING":
                 continue
+            track = trade.get("track", BASELINE)
             try:
-                attempt_entry(trade, desk(trade), self.webull, halted, self.get_now)
+                if track == SHADOW and trade["symbol"] in shadow_open:
+                    skip(trade, "Another Gemini paper position is open for this ticker")
+                else:
+                    attempt_entry(trade, desk(trade), self.webull, halted[track], self.get_now)
             except DataError:
                 trade["reason"] = "Webull or market feed temporarily unavailable"
-            pnl += unrealized(trade, self.get_now()) or 0
-            halted = halted or pnl <= DAILY_STOP
             assert_lock()
             with book.journal.connection() as db:
+                scenario = trade["plan"].get("gemini") or {}
+                if track == SHADOW and scenario and book.advisor:
+                    book.advisor.lock_plan(db,trade["symbol"],trade["session"])
+                    active_plan = book.advisor.session_plan(db,trade["symbol"],trade["session"])
+                    if not active_plan or active_plan["state"] != "ready" or active_plan["id"] != scenario["plan_id"]:
+                        trade = json.loads(book.execute(db,"SELECT body FROM qd_paper_trade WHERE id=?",trade["id"]).fetchone()[0])
+                        skip(trade,"Scenario superseded before the paper fill")
+                if track == SHADOW and trade["state"] == "OPEN":
+                    shadow_open.add(trade["symbol"])
+                pnl[track] += unrealized(trade, self.get_now()) or 0
+                halted[track] = halted[track] or pnl[track] <= DAILY_STOP
                 book.save(db, trade, self.get_now())
-                if halted:
-                    book.set_meta(db, "loss_stop", str(day))
+                if halted[track]:
+                    book.set_meta(db, loss_keys[track], str(day))
         with book.journal.connection() as db:
             book.set_meta(db, "heartbeat", stamp(self.get_now()))

@@ -14,6 +14,7 @@ from dealer_hedging import HORIZONS, hedge_change, hedge_scenarios
 from decision_engine import ENTRY_STATES, paper_outcome
 from decision_flow import apply_model_gate, build_decision, get_hedge, model_summary, read_iv
 from desk_analytics import MINUTE
+from gemini_views import scenario_panel
 from market_session import calendar, session_state
 from option_payoff import create_position, position_risk, quoted_legs
 from option_quotes import age_text, fresh_option_rows, option_review, quote_age
@@ -277,6 +278,7 @@ def option_entry_panel(ctx, plan):
 
 
 def journal_panel(ctx, plan):
+    scenario_panel(ctx)
     scope_key = (ctx.ticker, current_scope(ctx), ctx.preview)
     history = st.session_state.setdefault("qd25_dashboard_changes", {})
     events = history.setdefault(scope_key, [])

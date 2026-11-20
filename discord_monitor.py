@@ -15,6 +15,7 @@ from dotenv import dotenv_values
 from decision_engine import ENTRY_STATES, RULES_VERSION
 from desk_analytics import FIVE_MINUTES
 from ema_trend import TREND_ALERT_AGE
+from gemini_strategy import ScenarioMonitor
 from market_session import active_session, session_state
 from movement_detector import ENTRY_COOLDOWN
 from terminal_views import Desk, read_workspace, route_price
@@ -148,9 +149,10 @@ def monitor_dte(store, symbol, session, now):
 
 
 class MonitorScan:
-    def __init__(self, store, webull, preference, journal, schwab=None):
+    def __init__(self, store, webull, preference, journal, schwab=None, scenarios=None):
         self.store, self.webull, self.preference, self.journal = store, webull, preference, journal
         self.schwab = schwab
+        self.scenarios = scenarios
         self.scans = {}
         self.move_closes = {}
         self.last_status = {}
@@ -160,6 +162,8 @@ class MonitorScan:
         market_open = session["status"] == "OPEN"
         close = time_or_none(session["close_utc"])
         closeout = close and close <= now <= close + timedelta(minutes=20)
+        if self.scenarios and not dry_run and session["status"] == "PREMARKET":
+            self.scenarios.premarket(symbols,now)
         if not (market_open or closeout or dry_run):
             return [], []
         day = active_session(now)
@@ -208,6 +212,8 @@ class MonitorScan:
                     continue
                 candidates, plan = process_scan(self.journal, ctx, read, check_move=False)
                 alerts.extend(candidates)
+                if self.scenarios and market_open:
+                    self.scenarios.submit(plan, read, now)
                 delay = min(interval, 5) if plan["status"] == "GET READY" else interval
                 self.scans[symbol] = state, now + timedelta(seconds=delay)
                 blocker = next(iter(plan["data_reasons"] or plan["blocks"] or plan["missing"]), None)
@@ -274,7 +280,13 @@ def main():
         raise SystemExit("Set both shared GitHub settings, or leave both empty for the default watchlist.")
     journal = None if args.dry_run else Journal(path=secret("MONITOR_JOURNAL_PATH"), dsn=secret("MONITOR_JOURNAL_DSN"))
     schwab = make_schwab_store(secret)
-    scanner = MonitorScan(store, webull, preference, journal, schwab)
+    scenarios = None
+    if not args.dry_run and secret("GEMINI_PAPER_PLANS").strip().lower() in {"1", "true", "yes"}:
+        try:
+            scenarios = ScenarioMonitor(journal,webull=webull,schwab=schwab)
+        except Exception as exc:
+            print(f"Gemini paper plans unavailable ({type(exc).__name__}). Check shared journal permissions.", flush=True)
+    scanner = MonitorScan(store, webull, preference, journal, schwab, scenarios)
     print(f"Quant Desk {RULES_VERSION} worker · price source {preference} · Webull {webull.settings.endpoint if webull else 'unconfigured'}", flush=True)
     retry = {}
     resume_sends = 0.
@@ -336,6 +348,8 @@ def main():
                 break
             time.sleep(max(0., FAST_SCAN_SECONDS - (time.monotonic() - started)))
     finally:
+        if scenarios:
+            scenarios.close()
         io.shutdown(wait=False, cancel_futures=True)
         store.close()
         if schwab:
