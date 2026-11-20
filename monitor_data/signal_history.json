@@ -1,29 +1,5 @@
 [
   {
-    "symbol": "SPY",
-    "status": "WAIT",
-    "bias": "Bearish",
-    "score": 65,
-    "bar": "2026-11-11T15:20:00+00:00",
-    "entry_bar": "2026-11-11T15:20:00+00:00",
-    "triggered_at_utc": "2026-11-11T15:21:01.563671+00:00",
-    "price": 756.17,
-    "scope": "2026-11-11",
-    "setup": "VWAP rejection",
-    "entry": 756.17,
-    "trigger": 756.37,
-    "invalidation": 756.37,
-    "stop": 756.56,
-    "tp1": 755.59,
-    "tp2": 755.19,
-    "rr": 1.49,
-    "rr2": 2.51,
-    "regime": "Normal",
-    "validation": "Unvalidated",
-    "id": "signal:Tradytics:0:SPY:2026-11-11T15:20:00+00:00:ac1b0f03a4",
-    "explanation": "Current regular-session quote."
-  },
-  {
     "symbol": "TSLA",
     "status": "DATA QUALITY",
     "bias": "Bullish",
@@ -9051,5 +9027,20 @@
     "ema21": 621.2217094784303,
     "id": "ema921:QQQ:2026-11-20:2026-11-20T18:39:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-20T18:44:00+00:00",
+    "triggered_at_utc": "2026-11-20T18:44:04.714453+00:00",
+    "price": 620.115,
+    "scope": "2026-11-20",
+    "source": "Webull",
+    "direction": "DOWN",
+    "window": "5m",
+    "change_pct": -0.31747817839862247,
+    "previous_price": 622.09,
+    "id": "move:QQQ:2026-11-20:2026-11-20T18:44:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
