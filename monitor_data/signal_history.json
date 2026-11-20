@@ -1,29 +1,5 @@
 [
   {
-    "symbol": "SPX",
-    "status": "DATA QUALITY",
-    "bias": "Mixed",
-    "score": 0,
-    "bar": "2026-11-11T14:55:00+00:00",
-    "entry_bar": "2026-11-11T14:59:00+00:00",
-    "triggered_at_utc": "2026-11-11T15:00:13.616690+00:00",
-    "price": 7588.2,
-    "scope": "2026-11-11",
-    "setup": null,
-    "entry": null,
-    "trigger": null,
-    "invalidation": null,
-    "stop": null,
-    "tp1": null,
-    "tp2": null,
-    "rr": null,
-    "rr2": null,
-    "regime": "Expanding",
-    "validation": "Unvalidated",
-    "id": "quality:SPX:2026-11-11:15:0",
-    "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
-  },
-  {
     "symbol": "TSLA",
     "status": "LEVEL CROSSING",
     "bias": "Bullish",
@@ -9115,6 +9091,21 @@
     "change_pct": -0.29969949701907916,
     "previous_price": 622.29,
     "id": "move:QQQ:2026-11-20:2026-11-20T18:29:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPX",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-20T18:31:00+00:00",
+    "triggered_at_utc": "2026-11-20T18:31:02.541475+00:00",
+    "price": 7010.05,
+    "scope": "2026-11-20",
+    "source": "Schwab",
+    "direction": "DOWN",
+    "window": "5m",
+    "change_pct": -0.2830745595630124,
+    "previous_price": 7029.95,
+    "id": "move:SPX:2026-11-20:2026-11-20T18:31:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
