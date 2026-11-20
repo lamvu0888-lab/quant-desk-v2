@@ -1,34 +1,5 @@
 [
   {
-    "symbol": "NVDA",
-    "status": "LEVEL CROSSING",
-    "bias": "Bullish",
-    "score": 80,
-    "bar": "2026-11-11T15:40:00+00:00",
-    "entry_bar": "2026-11-11T15:40:00+00:00",
-    "triggered_at_utc": "2026-11-11T15:41:02.494443+00:00",
-    "price": 174.61,
-    "scope": "2026-11-11",
-    "setup": "Breakout watch",
-    "entry": 175.22,
-    "trigger": 175.1,
-    "invalidation": 175.1,
-    "stop": 174.13,
-    "tp1": 176.86,
-    "tp2": 177.94,
-    "rr": 1.5,
-    "rr2": 2.5,
-    "regime": "Normal",
-    "validation": "Unvalidated",
-    "crossing": {
-      "level": "Gamma flip",
-      "price": 174.072,
-      "direction": "above"
-    },
-    "id": "level:Tradytics:0:NVDA:2026-11-11T15:40:00+00:00:Gamma flip",
-    "explanation": "A completed 5m close crossed a level recorded before this bar."
-  },
-  {
     "symbol": "SPY",
     "status": "GET READY",
     "bias": "Bullish",
@@ -8890,6 +8861,21 @@
     "change_pct": -0.47801147227534146,
     "previous_price": 700.82,
     "id": "move:SPY:2026-11-20:2026-11-20T19:18:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPX",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-20T19:18:00+00:00",
+    "triggered_at_utc": "2026-11-20T19:18:03.709539+00:00",
+    "price": 6990.89,
+    "scope": "2026-11-20",
+    "source": "Schwab",
+    "direction": "DOWN",
+    "window": "1m",
+    "change_pct": -0.1565300599127406,
+    "previous_price": 7001.85,
+    "id": "move:SPX:2026-11-20:2026-11-20T19:18:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
