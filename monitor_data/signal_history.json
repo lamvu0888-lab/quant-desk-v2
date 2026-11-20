@@ -1,29 +1,5 @@
 [
   {
-    "symbol": "SPY",
-    "status": "ENTER LONG",
-    "bias": "Bullish",
-    "score": 95,
-    "bar": "2026-11-11T15:40:00+00:00",
-    "entry_bar": "2026-11-11T15:42:00+00:00",
-    "triggered_at_utc": "2026-11-11T15:42:31.460624+00:00",
-    "price": 757.22,
-    "scope": "2026-11-11",
-    "setup": "EMA 8/10 pullback",
-    "entry": 757.22,
-    "trigger": 756.79,
-    "invalidation": 756.79,
-    "stop": 756.6,
-    "tp1": 758.15,
-    "tp2": 758.77,
-    "rr": 1.5,
-    "rr2": 2.5,
-    "regime": "Normal",
-    "validation": "Unvalidated",
-    "id": "signal:Tradytics:0:SPY:2026-11-11T15:40:00+00:00:1501f3eb0f",
-    "explanation": "5m EMA 8/10 and price confirm a bullish trend."
-  },
-  {
     "symbol": "NVDA",
     "status": "GET READY",
     "bias": "Bullish",
@@ -8927,5 +8903,20 @@
     },
     "id": "exit:candidate:Schwab:0:SPX:2026-11-20T19:21:00+00:00",
     "explanation": "Tracked setup closed by tp2."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-20T19:32:00+00:00",
+    "triggered_at_utc": "2026-11-20T19:32:05.320113+00:00",
+    "price": 613.4072,
+    "scope": "2026-11-20",
+    "source": "Webull",
+    "direction": "DOWN",
+    "window": "5m",
+    "change_pct": -0.35782394697941866,
+    "previous_price": 615.61,
+    "id": "move:QQQ:2026-11-20:2026-11-20T19:32:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
