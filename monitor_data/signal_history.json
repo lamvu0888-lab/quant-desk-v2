@@ -1,29 +1,5 @@
 [
   {
-    "symbol": "SPX",
-    "status": "ENTER LONG",
-    "bias": "Bullish",
-    "score": 95,
-    "bar": "2026-11-11T16:00:00+00:00",
-    "entry_bar": "2026-11-11T16:00:00+00:00",
-    "triggered_at_utc": "2026-11-11T16:00:31.808183+00:00",
-    "price": 7609.32,
-    "scope": "2026-11-11",
-    "setup": "Breakout close",
-    "entry": 7609.32,
-    "trigger": 7604.53,
-    "invalidation": 7604.53,
-    "stop": 7603.52,
-    "tp1": 7618.02,
-    "tp2": 7623.82,
-    "rr": 1.5,
-    "rr2": 2.5,
-    "regime": "Normal",
-    "validation": "Unvalidated",
-    "id": "signal:Tradytics:0:SPX:2026-11-11T16:00:00+00:00:0154b99a99",
-    "explanation": "5m EMA 8/10 and price confirm a bullish trend."
-  },
-  {
     "symbol": "TSLA",
     "status": "DATA QUALITY",
     "bias": "Bullish",
@@ -8881,6 +8857,21 @@
     "change_pct": 0.2758445706924739,
     "previous_price": 614.839,
     "id": "move:QQQ:2026-11-20:2026-11-20T19:57:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-20T20:05:00+00:00",
+    "triggered_at_utc": "2026-11-20T20:05:05.222057+00:00",
+    "price": 613.71,
+    "scope": "2026-11-20",
+    "source": "Webull",
+    "direction": "DOWN",
+    "window": "10m",
+    "change_pct": -0.399240469350981,
+    "previous_price": 616.17,
+    "id": "move:QQQ:2026-11-20:2026-11-20T20:05:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
