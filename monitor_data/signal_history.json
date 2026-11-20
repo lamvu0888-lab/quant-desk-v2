@@ -1,29 +1,5 @@
 [
   {
-    "symbol": "NVDA",
-    "status": "WAIT",
-    "bias": "Bearish",
-    "score": 85,
-    "bar": "2026-11-11T15:15:00+00:00",
-    "entry_bar": "2026-11-11T15:19:00+00:00",
-    "triggered_at_utc": "2026-11-11T15:20:32.693408+00:00",
-    "price": 172.81,
-    "scope": "2026-11-11",
-    "setup": "VWAP rejection",
-    "entry": 172.81,
-    "trigger": 172.99,
-    "invalidation": 172.99,
-    "stop": 173.18,
-    "tp1": 172.25,
-    "tp2": 171.88,
-    "rr": 1.51,
-    "rr2": 2.51,
-    "regime": "Normal",
-    "validation": "Unvalidated",
-    "id": "signal:Tradytics:0:NVDA:2026-11-11T15:15:00+00:00:ac1b0f03a4",
-    "explanation": "Waiting for price and options flow from the same completed 5-minute bar."
-  },
-  {
     "symbol": "SPY",
     "status": "WAIT",
     "bias": "Bearish",
@@ -9061,5 +9037,19 @@
     "previous_price": 619.49,
     "id": "move:QQQ:2026-11-20:2026-11-20T18:36:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "EMA TREND",
+    "bar": "2026-11-20T18:39:00+00:00",
+    "triggered_at_utc": "2026-11-20T18:39:05.817333+00:00",
+    "price": 622.09,
+    "scope": "2026-11-20",
+    "source": "Webull",
+    "direction": "UP",
+    "ema9": 621.3550895575858,
+    "ema21": 621.2217094784303,
+    "id": "ema921:QQQ:2026-11-20:2026-11-20T18:39:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
