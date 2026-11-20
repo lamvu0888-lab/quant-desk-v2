@@ -8876,5 +8876,20 @@
     },
     "id": "entry:Schwab:0:SPX:2026-11-20T16:40:00+00:00:Breakout close",
     "explanation": "5m EMA 9/21 and price confirm a falling trend."
+  },
+  {
+    "symbol": "SPX",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-20T16:47:00+00:00",
+    "triggered_at_utc": "2026-11-20T16:47:01.712064+00:00",
+    "price": 7037.1,
+    "scope": "2026-11-20",
+    "source": "Schwab",
+    "direction": "DOWN",
+    "window": "10m",
+    "change_pct": -0.38418853266593,
+    "previous_price": 7064.24,
+    "id": "move:SPX:2026-11-20:2026-11-20T16:47:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
