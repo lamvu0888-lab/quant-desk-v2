@@ -1,34 +1,5 @@
 [
   {
-    "symbol": "NVDA",
-    "status": "LEVEL CROSSING",
-    "bias": "Bullish",
-    "score": 45,
-    "bar": "2026-11-11T16:25:00+00:00",
-    "entry_bar": "2026-11-11T16:25:00+00:00",
-    "triggered_at_utc": "2026-11-11T16:25:32.622931+00:00",
-    "price": 175.36,
-    "scope": "2026-11-11",
-    "setup": "EMA 8/10 pullback",
-    "entry": 175.36,
-    "trigger": 175.23,
-    "invalidation": 175.23,
-    "stop": 175.12,
-    "tp1": 175.72,
-    "tp2": 175.96,
-    "rr": 1.5,
-    "rr2": 2.5,
-    "regime": "Normal",
-    "validation": "Unvalidated",
-    "crossing": {
-      "level": "Call wall",
-      "price": 175.0,
-      "direction": "above"
-    },
-    "id": "level:Tradytics:0:NVDA:2026-11-11T16:25:00+00:00:Call wall",
-    "explanation": "A completed 5m close crossed a level recorded before this bar."
-  },
-  {
     "symbol": "SPX",
     "status": "DATA QUALITY",
     "bias": "Bullish",
@@ -8819,5 +8790,20 @@
     },
     "id": "exit:candidate:Schwab:0:SPX:2026-11-20T20:39:00+00:00",
     "explanation": "Tracked setup closed by stop."
+  },
+  {
+    "symbol": "SPY",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-20T20:46:00+00:00",
+    "triggered_at_utc": "2026-11-20T20:46:06.822593+00:00",
+    "price": 693.48,
+    "scope": "2026-11-20",
+    "source": "Webull",
+    "direction": "UP",
+    "window": "1m",
+    "change_pct": 0.5145449538359159,
+    "previous_price": 689.93,
+    "id": "move:SPY:2026-11-20:2026-11-20T20:46:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
