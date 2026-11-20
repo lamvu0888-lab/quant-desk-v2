@@ -1,34 +1,5 @@
 [
   {
-    "symbol": "TSLA",
-    "status": "LEVEL CROSSING",
-    "bias": "Neutral",
-    "score": 0,
-    "bar": "2026-11-11T14:45:00+00:00",
-    "entry_bar": "2026-11-11T14:45:00+00:00",
-    "triggered_at_utc": "2026-11-11T14:45:13.986491+00:00",
-    "price": 387.5,
-    "scope": "2026-11-11",
-    "setup": null,
-    "entry": null,
-    "trigger": null,
-    "invalidation": null,
-    "stop": null,
-    "tp1": null,
-    "tp2": null,
-    "rr": null,
-    "rr2": null,
-    "regime": "Expanding",
-    "validation": "Unvalidated",
-    "crossing": {
-      "level": "Call wall",
-      "price": 390.0,
-      "direction": "below"
-    },
-    "id": "level:Tradytics:0:TSLA:2026-11-11T14:45:00+00:00:Call wall",
-    "explanation": "A completed 5m close crossed a level recorded before this bar."
-  },
-  {
     "symbol": "SPX",
     "status": "DATA QUALITY",
     "bias": "Mixed",
@@ -9129,6 +9100,21 @@
     "change_pct": 0.26305631406635666,
     "previous_price": 699.47,
     "id": "move:SPY:2026-11-20:2026-11-20T18:19:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-20T18:29:00+00:00",
+    "triggered_at_utc": "2026-11-20T18:29:04.309036+00:00",
+    "price": 620.425,
+    "scope": "2026-11-20",
+    "source": "Webull",
+    "direction": "DOWN",
+    "window": "5m",
+    "change_pct": -0.29969949701907916,
+    "previous_price": 622.29,
+    "id": "move:QQQ:2026-11-20:2026-11-20T18:29:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
