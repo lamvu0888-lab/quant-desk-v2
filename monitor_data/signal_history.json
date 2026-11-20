@@ -1,29 +1,5 @@
 [
   {
-    "symbol": "TSLA",
-    "status": "DATA QUALITY",
-    "bias": "Bullish",
-    "score": 0,
-    "bar": "2026-11-11T15:25:00+00:00",
-    "entry_bar": "2026-11-11T15:31:00+00:00",
-    "triggered_at_utc": "2026-11-11T15:31:02.015253+00:00",
-    "price": 393.81,
-    "scope": "2026-11-11",
-    "setup": null,
-    "entry": null,
-    "trigger": null,
-    "invalidation": null,
-    "stop": null,
-    "tp1": null,
-    "tp2": null,
-    "rr": null,
-    "rr2": null,
-    "regime": "Expanding",
-    "validation": "Unvalidated",
-    "id": "quality:TSLA:2026-11-11:15:1",
-    "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
-  },
-  {
     "symbol": "NVDA",
     "status": "DATA QUALITY",
     "bias": "Neutral",
@@ -8975,5 +8951,20 @@
     "ema21": 621.370467620493,
     "id": "ema921:QQQ:2026-11-20:2026-11-20T19:00:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-20T19:01:00+00:00",
+    "triggered_at_utc": "2026-11-20T19:01:05.112708+00:00",
+    "price": 622.1682,
+    "scope": "2026-11-20",
+    "source": "Webull",
+    "direction": "DOWN",
+    "window": "5m",
+    "change_pct": -0.3719509168266688,
+    "previous_price": 624.491,
+    "id": "move:QQQ:2026-11-20:2026-11-20T19:01:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
