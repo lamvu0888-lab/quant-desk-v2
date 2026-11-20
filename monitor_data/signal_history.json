@@ -8651,5 +8651,20 @@
     "previous_price": 632.665,
     "id": "move:QQQ:2026-11-20:2026-11-20T15:33:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPY",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-20T15:45:00+00:00",
+    "triggered_at_utc": "2026-11-20T15:45:37.727675+00:00",
+    "price": 708.0,
+    "scope": "2026-11-20",
+    "source": "Tradytics",
+    "direction": "DOWN",
+    "window": "5m",
+    "change_pct": -0.26202349759107957,
+    "previous_price": 709.86,
+    "id": "move:SPY:2026-11-20:2026-11-20T15:45:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
