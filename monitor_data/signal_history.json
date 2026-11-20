@@ -1,30 +1,6 @@
 [
   {
     "symbol": "NVDA",
-    "status": "WAIT",
-    "bias": "Bullish",
-    "score": 0,
-    "bar": "2026-11-11T15:45:00+00:00",
-    "entry_bar": "2026-11-11T15:49:00+00:00",
-    "triggered_at_utc": "2026-11-11T15:49:03.121668+00:00",
-    "price": 174.34,
-    "scope": "2026-11-11",
-    "setup": null,
-    "entry": null,
-    "trigger": null,
-    "invalidation": null,
-    "stop": null,
-    "tp1": null,
-    "tp2": null,
-    "rr": null,
-    "rr2": null,
-    "regime": "Normal",
-    "validation": "Unvalidated",
-    "id": "signal:Tradytics:0:NVDA:2026-11-11T15:45:00+00:00:ac1b0f03a4",
-    "explanation": "Current regular-session quote."
-  },
-  {
-    "symbol": "NVDA",
     "status": "LEVEL CROSSING",
     "bias": "Bullish",
     "score": 65,
@@ -8950,5 +8926,20 @@
     },
     "id": "exit:candidate:Webull:0:QQQ:2026-11-20T19:35:00+00:00",
     "explanation": "Tracked setup closed by stop."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-20T19:38:00+00:00",
+    "triggered_at_utc": "2026-11-20T19:38:08.910507+00:00",
+    "price": 614.875,
+    "scope": "2026-11-20",
+    "source": "Webull",
+    "direction": "UP",
+    "window": "5m",
+    "change_pct": 0.25190354295403505,
+    "previous_price": 613.33,
+    "id": "move:QQQ:2026-11-20:2026-11-20T19:38:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
