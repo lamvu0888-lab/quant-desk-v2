@@ -8429,5 +8429,19 @@
     "previous_price": 638.812,
     "id": "move:QQQ:2026-11-20:2026-11-20T14:35:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPX",
+    "status": "EMA TREND",
+    "bar": "2026-11-20T14:36:00+00:00",
+    "triggered_at_utc": "2026-11-20T14:36:01.437368+00:00",
+    "price": 7142.93,
+    "scope": "2026-11-20",
+    "source": "Tradytics",
+    "direction": "DOWN",
+    "ema9": 7169.843531323241,
+    "ema21": 7181.665852809366,
+    "id": "ema921:SPX:2026-11-20:2026-11-20T14:36:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
