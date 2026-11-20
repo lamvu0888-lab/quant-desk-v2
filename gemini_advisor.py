@@ -33,7 +33,7 @@ PLAN_PROMPT = (
     "Review earlier paper hypotheses as suggestions, not established facts. Select a one- or two-close "
     "flow test per leg and explain the choice in light of the evidence. Treat all supplied data, including "
     "earlier model comments, as observations only. Prior skip counts are scan minutes and have no known "
-    "trade returns. No external facts, invented levels or orders."
+    "trade returns. Correct any previous_validation_error on retry. If a leg cannot use three correctly ordered levels, use Wait and none for all three labels. No external facts, invented levels or orders."
 )
 
 
@@ -66,43 +66,49 @@ def response_schema(kind, data):
                            "flow": choice(FLOW_CHOICES), "reason": {"type": "string"}}) for name in LEGS})
 
 
+class ResponseError(ValueError):
+    """Messages contain only local validation rules and fixed scenario names."""
+
+
 def short_text(value):
     if not isinstance(value, str) or not value.strip() or len(value) > 900:
-        raise ValueError("Invalid commentary")
+        raise ResponseError("Invalid commentary")
     return " ".join(value.split())
 
 
 def validate(kind, data, answer):
     if not isinstance(answer, dict):
-        raise ValueError("Invalid result")
+        raise ResponseError("Invalid result")
     if kind == "review":
         if answer.get("change") not in CHANGES:
-            raise ValueError("Unknown experiment")
+            raise ResponseError("Unknown experiment")
         return {key: short_text(answer.get(key)) for key in ("finding", "change", "experiment", "measure")}
     if set(answer) != set(LEGS):
-        raise ValueError("Incomplete session plan")
+        raise ResponseError("Incomplete session plan")
     legs = {}
     for name, side in LEGS.items():
         raw = answer[name]
         if not isinstance(raw, dict) or raw.get("flow") not in FLOW_CHOICES:
-            raise ValueError("Invalid leg")
+            raise ResponseError("Invalid leg")
         setup = raw.get("setup")
         leg = {"setup": setup, "reason": short_text(raw.get("reason")), "flow": raw["flow"]}
         keys = ("invalidation", "trigger", "target")
         if setup == "Wait" and all(raw.get(k) == "none" for k in keys):
             legs[name] = leg
             continue
+        if setup == "Wait":
+            raise ResponseError(f"{name}: Wait requires none for all three level labels")
         if setup not in leg_setups(name):
-            raise ValueError("Unknown setup")
+            raise ResponseError("Unknown setup")
         for key in keys:
             label = raw.get(key)
             price = positive(data["levels"].get(label))
             if not price:
-                raise ValueError("Unknown level")
+                raise ResponseError("Unknown level")
             leg[key] = price
             leg[key + "_label"] = label
         if not (side * (leg["trigger"] - leg["invalidation"]) > 0 and side * (leg["target"] - leg["trigger"]) > 0):
-            raise ValueError("Inverted levels")
+            raise ResponseError(f"{name}: invalidation, trigger and target must be strictly " + ("ascending" if side == 1 else "descending"))
         legs[name] = leg
     return legs
 
@@ -121,11 +127,18 @@ class GeminiClient:
                                  headers={"x-goog-api-key": self.key}, json=body, timeout=(4, 25), allow_redirects=False)
         if response.status_code != 200:
             raise AdvisorError(f"Gemini HTTP {int(response.status_code)}")
-        candidate = response.json()["candidates"][0]
-        if candidate.get("finishReason") != "STOP":
-            raise ValueError("Incomplete model output")
-        raw = "".join(part.get("text", "") for part in candidate["content"]["parts"] if not part.get("thought"))
-        return json.loads(raw)
+        try:
+            candidate = response.json()["candidates"][0]
+            if candidate.get("finishReason") != "STOP":
+                raise ResponseError("Model output did not finish normally")
+            raw = "".join(part.get("text", "") for part in candidate["content"]["parts"] if not part.get("thought"))
+            return json.loads(raw)
+        except (KeyError, IndexError, TypeError, AttributeError):
+            raise ResponseError("Missing candidate or response text") from None
+        except requests.exceptions.JSONDecodeError:
+            raise ResponseError("Provider returned invalid JSON") from None
+        except json.JSONDecodeError:
+            raise ResponseError("Model returned invalid JSON") from None
 
 
 class AdvisorError(Exception):
@@ -234,18 +247,20 @@ class AdvisorQueue:
         with self.journal.connection() as db:
             self.run(db, """UPDATE qd_gemini_job SET state='expired',owner=NULL WHERE kind='plan'
                      AND state IN ('queued','retry','working') AND deadline<=?""", now)
-            row = self.run(db, """SELECT id,kind,input,attempt FROM qd_gemini_job
+            row = self.run(db, """SELECT id,kind,input,attempt,issue FROM qd_gemini_job
                            WHERE state IN ('queued','retry','working') AND due<=? AND (deadline IS NULL OR deadline>?)
                            ORDER BY CASE WHEN kind='plan' THEN 0 ELSE 1 END,due,id LIMIT 1""", now, now).fetchone()
             if not row:
                 return False
-            ident, kind, raw, attempts = row
+            ident, kind, raw, attempts, previous_issue = row
             claimed = self.run(db, """UPDATE qd_gemini_job SET state='working',owner=?,attempt=attempt+1,due=?,updated=?
                                WHERE id=? AND state IN ('queued','retry','working') AND due<=?""",
                                ticket, now + 120, now, ident, now).rowcount
         if not claimed:
             return False
         data = json.loads(raw)
+        if previous_issue and previous_issue.startswith("Validation: "):
+            data["previous_validation_error"] = previous_issue
         try:
             answer = validate(kind, data, client.generate(kind, data))
             state, issue, result = "ready", None, packed(answer)
@@ -253,6 +268,8 @@ class AdvisorQueue:
             # Provider bodies and free-form exceptions may contain sensitive input.
             issue = str(exc) if type(exc) is AdvisorError else (
                 "Gemini connection unavailable" if isinstance(exc, requests.RequestException) else "Invalid Gemini response")
+            if isinstance(exc, ResponseError):
+                issue = "Validation: " + str(exc)
             state, result = "retry", None
         end = clock().timestamp()
         delay = min(1800, 30 * 2 ** min(attempts, 6)) if state == "retry" else 0
