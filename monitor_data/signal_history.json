@@ -1,30 +1,6 @@
 [
   {
     "symbol": "TSLA",
-    "status": "GET READY",
-    "bias": "Bullish",
-    "score": 75,
-    "bar": "2026-11-11T15:20:00+00:00",
-    "entry_bar": "2026-11-11T15:21:00+00:00",
-    "triggered_at_utc": "2026-11-11T15:21:31.721289+00:00",
-    "price": 393.2,
-    "scope": "2026-11-11",
-    "setup": "Breakout watch",
-    "entry": 393.7,
-    "trigger": 393.5,
-    "invalidation": 393.5,
-    "stop": 392.27,
-    "tp1": 395.85,
-    "tp2": 397.27,
-    "rr": 1.5,
-    "rr2": 2.5,
-    "regime": "Expanding",
-    "validation": "Unvalidated",
-    "id": "signal:Tradytics:0:TSLA:2026-11-11T15:20:00+00:00:edff37b4f0",
-    "explanation": "A completed candle confirming the entry trigger."
-  },
-  {
-    "symbol": "TSLA",
     "status": "WAIT",
     "bias": "Bullish",
     "score": 75,
@@ -9032,5 +9008,20 @@
     "ema21": 620.9096164446039,
     "id": "ema921:QQQ:2026-11-20:2026-11-20T18:48:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-20T18:53:00+00:00",
+    "triggered_at_utc": "2026-11-20T18:53:05.408960+00:00",
+    "price": 621.71,
+    "scope": "2026-11-20",
+    "source": "Webull",
+    "direction": "UP",
+    "window": "5m",
+    "change_pct": 0.3583592955495707,
+    "previous_price": 619.49,
+    "id": "move:QQQ:2026-11-20:2026-11-20T18:53:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
