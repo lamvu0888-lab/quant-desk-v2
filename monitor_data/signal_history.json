@@ -1,29 +1,5 @@
 [
   {
-    "symbol": "TSLA",
-    "status": "ENTER LONG",
-    "bias": "Bullish",
-    "score": 95,
-    "bar": "2026-11-11T15:20:00+00:00",
-    "entry_bar": "2026-11-11T15:24:00+00:00",
-    "triggered_at_utc": "2026-11-11T15:24:31.986317+00:00",
-    "price": 393.755,
-    "scope": "2026-11-11",
-    "setup": "Breakout and retest",
-    "entry": 393.75,
-    "trigger": 393.5,
-    "invalidation": 393.5,
-    "stop": 392.51,
-    "tp1": 395.61,
-    "tp2": 396.85,
-    "rr": 1.5,
-    "rr2": 2.5,
-    "regime": "Expanding",
-    "validation": "Unvalidated",
-    "id": "signal:Tradytics:0:TSLA:2026-11-11T15:20:00+00:00:ce2443aea8",
-    "explanation": "5m EMA 8/10 and price confirm a bullish trend."
-  },
-  {
     "symbol": "NVDA",
     "status": "DATA QUALITY",
     "bias": "Bearish",
@@ -9005,5 +8981,19 @@
     "previous_price": 699.72,
     "id": "move:SPY:2026-11-20:2026-11-20T18:54:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPX",
+    "status": "EMA TREND",
+    "bar": "2026-11-20T19:00:00+00:00",
+    "triggered_at_utc": "2026-11-20T19:00:03.418532+00:00",
+    "price": 7030.65,
+    "scope": "2026-11-20",
+    "source": "Schwab",
+    "direction": "UP",
+    "ema9": 7029.14269332136,
+    "ema21": 7026.435314932275,
+    "id": "ema921:SPX:2026-11-20:2026-11-20T19:00:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
