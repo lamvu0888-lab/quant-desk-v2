@@ -8486,5 +8486,20 @@
     "previous_price": 7136.66,
     "id": "move:SPX:2026-11-20:2026-11-20T14:39:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-20T14:46:00+00:00",
+    "triggered_at_utc": "2026-11-20T14:46:05.413562+00:00",
+    "price": 636.21,
+    "scope": "2026-11-20",
+    "source": "Webull",
+    "direction": "UP",
+    "window": "5m",
+    "change_pct": 0.3454149711365595,
+    "previous_price": 634.02,
+    "id": "move:QQQ:2026-11-20:2026-11-20T14:46:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
