@@ -1,30 +1,6 @@
 [
   {
     "symbol": "NVDA",
-    "status": "DATA QUALITY",
-    "bias": "Bullish",
-    "score": 85,
-    "bar": "2026-11-11T17:20:00+00:00",
-    "entry_bar": "2026-11-11T17:21:00+00:00",
-    "triggered_at_utc": "2026-11-11T17:21:02.088332+00:00",
-    "price": 176.525,
-    "scope": "2026-11-11",
-    "setup": "EMA 8/10 pullback",
-    "entry": 176.53,
-    "trigger": 176.46,
-    "invalidation": 176.46,
-    "stop": 176.36,
-    "tp1": 176.78,
-    "tp2": 176.95,
-    "rr": 1.47,
-    "rr2": 2.47,
-    "regime": "Normal",
-    "validation": "Unvalidated",
-    "id": "quality:NVDA:2026-11-11:17:0",
-    "explanation": "Current regular-session quote."
-  },
-  {
-    "symbol": "NVDA",
     "status": "EXIT",
     "bias": "Bullish",
     "score": 85,
@@ -8769,6 +8745,21 @@
     "change_pct": -0.3022586389991866,
     "previous_price": 7288.46,
     "id": "move:SPX:2026-11-23:2026-11-23T15:44:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPY",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-23T15:44:00+00:00",
+    "triggered_at_utc": "2026-11-23T15:44:05.328820+00:00",
+    "price": 725.22,
+    "scope": "2026-11-23",
+    "source": "Webull",
+    "direction": "DOWN",
+    "window": "5m",
+    "change_pct": -0.26404818879445235,
+    "previous_price": 727.14,
+    "id": "move:SPY:2026-11-23:2026-11-23T15:44:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
