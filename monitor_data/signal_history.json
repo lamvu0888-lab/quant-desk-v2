@@ -1,34 +1,5 @@
 [
   {
-    "symbol": "TSLA",
-    "status": "LEVEL CROSSING",
-    "bias": "Bearish",
-    "score": 45,
-    "bar": "2026-11-11T19:40:00+00:00",
-    "entry_bar": "2026-11-11T19:40:00+00:00",
-    "triggered_at_utc": "2026-11-11T19:40:32.410588+00:00",
-    "price": 392.24,
-    "scope": "2026-11-11",
-    "setup": "Breakout watch",
-    "entry": 391.77,
-    "trigger": 391.81,
-    "invalidation": 391.81,
-    "stop": 392.37,
-    "tp1": 390.87,
-    "tp2": 390.27,
-    "rr": 1.5,
-    "rr2": 2.5,
-    "regime": "Normal",
-    "validation": "Unvalidated",
-    "crossing": {
-      "level": "Put wall",
-      "price": 392.5,
-      "direction": "below"
-    },
-    "id": "level:Tradytics:0:TSLA:2026-11-11T19:40:00+00:00:Put wall",
-    "explanation": "A completed 5m close crossed a level recorded before this bar."
-  },
-  {
     "symbol": "NVDA",
     "status": "LEVEL CROSSING",
     "bias": "Neutral",
@@ -8325,6 +8296,20 @@
     "ema9": 722.9550666126585,
     "ema21": 722.823981990611,
     "id": "ema921:SPY:2026-11-23:2026-11-23T19:18:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "EMA TREND",
+    "bar": "2026-11-23T19:21:00+00:00",
+    "triggered_at_utc": "2026-11-23T19:21:05.210931+00:00",
+    "price": 651.67,
+    "scope": "2026-11-23",
+    "source": "Webull",
+    "direction": "UP",
+    "ema9": 651.0553737648071,
+    "ema21": 650.9064878684308,
+    "id": "ema921:QQQ:2026-11-23:2026-11-23T19:21:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
