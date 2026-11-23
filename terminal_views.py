@@ -1631,6 +1631,12 @@ def health_page(ctx):
         details["Provider-reported quote delay"] = ("Unverified" if delay is None or quote.error else
                                                    "Zero delay" if delay == 0 else f"{delay} minutes")
         st.table([{k: v if v is not None else "Unreported" for k, v in details.items()}])
+        if callable(getattr(ctx.webull_store, "request_diagnostics", None)):
+            failures = ctx.webull_store.request_diagnostics()
+            if failures:
+                st.write("Webull requests awaiting a successful retry")
+                st.table(failures)
+                st.caption("Each row clears after that request succeeds. Authorization and product access are checked separately.")
     with st.container(border=True):
         panel_header("Price source comparison", "health", "price_source_compare", f"{ctx.ticker} · {ctx.price_provider} drives price timing")
         quote_feed = ctx.quote_feed()
