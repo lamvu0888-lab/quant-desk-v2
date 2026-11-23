@@ -1,29 +1,5 @@
 [
   {
-    "symbol": "TSLA",
-    "status": "DATA QUALITY",
-    "bias": "Neutral",
-    "score": 0,
-    "bar": "2026-11-11T20:25:00+00:00",
-    "entry_bar": "2026-11-11T20:29:00+00:00",
-    "triggered_at_utc": "2026-11-11T20:30:02.303560+00:00",
-    "price": 391.89,
-    "scope": "2026-11-11",
-    "setup": null,
-    "entry": null,
-    "trigger": null,
-    "invalidation": null,
-    "stop": null,
-    "tp1": null,
-    "tp2": null,
-    "rr": null,
-    "rr2": null,
-    "regime": "Normal",
-    "validation": "Unvalidated",
-    "id": "quality:TSLA:2026-11-11:20:1",
-    "explanation": "Waiting for price and options flow from the same completed 5-minute bar. Current regular-session quote."
-  },
-  {
     "symbol": "NVDA",
     "status": "DATA QUALITY",
     "bias": "Bearish",
@@ -8284,5 +8260,20 @@
     },
     "id": "exit:candidate:Webull:0:QQQ:2026-11-23T19:46:00+00:00",
     "explanation": "Tracked setup closed by stop."
+  },
+  {
+    "symbol": "SPX",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-23T20:01:00+00:00",
+    "triggered_at_utc": "2026-11-23T20:01:03.086096+00:00",
+    "price": 7249.79,
+    "scope": "2026-11-23",
+    "source": "Schwab",
+    "direction": "UP",
+    "window": "1m",
+    "change_pct": 0.12014765732784038,
+    "previous_price": 7241.09,
+    "id": "move:SPX:2026-11-23:2026-11-23T20:01:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
