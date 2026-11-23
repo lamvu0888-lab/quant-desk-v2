@@ -117,7 +117,8 @@ def process_scan(journal, ctx, read, *, check_move=True):
             early = apply_model_gate(early, model_summary(read["candles"], early, now), validation)
             if early["status"] in ENTRY_STATES:
                 ident = event_id("early-paper", scope, symbol, early["entry_bar"])
-                journal.record_early(ident, symbol, scope, now, early, ENTRY_COOLDOWN)
+                if not journal.record_early(ident, symbol, scope, now, early, ENTRY_COOLDOWN):
+                    modes.update(status="GET READY", reasons=["Early paper setup already recorded or in cooldown."])
             else:
                 modes.update(status=early["status"], reasons=early["blocks"] or early["missing"])
         else:

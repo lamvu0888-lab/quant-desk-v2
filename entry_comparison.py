@@ -14,7 +14,7 @@ def score_band(score):
 
 
 def summarize(signals, trades, group, slip):
-    groups = defaultdict(lambda: {"signals": 0, "trades": []})
+    groups = defaultdict(lambda: {"signals": 0, "trades": [], "delays": []})
 
     def key(mode, plan):
         score = numeric(plan.get("score"))
@@ -30,7 +30,11 @@ def summarize(signals, trades, group, slip):
         return mode, bucket
 
     for signal in signals:
-        groups[key(signal["mode"], signal["plan"])]["signals"] += 1
+        group_values = groups[key(signal["mode"], signal["plan"])]
+        group_values["signals"] += 1
+        at, trigger = time_or_none(signal["origin"]), time_or_none(signal["plan"].get("entry_bar"))
+        if at and trigger and at >= trigger:
+            group_values["delays"].append((at-trigger).total_seconds())
     for trade in trades:
         track = trade.get("track", BASELINE)
         if track in (BASELINE, EARLY):
@@ -46,6 +50,7 @@ def summarize(signals, trades, group, slip):
         failed = sum(any(f["reason"] in ("STOP", "20% PREMIUM STOP") for f in t["fills"])
                      and not any(f["reason"] == "TP1" for f in t["fills"]) for t in closed)
         rows.append({"Mode": mode, group: bucket, "Signals": values["signals"],
+                     "Mean trigger-to-scan seconds": round(mean(values["delays"]), 1) if values["delays"] else None,
                      "Filled": sum(bool(t.get("opened")) for t in cohort),
                      "Skipped": sum(t["state"] == "SKIPPED" for t in cohort), "Closed": len(net),
                      "Win %": round(100 * sum(p > 0 for p in net) / len(net), 1) if net else None,

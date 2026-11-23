@@ -90,7 +90,7 @@ def make_trade_plan(*, candles, buckets, flow_rows, levels, now, session, expiry
               "volume_ratio": movement["volume"], "break_level": break_level, "break_direction": break_dir,
               "break_at": break_at.isoformat() if break_at else None,
               "evidence": checks, "missing": missing, "conflicts": conflicts, "blocks": stops, "score": 0,
-              "score_details": [], "cvd_proxy": cvd_proxy,
+              "score_details": [], "entry_minimum": MIN_ENTRY_SCORE, "cvd_proxy": cvd_proxy,
               "demo": preview, "rule_version": RULES_VERSION if box else TREND_RULES_VERSION, "validation": "Unvalidated"}
     if not stamp1 or not 0 <= (now - stamp1).total_seconds() <= 120:
         missing.append("Recent completed 1-minute candles.")
