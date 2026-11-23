@@ -1,30 +1,6 @@
 [
   {
     "symbol": "NVDA",
-    "status": "DATA QUALITY",
-    "bias": "Mixed",
-    "score": 55,
-    "bar": "2026-11-11T18:15:00+00:00",
-    "entry_bar": "2026-11-11T18:16:00+00:00",
-    "triggered_at_utc": "2026-11-11T18:16:02.321932+00:00",
-    "price": 176.66,
-    "scope": "2026-11-11",
-    "setup": "EMA 8/10 pullback",
-    "entry": 176.66,
-    "trigger": 176.6,
-    "invalidation": 176.6,
-    "stop": 176.54,
-    "tp1": 176.84,
-    "tp2": 176.96,
-    "rr": 1.5,
-    "rr2": 2.5,
-    "regime": "Compressing",
-    "validation": "Unvalidated",
-    "id": "quality:NVDA:2026-11-11:18:0",
-    "explanation": "Current regular-session quote."
-  },
-  {
-    "symbol": "NVDA",
     "status": "GET READY",
     "bias": "Bullish",
     "score": 75,
@@ -8625,6 +8601,21 @@
     "change_pct": 0.24454973669219005,
     "previous_price": 719.69,
     "id": "move:SPY:2026-11-23:2026-11-23T16:48:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-23T16:48:00+00:00",
+    "triggered_at_utc": "2026-11-23T16:48:03.915518+00:00",
+    "price": 649.495,
+    "scope": "2026-11-23",
+    "source": "Webull",
+    "direction": "UP",
+    "window": "1m",
+    "change_pct": 0.35227860911752895,
+    "previous_price": 647.215,
+    "id": "move:QQQ:2026-11-23:2026-11-23T16:48:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
