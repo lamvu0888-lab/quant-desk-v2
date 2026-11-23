@@ -41,7 +41,7 @@ def test_flow_confirmation_uses_two_matching_intervals():
 def test_evidence_score_is_itemized_and_proxy_is_scoped():
     inputs = synthetic_inputs()
     baseline = make_trade_plan(**inputs)
-    assert MIN_ENTRY_SCORE == 71
+    assert MIN_ENTRY_SCORE == 60
     assert sum(row["possible"] for row in baseline["score_details"]) == 100
     assert baseline["score"] == sum(row["points"] for row in baseline["score_details"])
     assert baseline["score"] > 70

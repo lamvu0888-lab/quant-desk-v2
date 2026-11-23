@@ -1,5 +1,6 @@
 """Sanitized local connection check; never prints keys, signed headers or tokens."""
 from datetime import datetime,timezone
+import argparse
 import json
 import os
 import time
@@ -11,9 +12,12 @@ from rate_control import RequestBudget
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--authorize", action="store_true", help="Request approval if required by Webull")
+    args = parser.parse_args()
     settings=Settings.load();ticker=os.getenv('DEFAULT_TICKER','SPY').strip().upper()
     try:
-        adapter=WebullSDKAdapter(settings);budget=RequestBudget(settings.max_requests)
+        adapter=WebullSDKAdapter(settings, authorize=args.authorize);budget=RequestBudget(settings.max_requests)
         q=adapter.fetch_quote(ticker,budget)
         while True:
             try: h=adapter.fetch_history(ticker,budget);break

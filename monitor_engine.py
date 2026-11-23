@@ -107,6 +107,23 @@ def process_scan(journal, ctx, read, *, check_move=True):
     if move_alert:
         alerts.append(move_alert)
 
+    modes = plan.get("confirmation_modes") or {}
+    if modes.get("status") == "EARLY PAPER CANDIDATE":
+        early = {**plan, "status": "ENTER LONG" if plan["direction"] > 0 else "ENTER SHORT"}
+        prior_early = journal.records(symbol, "early_paper_entry", scope=scope, limit=1)
+        if not prior_early or now - utc(prior_early[0]["origin"]) >= ENTRY_COOLDOWN:
+            comparable = journal.records(symbol, "candidate", scope=scope, limit=1200, settled=True)
+            validation = performance(paper_records(comparable, before=now, hold=early["hold"], setup=early["setup"]))
+            early = apply_model_gate(early, model_summary(read["candles"], early, now), validation)
+            if early["status"] in ENTRY_STATES:
+                ident = event_id("early-paper", scope, symbol, early["entry_bar"])
+                if not journal.record_early(ident, symbol, scope, now, early, ENTRY_COOLDOWN):
+                    modes.update(status="GET READY", reasons=["Early paper setup already recorded or in cooldown."])
+            else:
+                modes.update(status=early["status"], reasons=early["blocks"] or early["missing"])
+        else:
+            modes.update(status="GET READY", reasons=["Early paper ticker cooldown."])
+
     prev = journal.records(symbol, "decision", scope=scope, limit=1)
     prior = prev[0]["payload"] if prev and prev[0]["payload"].get("session") == str(ctx.session) else {}
     before_key = prior.get("semantic")
@@ -118,12 +135,17 @@ def process_scan(journal, ctx, read, *, check_move=True):
         plan["missing"].insert(0, "A prior paper setup is still being tracked.")
     box = plan.get("range_reversal")
     price_confirmed = box.get("follow_through", False) if box else plan["movement"]["price_confirmed"]
-    option_ready = not box or (plan.get("option_quote") or {}).get("ready")
+    option_ready = (plan.get("option_quote") or {}).get("ready")
     if plan["status"] in ENTRY_STATES and (
             plan["score"] < MIN_ENTRY_SCORE or not price_confirmed or not option_ready
             or not plan["flow_confirmation"]["confirmed"] or plan["data_reasons"]):
         plan["status"] = "GET READY"
-        plan["missing"].append("The worker is waiting for the setup’s price, flow, quote and score checks.")
+        for condition, reason in ((not price_confirmed, "Waiting for confirmed price structure."),
+                                  (not option_ready, "Waiting for an executable exact-expiry option quote."),
+                                  (plan["score"] < MIN_ENTRY_SCORE, f"Evidence below {MIN_ENTRY_SCORE}/100."),
+                                  (not plan["flow_confirmation"]["confirmed"], "Waiting for two aligned 5m premium closes.")):
+            if condition:
+                plan["missing"].append(reason)
     if plan["status"] in ENTRY_STATES:
         last = journal.records(symbol, "candidate", scope=scope, limit=1)
         prior_candidate = last[0]["payload"]["plan"] if last else {}

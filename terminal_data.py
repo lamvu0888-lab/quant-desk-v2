@@ -168,20 +168,34 @@ def exact_timeline(upper, lower, session, now, interval):
 
 
 def scope_timeline(fetch, now, dte, *, symbol=None, interval="5m", session=None, first_dte=None):
+    def checked(feed):
+        if interval == "1m" and feed.snapshot:
+            meta = feed.snapshot.meta
+            if meta.get("interval") not in (None, "1m") or any(
+                    r.get("interval") not in (None, "1m") for r in feed.rows):
+                return Feed(error=FeedError("INTERVAL", "Provider returned a different flow interval."))
+            stamps = [r.get("time") for r in feed.rows]
+            if len(stamps) != len(set(stamps)):
+                return Feed(error=FeedError("INTERVAL", "Duplicate minute premium timestamps."))
+            if meta.get("delayed") or meta.get("sandbox") or any(r.get("delayed") or r.get("stale") or
+                    (numeric(r.get("delay_minutes")) or 0) > 0 for r in feed.rows):
+                return Feed(error=FeedError("DELAYED", "Minute flow is delayed or unverified."))
+        return feed
+
     selected = session or active_session(now)
     params = {"symbol": symbol, "interval": interval, "date": str(session) if session else None}
     # An up-to-DTE total covers exactly one expiry when a current listing
     # verifies that no earlier expiry exists for this symbol.
     if dte is None or dte == 0 or symbol and dte == first_dte:
-        feed = fetch("timeline", dte=dte, **params)
+        feed = checked(fetch("timeline", dte=dte, **params))
         if not feed.snapshot:
             return feed
         if symbol and feed.snapshot.meta.get("symbol") not in (None, symbol):
             return Feed(error=FeedError("CHECK SYMBOL", "Options flow response identified a different ticker."))
         rows = closed_flow_rows(same_ticker(feed.rows, symbol) if symbol else feed.rows, selected, now, interval)
         return Feed(Snapshot(rows, {**feed.snapshot.meta, "interval": interval}, feed.snapshot.received_at, feed.snapshot.cursor), feed.error, feed.loading)
-    upper = fetch("timeline", dte=dte, **params)
-    lower = fetch("timeline", dte=dte - 1, **params)
+    upper = checked(fetch("timeline", dte=dte, **params))
+    lower = checked(fetch("timeline", dte=dte - 1, **params))
     if symbol and any(feed.snapshot and (feed.snapshot.meta.get("symbol") not in (None, symbol) or
                       any(row.get("symbol") not in (None, symbol) for row in feed.rows)) for feed in (upper, lower)):
         return Feed(error=FeedError("CHECK SYMBOL", "The two expiry totals did not identify the selected ticker."))

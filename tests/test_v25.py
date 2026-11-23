@@ -239,7 +239,7 @@ def test_worker_transitions_settlement_and_duplicate_suppression(tmp_path, monke
 
     def assembled(context, _read, **_):
         plan = make_trade_plan(**{**args, "now": context.now})
-        plan.update(symbol=context.ticker, data_reasons=[], price_context_ready=True, dealer_note="Gamma snapshot unavailable")
+        plan.update(symbol=context.ticker, option_quote={"ready": True}, data_reasons=[], price_context_ready=True, dealer_note="Gamma snapshot unavailable")
         return plan, {}
 
     monkeypatch.setattr("monitor_engine.build_decision", assembled)

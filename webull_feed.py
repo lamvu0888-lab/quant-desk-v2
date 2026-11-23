@@ -75,7 +75,7 @@ class WebullFeedStore:
         self._adapter_lock = threading.Lock()
         self._lock = threading.RLock()
         self._closed = False
-        self._entries = {kind: OrderedDict() for kind in ("quote", "history", "options", "futures")}
+        self._entries = {kind: OrderedDict() for kind in ("quote", "history", "options", "futures", "footprint")}
         self._category_hints = OrderedDict()
         self._pending = {kind: 0 for kind in self._entries}
         self._pools = {kind: ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"webull-{kind}")
@@ -90,11 +90,26 @@ class WebullFeedStore:
                     raise DataError(self._adapter_error)
                 try:
                     self._adapter = self._adapter_factory()
+                    self._adapter_error = None
                 except Exception as exc:
                     self._adapter_error = safe_error(exc)
                     self._adapter_retry = time.monotonic() + 30
                     raise DataError(self._adapter_error) from None
             return self._adapter
+
+    def auth_diagnostics(self):
+        adapter = self._adapter
+        auth = getattr(adapter, "_auth", None)
+        error = getattr(adapter, "last_auth_error", None) or self._adapter_error
+        expires = getattr(auth, "expires", None)
+        return {"Authorization store": "Shared PostgreSQL" if self.settings.webull_auth_dsn else "Local encrypted SQLite",
+                "Last successful API request (UTC)": getattr(adapter, "last_success", None),
+                "Reported token expiry (UTC)": expires.isoformat() if expires else None,
+                "Last authentication error": error,
+                "Connection": ("REAUTH REQUIRED" if error and "REAUTH REQUIRED" in error and
+                               (adapter is None or getattr(adapter, "_auth_failed", False)) else
+                               "Waiting for authorization" if self._adapter_error or getattr(adapter, "_auth_failed", False)
+                               else "Authorized request observed" if getattr(adapter, "last_success", None) else "Unverified")}
 
     def close(self):
         with self._lock:
@@ -163,6 +178,8 @@ class WebullFeedStore:
         opened = session_state(now)["status"] == "OPEN"
         if kind == "options":
             return OPTION_REFRESH_SECONDS if opened else 60
+        if kind == "footprint":
+            return 20 if opened else 180
         if kind == "futures":
             return 65 if opened else 180
         if kind == "quote":
@@ -194,6 +211,31 @@ class WebullFeedStore:
                     for ticker, entry in entries.items():
                         result[ticker][kind] = entry.feed
         return result
+
+    def stock_footprint(self, ticker, *, paused=False):
+        with self._lock:
+            entry = self._entry("footprint", ticker)
+            if not (paused or self._closed or entry.feed.loading) and time.monotonic() >= entry.due:
+                self._schedule("footprint", {ticker: entry}, self._read_footprint, ticker)
+            return entry.feed
+
+    def _read_footprint(self, ticker):
+        client = self._client()
+        raw = client.request("Stock footprint", client.data.market_data.get_footprint, self.budget,
+                             symbols=[ticker], category=category_for(ticker, self.settings.category),
+                             timespan="M1", count="10", real_time_required=True, trading_sessions="RTH")
+        now = datetime.now(UTC)
+        if reported_delay(raw, ticker) != 0:
+            raise DataError("Footprint zero-delay entitlement unverified.")
+        points = []
+        for row in records(raw, ticker):
+            start = time_or_none(row.get("time"))
+            buy, sell = numeric(row.get("buy_total")), numeric(row.get("sell_total"))
+            if (row.get("closed") is not False and not row.get("forming") and start
+                    and not start.second and not start.microsecond and start + MINUTE <= now
+                    and buy is not None and sell is not None and min(buy, sell) >= 0):
+                points.append({"time": (start + MINUTE).isoformat(), "delta": buy - sell})
+        return {ticker: Snapshot({"points": points}, {"delay_minutes": 0}, now)}
 
     def futures_activity(self, root, now, day, *, paused=False):
         key = (root, str(day))

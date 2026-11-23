@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from data_utils import DataError, field, utc
 from dealer_hedging import UNITS, hedge_scenarios, hedge_snapshot, level_crossings
 from futures_proxy import recent_pressure
+from early_flow import confirmation
 from decision_engine import ENTRY_STATES, make_trade_plan
 from desk_analytics import FIVE_MINUTES, MINUTE, candles_on
 from iv_decision import iv_read
@@ -101,6 +102,8 @@ def build_decision(ctx, read, *, warm_options=True):
     gamma_levels = dealer_levels(gamma, spot, 0)
     session = session_state(ctx.now)
     minute_close = read.get("minute_close")
+    points = []
+    footprint_source = "Observed ETF footprint" if ctx.ticker not in INDICES else "ES/MES footprint proxy"
     cvd_proxy = None
     if (ctx.ticker == "SPX" and ctx.webull_store and
             callable(getattr(ctx.webull_store, "futures_activity", None)) and minute_close and not ctx.paused):
@@ -108,8 +111,13 @@ def build_decision(ctx, read, *, warm_options=True):
             feed = ctx.webull_store.futures_activity(root, ctx.now, ctx.session, paused=ctx.paused)
             if feed.error or not feed.snapshot or feed_has_delay(feed) or feed.snapshot.meta.get("delay_minutes") != 0:
                 continue
+            if not points and feed.obj.get("points"):
+                points = feed.obj["points"]
+                footprint_source = f"{root} footprint proxy"
             value = recent_pressure(feed.obj.get("points", []), minute_close)
             if value is not None:
+                points = feed.obj["points"]
+                footprint_source = f"{root} footprint proxy"
                 cvd_proxy = {**value, "symbol": feed.obj.get("contract"), "quality": "footprint"}
                 break
     elif ctx.ticker not in INDICES and minute_close:
@@ -139,13 +147,17 @@ def build_decision(ctx, read, *, warm_options=True):
                                     if row["horizon"] == 5 and row["scenario"] == shock and row["total"] is not None), None)
             if dealer_scenario:
                 plan = assemble(levels)
-    if plan["status"] in (*ENTRY_STATES, "GET READY") and ctx.ticker not in INDICES:
+    def needs_market_checks():
+        return plan["status"] in (*ENTRY_STATES, "GET READY") or bool(
+            plan.get("confirmed") and not box and plan["direction"] and not quality and not plan["blocks"])
+
+    if needs_market_checks() and ctx.ticker not in INDICES:
         dark = ctx.get("dark_levels", symbol=ctx.ticker, window=5, limit=30)
         dark_day = source_stamp("dark_levels", dark, ctx.ticker)
         if dark.snapshot and not dark.error and not feed_has_delay(dark) and dark_day == ctx.session:
             levels += dark_levels(same_ticker(dark.rows, ctx.ticker), dark.snapshot.received_at.isoformat(), 3)
             plan = assemble(levels)
-    if use_webull_chain and not warm_options and plan["status"] in (*ENTRY_STATES, "GET READY"):
+    if use_webull_chain and not warm_options and needs_market_checks():
         webull_chain, _ = ctx.option_chain(ctx.expiry, provider="Webull")
         iv = read_iv(ctx, read["vol"], read["regime"], spot, ctx.expiry, webull_chain=webull_chain)
         if iv["atm_sample"]:
@@ -170,16 +182,16 @@ def build_decision(ctx, read, *, warm_options=True):
     plan["price_watch"] = read.get("price_watch")
     plan["price_trend"] = read.get("price_trend")
     review = None
-    if use_webull_chain and (warm_options or plan["status"] in (*ENTRY_STATES, "GET READY")):
+    if use_webull_chain and (warm_options or needs_market_checks()):
         review = option_review(webull_chain, "Webull", ctx.ticker, ctx.expiry, spot, plan["direction"], ctx.now,
                                max_age=ctx.option_max_age, paused=ctx.paused)
-        if not review["ready"] and plan["status"] in ENTRY_STATES and ctx.store:
+        if not review["ready"] and needs_market_checks() and ctx.store:
             alternate_chain, source = ctx.option_chain(ctx.expiry, provider="Tradytics")
             alternate = option_review(alternate_chain, source, ctx.ticker, ctx.expiry, spot, plan["direction"], ctx.now,
                                       max_age=ctx.option_max_age, paused=ctx.paused)
             if alternate["ready"]:
                 review = alternate
-    elif box and plan["status"] in ENTRY_STATES:
+    elif needs_market_checks():
         chain, source = ctx.option_chain(ctx.expiry, provider="Tradytics") if ctx.expiry and ctx.store else (Feed(), "Tradytics")
         review = option_review(chain, source, ctx.ticker, ctx.expiry, spot, plan["direction"], ctx.now,
                                max_age=ctx.option_max_age, paused=ctx.paused)
@@ -227,6 +239,14 @@ def build_decision(ctx, read, *, warm_options=True):
     day = candles_on(read["buckets"], ctx.session)
     plan["crossings"] = (level_crossings(day[-2]["close"], day[-1]["close"], plan["gamma_levels"])
                          if len(day) >= 2 and not quality and gamma_at and gamma_at <= utc(day[-1]["time_utc"]) else [])
+    flow1 = Feed()
+    if ctx.ticker in ("SPX", "SPY", "QQQ") and session["status"] == "OPEN" and not ctx.paused and not ctx.preview:
+        flow1 = ctx.timeline(interval="1m")
+        if ctx.ticker in ("QQQ", "SPY") and callable(getattr(ctx.webull_store, "stock_footprint", None)):
+            footprint = ctx.webull_store.stock_footprint(ctx.ticker)
+            if not footprint.error and footprint.snapshot and footprint.snapshot.meta.get("delay_minutes") == 0:
+                points = footprint.obj.get("points", [])
+    plan["confirmation_modes"] = confirmation(plan, ctx.now, flow1, points, footprint_source, read["candles"])
     return plan, iv
 
 

@@ -113,6 +113,14 @@ def detector_view(ctx, read, plan, iv):
         f'<span class="qd-status {tint}">{esc(plan["status"])}</span></div></section>',
         unsafe_allow_html=True,
     )
+    modes = plan.get("confirmation_modes")
+    if modes:
+        standard = "STANDARD ENTRY CONFIRMED" if plan["status"] in ("ENTER LONG", "ENTER SHORT") else plan["status"]
+        st.write(f"Early 3m · {modes['status']} | Standard 5m · {standard} | Evidence {plan['score']}/100")
+        st.dataframe([{"Indicator": key, "Early 3m": value, "Standard 5m": modes["standard"][key]}
+                      for key, value in modes["early"].items()], hide_index=True)
+        if modes["reasons"]:
+            st.caption("Early checks · " + " ".join(modes["reasons"]))
     nav_button("Open Trade Plan", "Trade Plan", "movement_open_trade")
     timing = plan["feed_timing"]
     st.caption(f"{plan['source']} quote {age_text(timing['quote_age'])} old · 1m close {age_text(timing['minute_age'])} old · "
@@ -260,7 +268,7 @@ def detector_view(ctx, read, plan, iv):
     if model.get("p_tp1") is not None and model.get("ev_r") is not None:
         trigger += f" Monte Carlo estimate · TP1 first {ratio_pct(model['p_tp1'])} · {model['ev_r']:+.2f}R."
     show_stage(8, plan["status"], f"{trigger} Evidence {plan['score']}/100 · entry minimum {MIN_ENTRY_SCORE}.")
-    st.caption("Entry requires more than 70 rule points plus the mandatory checks. This score is not a win probability.")
+    st.caption(f"Entry requires {MIN_ENTRY_SCORE}/100 evidence points and every mandatory check.")
     if plan.get("score_details"):
         with st.expander("How the entry evidence is scored"):
             st.dataframe(pd.DataFrame([{"Factor": row["factor"], "Earned": row["points"], "Max": row["possible"],

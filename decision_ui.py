@@ -12,6 +12,7 @@ import streamlit as st
 from data_utils import DataError, utc
 from dealer_hedging import HORIZONS, hedge_change, hedge_scenarios
 from decision_engine import ENTRY_STATES, paper_outcome
+from entry_score import MIN_ENTRY_SCORE
 from decision_flow import apply_model_gate, build_decision, get_hedge, model_summary, read_iv
 from desk_analytics import MINUTE
 from gemini_views import scenario_panel
@@ -97,7 +98,9 @@ def plan_signature(plan):
 
 def dashboard_decision(ctx, read):
     plan, iv = build_decision(ctx, read)
-    if plan["status"] in ENTRY_STATES:
+    modes = plan.get("confirmation_modes") or {}
+    prequalified = modes.get("status") == "EARLY PAPER CANDIDATE"
+    if plan["status"] in ENTRY_STATES or prequalified:
         fields = ("price", "entry", "stop", "invalidation", "tp1", "tp2", "hold", "direction", "flow",
                   "gex", "regime", "underlying_cost_bps")
         origin = ctx.now.replace(second=0, microsecond=0)
@@ -105,10 +108,16 @@ def dashboard_decision(ctx, read):
             origin += MINUTE
         model = current_model(read["candles"][-2400:], {field: plan[field] for field in fields}, origin.isoformat())
         _, evaluation = prospective_report(ctx, plan)
+        if prequalified:
+            early = apply_model_gate({**plan, "status": "ENTER LONG" if plan["direction"] > 0 else "ENTER SHORT"}, model, evaluation)
+            if early["status"] not in ENTRY_STATES:
+                modes.update(status=early["status"], reasons=early["blocks"] or early["missing"])
         plan = apply_model_gate(plan, model, evaluation)
     review = st.session_state.get("qd25_execution_review")
     if review and review["signature"] == plan_signature(plan) and time_or_none(review["expires"]) > ctx.now:
         plan["option_review"] = review["message"]
+        if review["blocked"] and prequalified:
+            modes.update(status="AVOID", reasons=[review["message"]])
         if review["blocked"] and plan["status"] in ENTRY_STATES:
             plan["status"] = "AVOID"
             plan["blocks"] = plan["blocks"] + [review["message"]]
@@ -173,7 +182,7 @@ def command_panel(ctx, plan, iv, candles, *, key, track=False, bar_ok=True):
     flow = plan["flow"].get("recent_net")
     flow_agreement = plan["direction"] * (plan["flow"].get("direction") or 0)
     kpis([metric("Market bias", plan["bias"], plan["regime"] or "Regime pending"),
-          metric("Entry evidence", f"{plan['score']}/100", "Rule points · entry above 70", plan["direction"]),
+          metric("Entry evidence", f"{plan['score']}/100", f"Minimum {MIN_ENTRY_SCORE}/100", plan["direction"]),
           metric("15m options flow", compact(flow, currency=True, signed=True),
                  "Confirms setup" if flow_agreement > 0 else
                  "Opposes setup" if flow_agreement < 0 else "Awaiting directional agreement", flow),
@@ -200,7 +209,7 @@ def command_panel(ctx, plan, iv, candles, *, key, track=False, bar_ok=True):
     if shown.get("outcome") and shown["outcome"].get("r") is not None:
         st.caption(f"Paper result {shown['outcome']['r']:+.2f}R after modeled costs.")
     with st.expander("Evidence and entry conditions", expanded=key == "trade"):
-        st.caption("This is a 0–100 rule score, not a 70% chance of winning. An entry needs more than 70 points AND every mandatory price, flow, quote and risk check.")
+        st.caption(f"Entry requires at least {MIN_ENTRY_SCORE}/100 evidence points and all mandatory price, flow, quote and risk checks.")
         if plan.get("score_details"):
             show_table([{"Evidence": row["factor"], "Points": f"{row['points']}/{row['possible']}",
                          "Reading": row["state"]} for row in plan["score_details"]], 390)

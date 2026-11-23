@@ -13,6 +13,8 @@ from dotenv import dotenv_values
 
 from gemini_advisor import AdvisorQueue, BASELINE, GeminiClient, MODEL
 from gemini_views import paper_comparison
+from early_flow import EARLY, STANDARD
+from entry_comparison import paired_entries, summarize
 from market_session import ET, active_session, rth_bounds, session_state
 from paper_engine import PaperLedger, PaperWorker, clock, option_pnl, realized, stamp, unrealized
 from paper_review import day_report
@@ -167,6 +169,24 @@ def dashboard():
         finally:
             db.close()
 
+    def comparison_signals():
+        db = read_connection()
+        try:
+            rows = db.execute("SELECT id,symbol,origin,kind,payload FROM qd25_observation "
+                              "WHERE kind IN ('candidate','early_paper_entry') ORDER BY origin,id")
+            signals = []
+            for ident, symbol, origin, kind, raw in rows:
+                p = json.loads(raw)
+                if kind == "candidate":
+                    if p.get("decision_status") not in ("ENTER LONG", "ENTER SHORT") or not p.get("entry_alert_id"):
+                        continue
+                    ident = p["entry_alert_id"]
+                signals.append({"id": ident, "symbol": symbol, "origin": origin, "plan": p["plan"],
+                                "mode": EARLY if kind == "early_paper_entry" else STANDARD})
+            return signals
+        finally:
+            db.close()
+
     def live_data():
         now = clock()
         db = read_connection()
@@ -259,7 +279,25 @@ def dashboard():
             if is_demo:
                 st.caption("Live Gemini plans and reviews appear in journal mode.")
             else:
-                paper_comparison(all_trades, table, read_reviews, realized, active_session(now), shadow_halted)
+                paper_comparison([t for t in all_trades if t.get("track") != EARLY], table, read_reviews, realized, active_session(now), shadow_halted)
+        if not is_demo and st.toggle("Compare Early 3m and Standard 5m", key="show_entry_modes"):
+            group = st.selectbox("Group signals by", ["Score band", "Former score gate", "Volatility regime", "Market / setup"])
+            slip = st.number_input("Additional slippage per option per side ($)", min_value=0., value=.01, step=.01)
+            try:
+                signals = comparison_signals()
+            except Exception:
+                st.warning("Comparison journal unavailable.")
+            else:
+                st.caption("Signals count unique worker-qualified opportunities. A fill requires an executable ask. "
+                           "Closed returns use exit bids, both commissions and the selected extra slippage. "
+                           "A stop before any TP1 fill is the false-positive measure. MAE/MFE use observed executable bids. "
+                           "Small or unmatched samples cannot establish a timing advantage.")
+                st.dataframe(summarize(signals, all_trades, group, slip), hide_index=True)
+                pairs = paired_entries(signals, all_trades)
+                st.caption(f"{len(pairs)} matched signals. Pairs share session, ticker, provider, expiry, side, setup "
+                           "and trigger within ten minutes. Positive values favor Early. Premium comparisons require the same contract.")
+                if pairs:
+                    st.dataframe(pairs, hide_index=True)
         with learning:
             if not reports:
                 st.caption("A report appears after a completed market session.")

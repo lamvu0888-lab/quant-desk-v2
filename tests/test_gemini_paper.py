@@ -15,6 +15,7 @@ from desk_analytics import MINUTE, PriceLevel
 from gemini_advisor import (AdvisorError, AdvisorQueue, BASELINE, CHANGES, FLOW_CHOICES, GeminiClient,
                             LEGS, SHADOW, trade_report, validate)
 from gemini_strategy import ScenarioMonitor, assess, market_snapshot
+from entry_score import MIN_ENTRY_SCORE
 from paper_engine import PaperLedger, PaperWorker, realized, stamp
 from research_journal import Journal
 from test_range_reversal import range_inputs
@@ -67,7 +68,7 @@ def test_only_prospective_matching_price_flow_and_geometry_can_enter(side, rangi
     assert not reasons and result["gemini"]["leg"] == name
     assert result["status"] == ("ENTER LONG" if side > 0 else "ENTER SHORT")
     assert plan == before and plan["status"] == "GET READY"
-    assert result["rr"] >= 1.35 and result["score"] > 70
+    assert result["rr"] >= 1.35 and result["score"] >= MIN_ENTRY_SCORE
 
     daily["legs"][name]["flow"] = FLOW_CHOICES[1]
     assert "two aligned" in assess(plan, read, daily, now)[1][0]
@@ -75,7 +76,7 @@ def test_only_prospective_matching_price_flow_and_geometry_can_enter(side, rangi
     second = deepcopy(plan)
     second["flow_confirmation"]["intervals"][-1]["net"] *= -1
     assert not assess(second, read, daily, now)[0]
-    for change in ({"demo": True}, {"quote_at": stamp(now - MINUTE)}, {"score": 70},
+    for change in ({"demo": True}, {"quote_at": stamp(now - MINUTE)}, {"score": MIN_ENTRY_SCORE - 1},
                    {"price_context_ready": False}, {"data_reasons": ["Stale"]}, {"confirmed": False},
                    {"blocks": ["Stop too wide"]}, {"option_quote": {"ready": False}}, {"premium_review_required": True}):
         assert not assess(dict(plan, **change), read, daily, now)[0]
