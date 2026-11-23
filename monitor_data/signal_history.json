@@ -1,30 +1,6 @@
 [
   {
     "symbol": "SPY",
-    "status": "GET READY",
-    "bias": "Bearish",
-    "score": 90,
-    "bar": "2026-11-11T19:20:00+00:00",
-    "entry_bar": "2026-11-11T19:22:00+00:00",
-    "triggered_at_utc": "2026-11-11T19:22:31.460605+00:00",
-    "price": 759.89,
-    "scope": "2026-11-11",
-    "setup": "Breakout close",
-    "entry": 759.89,
-    "trigger": 760.15,
-    "invalidation": 760.15,
-    "stop": 760.21,
-    "tp1": 759.41,
-    "tp2": 759.09,
-    "rr": 1.5,
-    "rr2": 2.5,
-    "regime": "Normal",
-    "validation": "Unvalidated",
-    "id": "signal:Tradytics:0:SPY:2026-11-11T19:20:00+00:00:dbda26b614",
-    "explanation": "Aligned 3m and 1m entry timing."
-  },
-  {
-    "symbol": "SPY",
     "status": "WAIT",
     "bias": "Bearish",
     "score": 70,
@@ -8387,5 +8363,20 @@
     "ema21": 722.9011640825629,
     "id": "ema921:SPY:2026-11-23:2026-11-23T18:48:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "SPX",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-23T19:02:00+00:00",
+    "triggered_at_utc": "2026-11-23T19:02:02.712894+00:00",
+    "price": 7240.86,
+    "scope": "2026-11-23",
+    "source": "Schwab",
+    "direction": "UP",
+    "window": "1m",
+    "change_pct": 0.16752550579284264,
+    "previous_price": 7228.75,
+    "id": "move:SPX:2026-11-23:2026-11-23T19:02:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
