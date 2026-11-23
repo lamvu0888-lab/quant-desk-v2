@@ -1,29 +1,5 @@
 [
   {
-    "symbol": "SPX",
-    "status": "DATA QUALITY",
-    "bias": "Bullish",
-    "score": 90,
-    "bar": "2026-11-11T18:30:00+00:00",
-    "entry_bar": "2026-11-11T18:30:00+00:00",
-    "triggered_at_utc": "2026-11-11T18:30:01.897368+00:00",
-    "price": 7643.84,
-    "scope": "2026-11-11",
-    "setup": "Breakout close",
-    "entry": 7643.84,
-    "trigger": 7642.9,
-    "invalidation": 7642.9,
-    "stop": 7642.36,
-    "tp1": 7645.0,
-    "tp2": 7647.54,
-    "rr": 0.78,
-    "rr2": 2.5,
-    "regime": "Compressing",
-    "validation": "Unvalidated",
-    "id": "quality:SPX:2026-11-11:18:1",
-    "explanation": "Current regular-session quote."
-  },
-  {
     "symbol": "NVDA",
     "status": "WAIT",
     "bias": "Bullish",
@@ -8606,6 +8582,20 @@
     "ema9": 650.9794026193581,
     "ema21": 650.9381715054786,
     "id": "ema921:QQQ:2026-11-23:2026-11-23T17:09:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "SPX",
+    "status": "EMA TREND",
+    "bar": "2026-11-23T17:18:00+00:00",
+    "triggered_at_utc": "2026-11-23T17:18:02.815311+00:00",
+    "price": 7253.93,
+    "scope": "2026-11-23",
+    "source": "Schwab",
+    "direction": "UP",
+    "ema9": 7247.513764892375,
+    "ema21": 7245.531326660406,
+    "id": "ema921:SPX:2026-11-23:2026-11-23T17:18:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
