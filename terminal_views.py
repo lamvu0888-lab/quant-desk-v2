@@ -1621,6 +1621,16 @@ def history_page(ctx):
 
 def health_page(ctx):
     read = read_workspace(ctx)
+    if ctx.webull_store and callable(getattr(ctx.webull_store, "auth_diagnostics", None)):
+        st.write("Webull OpenAPI authorization")
+        details = ctx.webull_store.auth_diagnostics()
+        quote = ctx.webull_price_feed("quote")
+        delay = ctx.webull_quality.get("delay_minutes")
+        details["Selected quote entitlement"] = ("Access denied" if quote.error and "403" in str(quote.error)
+                                                else "Quote received" if quote.snapshot and not quote.error else "Unverified")
+        details["Provider-reported quote delay"] = ("Unverified" if delay is None or quote.error else
+                                                   "Zero delay" if delay == 0 else f"{delay} minutes")
+        st.table([{k: v if v is not None else "Unreported" for k, v in details.items()}])
     with st.container(border=True):
         panel_header("Price source comparison", "health", "price_source_compare", f"{ctx.ticker} · {ctx.price_provider} drives price timing")
         quote_feed = ctx.quote_feed()

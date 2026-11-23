@@ -8,6 +8,7 @@ __pycache__/
 reports/
 *.log
 *.token
+conf/token.txt
 monitor_data/runtime/
 *.sqlite3
 *.sqlite3-shm

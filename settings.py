@@ -1,5 +1,5 @@
 """One configuration for the dashboard, diagnostics and scanner."""
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -27,6 +27,8 @@ class Settings:
     category: str = 'AUTO'
     risk_free_rate: float = .04
     dividend_yield: float = 0.0
+    webull_auth_dsn: str = field(default='', repr=False)
+    webull_auth_path: str = ''
 
     @classmethod
     def load(cls, lookup=None):
@@ -48,6 +50,8 @@ class Settings:
             result = cls(**{key: cast(value) for key, (name, cast) in pairs.items() if (value := lookup(name))})
         except (ValueError, TypeError) as exc:
             raise DataError('Invalid numeric setting in .env') from exc
+        result = replace(result, webull_auth_dsn=lookup("WEBULL_AUTH_DSN") or lookup("MONITOR_JOURNAL_DSN") or "",
+                         webull_auth_path=lookup("WEBULL_AUTH_PATH") or "")
         # V1.8 shipped QUOTE_MAX_AGE_SECONDS=90. Accept that existing .env
         # value during upgrades, while keeping V1.9's stricter forecast gate.
         result = replace(result, quote_max_age=min(result.quote_max_age, 30))

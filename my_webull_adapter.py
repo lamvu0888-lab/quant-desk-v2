@@ -117,9 +117,19 @@ def aggregate_candles(candles,minutes):
     return result
 
 
+from webull_auth import WebullAuthorization
+import threading
+import time
+
+
 class WebullSDKAdapter:
-    def __init__(self,settings=None,*,data=None,app_key=None,app_secret=None,region=None):
+    def __init__(self,settings=None,*,data=None,app_key=None,app_secret=None,region=None,authorize=False):
         self.settings=settings or Settings.load()
+        self._auth = None
+        self.last_success = None
+        self.last_auth_error = None
+        self._renew_at = float("inf")
+        self._auth_lock = threading.Lock()
         if data is not None: self.data=data;return
         key = app_key if app_key is not None else os.getenv('WEBULL_APP_KEY')
         secret = app_secret if app_secret is not None else os.getenv('WEBULL_APP_SECRET')
@@ -136,9 +146,36 @@ class WebullSDKAdapter:
         logger.handlers.clear();logger.addHandler(logging.NullHandler());logger.propagate=False;logger.disabled=True
         api.set_stream_logger(log_level=logging.CRITICAL+1)
         api.set_logger(logger)
-        self.data=DataClient(api)
+        self._api, self._factory = api, DataClient
+        self._auth = WebullAuthorization(key, secret, self.settings.endpoint,
+                                         self.settings.webull_auth_dsn, self.settings.webull_auth_path)
+        self.data = self._auth.initialize(api, DataClient, authorize=authorize)
+        self._renew_at = self._next_check()
+
+    def _next_check(self):
+        remaining = float("inf")
+        if self._auth.expires:
+            remaining = max(60, (self._auth.expires - datetime.now(UTC)).total_seconds() - 300)
+        return time.monotonic() + remaining
+
+    def _check_authorization(self):
+        if self._auth and time.monotonic() >= self._renew_at:
+            with self._auth_lock:
+                if time.monotonic() >= self._renew_at:
+                    try:
+                        self.data = self._auth.initialize(self._api, self._factory)
+                    except Exception as exc:
+                        self.last_auth_error = safe_error(exc)
+                        self._renew_at = time.monotonic() + 30
+                        self._auth_failed = True
+                    else:
+                        self._renew_at = self._next_check()
+                        self._auth_failed = False
+        if getattr(self, "_auth_failed", False):
+            raise DataError(self.last_auth_error)
 
     def request(self,label,method,limiter,*,budget_reserve=0,**kwargs):
+        self._check_authorization()
         if budget_reserve:
             limiter.acquire(reserve=budget_reserve)
         else:
@@ -161,9 +198,14 @@ class WebullSDKAdapter:
             except (ValueError,TypeError): wait=60
             if callable(getattr(limiter,'cooldown',None)): limiter.cooldown(wait)
             raise BudgetPause(wait,f'{label}: Webull HTTP 429; automatic cooldown')
+        if status == 401:
+            self.last_auth_error = "HTTP 401. Webull rejected the signed request or authorization."
+            self._auth_failed = True
+            self._renew_at = time.monotonic() + 30
         if status!=200:
             hint='Check API key/secret and token authorization.' if status==401 else 'Check the separate OpenAPI market-data subscription.' if status==403 else 'Check endpoint permissions and SDK version.'
             raise DataError(f'{label}: HTTP {status}. {hint}')
+        self.last_success = datetime.now(UTC).isoformat()
         try: return response.json()
         except (ValueError,TypeError) as exc: raise DataError(f'{label}: invalid JSON') from exc
 
