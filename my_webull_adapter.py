@@ -125,6 +125,10 @@ class WebullSDKAdapter:
         self._auth = None
         self.last_success = None
         self.last_auth_error = None
+        self.last_auth_check = None
+        self.last_auth_error_at = None
+        self._request_errors = {}
+        self._diagnostic_lock = threading.Lock()
         self._renew_at = float("inf")
         self._auth_lock = threading.Lock()
         if data is not None: self.data=data;return
@@ -148,6 +152,7 @@ class WebullSDKAdapter:
         self._auth = WebullAuthorization(key, secret, self.settings.endpoint,
                                          self.settings.webull_auth_dsn, self.settings.webull_auth_path)
         self.data = self._auth.initialize(api, DataClient, authorize=authorize)
+        self.last_auth_check = datetime.now(UTC).isoformat()
         self._renew_at = self._next_check()
 
     def _next_check(self):
@@ -164,13 +169,21 @@ class WebullSDKAdapter:
                         self.data = self._auth.initialize(self._api, self._factory)
                     except Exception as exc:
                         self.last_auth_error = safe_error(exc)
+                        self.last_auth_error_at = datetime.now(UTC).isoformat()
                         self._renew_at = time.monotonic() + 30
                         self._auth_failed = True
                     else:
                         self._renew_at = self._next_check()
                         self._auth_failed = False
+                        self.last_auth_check = datetime.now(UTC).isoformat()
+                        self.last_auth_error = None
+                        self.last_auth_error_at = None
         if getattr(self, "_auth_failed", False):
             raise DataError(self.last_auth_error)
+
+    def request_errors(self):
+        with self._diagnostic_lock:
+            return [dict(item) for item in self._request_errors.values()]
 
     def request(self,label,method,limiter,*,budget_reserve=0,**kwargs):
         self._check_authorization()
@@ -196,16 +209,28 @@ class WebullSDKAdapter:
             except (ValueError,TypeError): wait=60
             if callable(getattr(limiter,'cooldown',None)): limiter.cooldown(wait)
             raise BudgetPause(wait,f'{label}: Webull HTTP 429; automatic cooldown')
-        if status == 401:
-            self.last_auth_error = "HTTP 401. Webull rejected the signed request or authorization."
-            self._auth_failed = True
-            self._renew_at = time.monotonic() + 30
+        if status == 401 and self._auth:
+            # A product permission denial can use 401 too. Only a failed token
+            # validation blocks all readers. Schedule verification without
+            # extending the deadline on each denied request.
+            self._renew_at = min(self._renew_at, time.monotonic() + 30)
+        if status != 200:
+            with self._diagnostic_lock:
+                self._request_errors[label] = {"Request": label, "HTTP status": status,
+                                              "Failed at (UTC)": datetime.now(UTC).isoformat()}
+                if len(self._request_errors) > 32:
+                    self._request_errors.pop(next(iter(self._request_errors)))
         if status!=200:
             hint='Check API key/secret and token authorization.' if status==401 else 'Check the separate OpenAPI market-data subscription.' if status==403 else 'Check endpoint permissions and SDK version.'
             raise DataError(f'{label}: HTTP {status}. {hint}')
-        self.last_success = datetime.now(UTC).isoformat()
-        try: return response.json()
-        except (ValueError,TypeError) as exc: raise DataError(f'{label}: invalid JSON') from exc
+        try:
+            payload = response.json()
+        except (ValueError, TypeError):
+            raise DataError(f'{label}: invalid JSON') from None
+        with self._diagnostic_lock:
+            self.last_success = datetime.now(UTC).isoformat()
+            self._request_errors.pop(label, None)
+        return payload
 
     def quote_batch(self, symbols, category, limiter):
         return self.request('Stock snapshot', self.data.market_data.get_snapshot, limiter, symbols=list(symbols),

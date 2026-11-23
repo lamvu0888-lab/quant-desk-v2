@@ -105,11 +105,17 @@ class WebullFeedStore:
         return {"Authorization store": "Shared PostgreSQL" if self.settings.webull_auth_dsn else "Local encrypted SQLite",
                 "Last successful API request (UTC)": getattr(adapter, "last_success", None),
                 "Reported token expiry (UTC)": expires.isoformat() if expires else None,
+                "Last authorization validation (UTC)": getattr(adapter, "last_auth_check", None),
+                "Authentication error at (UTC)": getattr(adapter, "last_auth_error_at", None),
                 "Last authentication error": error,
                 "Connection": ("REAUTH REQUIRED" if error and "REAUTH REQUIRED" in error and
                                (adapter is None or getattr(adapter, "_auth_failed", False)) else
                                "Waiting for authorization" if self._adapter_error or getattr(adapter, "_auth_failed", False)
                                else "Authorized request observed" if getattr(adapter, "last_success", None) else "Unverified")}
+
+    def request_diagnostics(self):
+        adapter = self._adapter
+        return adapter.request_errors() if adapter is not None else []
 
     def close(self):
         with self._lock:
