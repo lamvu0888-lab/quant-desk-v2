@@ -2,31 +2,6 @@
   {
     "symbol": "SPY",
     "status": "DATA QUALITY",
-    "bias": "Neutral",
-    "score": 0,
-    "bar": "2026-11-12T18:35:00+00:00",
-    "entry_bar": "2026-11-12T18:39:00+00:00",
-    "triggered_at_utc": "2026-11-12T18:39:00.815746+00:00",
-    "price": 760.39,
-    "scope": "2026-11-12",
-    "setup": null,
-    "entry": null,
-    "trigger": null,
-    "invalidation": null,
-    "stop": null,
-    "tp1": null,
-    "tp2": null,
-    "rr": null,
-    "rr2": null,
-    "regime": "Compressing",
-    "validation": "Unvalidated",
-    "rule_version": "2.6.0",
-    "id": "quality:SPY:2026-11-12:18:1",
-    "explanation": "Current regular-session quote."
-  },
-  {
-    "symbol": "SPY",
-    "status": "DATA QUALITY",
     "bias": "Bearish",
     "score": 65,
     "bar": "2026-11-12T19:00:00+00:00",
@@ -8214,6 +8189,21 @@
     "change_pct": -0.22662148013445904,
     "previous_price": 7258.8,
     "id": "move:SPX:2026-11-23:2026-11-23T20:51:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPY",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-23T20:51:00+00:00",
+    "triggered_at_utc": "2026-11-23T20:51:04.019417+00:00",
+    "price": 722.52,
+    "scope": "2026-11-23",
+    "source": "Webull",
+    "direction": "DOWN",
+    "window": "1m",
+    "change_pct": -0.23060246620363323,
+    "previous_price": 724.19,
+    "id": "move:SPY:2026-11-23:2026-11-23T20:51:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
