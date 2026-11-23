@@ -1,29 +1,5 @@
 [
   {
-    "symbol": "SPY",
-    "status": "GET READY",
-    "bias": "Bullish",
-    "score": 55,
-    "bar": "2026-11-11T18:50:00+00:00",
-    "entry_bar": "2026-11-11T18:50:00+00:00",
-    "triggered_at_utc": "2026-11-11T18:50:31.450285+00:00",
-    "price": 762.3,
-    "scope": "2026-11-11",
-    "setup": "Breakout watch",
-    "entry": 762.45,
-    "trigger": 762.4,
-    "invalidation": 762.4,
-    "stop": 762.2,
-    "tp1": 762.83,
-    "tp2": 763.08,
-    "rr": 1.52,
-    "rr2": 2.52,
-    "regime": "Compressing",
-    "validation": "Unvalidated",
-    "id": "signal:Tradytics:0:SPY:2026-11-11T18:50:00+00:00:edff37b4f0",
-    "explanation": "Aligned 3m and 1m entry timing."
-  },
-  {
     "symbol": "SPX",
     "status": "DATA QUALITY",
     "bias": "Neutral",
@@ -8483,6 +8459,20 @@
     "ema9": 7245.70445609551,
     "ema21": 7243.365717218427,
     "id": "ema921:SPX:2026-11-23:2026-11-23T18:18:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "SPY",
+    "status": "EMA TREND",
+    "bar": "2026-11-23T18:18:00+00:00",
+    "triggered_at_utc": "2026-11-23T18:18:04.626029+00:00",
+    "price": 723.93,
+    "scope": "2026-11-23",
+    "source": "Webull",
+    "direction": "UP",
+    "ema9": 722.9078515545024,
+    "ema21": 722.6645305710337,
+    "id": "ema921:SPY:2026-11-23:2026-11-23T18:18:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
