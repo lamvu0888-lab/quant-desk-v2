@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from streamlit.testing.v1 import AppTest
 
+import pytest
 import paper_engine
 from paper_engine import PaperLedger, PaperWorker, option_pnl, realized, stamp, unrealized
 from research_journal import Journal
@@ -15,11 +16,14 @@ PLAN = {"status": "ENTER LONG", "direction": 1, "score": 82, "entry": 675, "trig
         "movement": {"accelerating": True}, "setup": "Breakout", "source": "Webull"}
 
 
-def test_worker_from_confirmed_alert_to_partial_and_stop(tmp_path, monkeypatch):
+@pytest.mark.parametrize("early", [False, True])
+def test_worker_from_confirmed_alert_to_partial_and_stop(tmp_path, monkeypatch, early):
     journal = Journal(tmp_path / "desk.sqlite3", dsn="")
     book = PaperLedger(journal)
     book.start(START)
-    for ident, state in (("sent-id", "sent"), ("reserved-id", "claimed")):
+    if early:
+        journal.record_early("early", "SPY", "0DTE", START, dict(PLAN, stop=673.8, score=60), timedelta(minutes=10))
+    for ident, state in (() if early else (("sent-id", "sent"), ("reserved-id", "claimed"))):
         journal.record_candidate(ident, "SPY", "0DTE", START,
                                  {"plan": {**PLAN, "setup": ident}, "decision_status": PLAN["status"]},
                                  alert_id=ident, cooldown=timedelta(minutes=10))

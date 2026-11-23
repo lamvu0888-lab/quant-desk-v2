@@ -113,6 +113,14 @@ def detector_view(ctx, read, plan, iv):
         f'<span class="qd-status {tint}">{esc(plan["status"])}</span></div></section>',
         unsafe_allow_html=True,
     )
+    modes = plan.get("confirmation_modes")
+    if modes:
+        standard = "STANDARD ENTRY CONFIRMED" if plan["status"] in ("ENTER LONG", "ENTER SHORT") else plan["status"]
+        st.write(f"Early 3m · {modes['status']} | Standard 5m · {standard} | Evidence {plan['score']}/100")
+        st.dataframe([{"Indicator": key, "Early 3m": value, "Standard 5m": modes["standard"][key]}
+                      for key, value in modes["early"].items()], hide_index=True)
+        if modes["reasons"]:
+            st.caption("Early checks · " + " ".join(modes["reasons"]))
     nav_button("Open Trade Plan", "Trade Plan", "movement_open_trade")
     timing = plan["feed_timing"]
     st.caption(f"{plan['source']} quote {age_text(timing['quote_age'])} old · 1m close {age_text(timing['minute_age'])} old · "

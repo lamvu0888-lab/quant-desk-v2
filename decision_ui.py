@@ -98,7 +98,9 @@ def plan_signature(plan):
 
 def dashboard_decision(ctx, read):
     plan, iv = build_decision(ctx, read)
-    if plan["status"] in ENTRY_STATES:
+    modes = plan.get("confirmation_modes") or {}
+    prequalified = modes.get("status") == "EARLY PAPER CANDIDATE"
+    if plan["status"] in ENTRY_STATES or prequalified:
         fields = ("price", "entry", "stop", "invalidation", "tp1", "tp2", "hold", "direction", "flow",
                   "gex", "regime", "underlying_cost_bps")
         origin = ctx.now.replace(second=0, microsecond=0)
@@ -106,10 +108,16 @@ def dashboard_decision(ctx, read):
             origin += MINUTE
         model = current_model(read["candles"][-2400:], {field: plan[field] for field in fields}, origin.isoformat())
         _, evaluation = prospective_report(ctx, plan)
+        if prequalified:
+            early = apply_model_gate({**plan, "status": "ENTER LONG" if plan["direction"] > 0 else "ENTER SHORT"}, model, evaluation)
+            if early["status"] not in ENTRY_STATES:
+                modes.update(status=early["status"], reasons=early["blocks"] or early["missing"])
         plan = apply_model_gate(plan, model, evaluation)
     review = st.session_state.get("qd25_execution_review")
     if review and review["signature"] == plan_signature(plan) and time_or_none(review["expires"]) > ctx.now:
         plan["option_review"] = review["message"]
+        if review["blocked"] and prequalified:
+            modes.update(status="AVOID", reasons=[review["message"]])
         if review["blocked"] and plan["status"] in ENTRY_STATES:
             plan["status"] = "AVOID"
             plan["blocks"] = plan["blocks"] + [review["message"]]

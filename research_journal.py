@@ -76,6 +76,13 @@ class Journal:
                            (json.dumps(payload, allow_nan=False, separators=(",", ":")), event_id))
             return True, reserved
 
+    def record_early(self, ident, symbol, scope, now, plan, cooldown):
+        # A separate cooldown namespace leaves production alerts independent.
+        with self.connection() as db:
+            if not self._claim_entry_window(db, symbol, "early-paper:" + plan["setup"], now, cooldown):
+                return False
+            return self._insert(db, ident, symbol, "early_paper_entry", scope, now, {"plan": plan})
+
     def settle(self, event_id, outcome):
         with self.connection() as db:
             cur = db.execute(self.sql("UPDATE qd25_observation SET outcome = ? WHERE id = ? AND outcome IS NULL"),

@@ -8,6 +8,7 @@ import sqlite3
 from data_utils import DataError, reported_delay
 from decision_engine import MIN_REWARD_R
 from entry_score import MIN_ENTRY_SCORE
+from early_flow import EARLY
 from gemini_advisor import BASELINE, SHADOW
 from live_chain import contract_symbol, occ_info, unwrap
 from market_session import ET, rth_bounds, session_state
@@ -109,6 +110,11 @@ class PaperLedger:
             AND NOT EXISTS (SELECT 1 FROM qd_paper_trade p WHERE p.id=d.id)
             ORDER BY o.origin,o.id LIMIT 200""", self.meta(db, "activated")).fetchall()
         entries = [(ident, symbol, origin, json.loads(raw), BASELINE) for ident, symbol, origin, raw in rows]
+        early = self.execute(db, """SELECT o.id,o.symbol,o.origin,o.payload FROM qd25_observation o
+            WHERE o.kind='early_paper_entry' AND o.origin>=?
+            AND NOT EXISTS (SELECT 1 FROM qd_paper_trade p WHERE p.id=o.id)
+            ORDER BY o.origin,o.id LIMIT 200""", self.meta(db, "activated")).fetchall()
+        entries.extend((ident, symbol, origin, json.loads(raw), EARLY) for ident, symbol, origin, raw in early)
         if self.advisor:
             shadow = self.execute(db, """SELECT o.id,o.symbol,o.origin,o.payload FROM qd25_observation o
                 WHERE o.kind='gemini_entry' AND o.origin>=?
@@ -244,7 +250,7 @@ def attempt_entry(trade, ctx, webull, halted, get_now=clock):
     if (side * (spot - plan["trigger"]) <= 0 or side * (spot - plan["stop"]) <= 0
             or side * (plan["tp1"] - spot) <= 0):
         return skip(trade, "Underlying no longer inside entry setup")
-    if trade.get("track") == SHADOW and side * (plan["tp1"] - spot) < MIN_REWARD_R * side * (spot - plan["stop"]):
+    if trade.get("track") in (SHADOW, EARLY) and side * (plan["tp1"] - spot) < MIN_REWARD_R * side * (spot - plan["stop"]):
         return skip(trade, "Scenario reward/risk fell below the minimum at fill time")
     day, fast = now.astimezone(ET).date(), fast_setup(plan)
     expiry = expiry_for(ctx, day, fast)
@@ -353,6 +359,10 @@ def update_trade(trade, ctx, quote, halted):
     if at < time_or_none(trade["mark_at"]) or not 0 <= (now - at).total_seconds() <= QUOTE_AGE:
         return
     trade.update(mark_bid=bid, mark_at=stamp(at))
+    if "mae_per_contract" in trade:
+        excursion = (bid - trade["entry_ask"]) * 100
+        trade["mae_per_contract"] = min(trade["mae_per_contract"], excursion)
+        trade["mfe_per_contract"] = max(trade["mfe_per_contract"], excursion)
     if bid <= trade["entry_ask"] * (1 - PREMIUM_STOP) and not full_exit_pending(trade):
         queue_exit(trade, at, "20% PREMIUM STOP")
     last_exit = time_or_none(trade.get("last_exit_quote"))
@@ -393,7 +403,7 @@ class PaperWorker:
         with book.journal.connection() as db:
             book.ingest(db)
             active = book.rows(db, "WHERE state IN ('OPEN','PENDING')")
-            loss_keys = {BASELINE: "loss_stop", SHADOW: "gemini_loss_stop"}
+            loss_keys = {BASELINE: "loss_stop", SHADOW: "gemini_loss_stop", EARLY: "early_loss_stop"}
             halted = {track: book.meta(db, key) == str(day) for track, key in loss_keys.items()}
         open_rows = [trade for trade in active if trade["state"] == "OPEN"]
         symbols = [t["symbol"] for t in active if t["plan"].get("source") == "Webull"]
@@ -412,7 +422,9 @@ class PaperWorker:
 
         for trade in open_rows:
             try:
-                update_trade(trade, desk(trade), quotes.get(trade["contract"]), halted[trade.get("track", BASELINE)])
+                track = trade.get("track", BASELINE)
+                stop = halted[track] or (track == EARLY and halted[BASELINE])
+                update_trade(trade, desk(trade), quotes.get(trade["contract"]), stop)
             except DataError:
                 trade["reason"] = "Waiting for verified market data"
         assert_lock()
@@ -432,6 +444,7 @@ class PaperWorker:
                     book.set_meta(db, loss_keys[track], str(day))
 
         shadow_open = {t["symbol"] for t in open_rows if t["state"] == "OPEN" and t.get("track") == SHADOW}
+        early_open = {t["symbol"] for t in open_rows if t["state"] == "OPEN" and t.get("track") == EARLY}
         for trade in active:
             if trade["state"] != "PENDING":
                 continue
@@ -439,8 +452,16 @@ class PaperWorker:
             try:
                 if track == SHADOW and trade["symbol"] in shadow_open:
                     skip(trade, "Another Gemini paper position is open for this ticker")
+                elif track == EARLY and trade["symbol"] in early_open:
+                    skip(trade, "Another Early paper position is open for this ticker")
                 else:
-                    attempt_entry(trade, desk(trade), self.webull, halted[track], self.get_now)
+                    stop = halted[track] or (track == EARLY and halted[BASELINE])
+                    attempt_entry(trade, desk(trade), self.webull, stop, self.get_now)
+                    if trade["state"] == "OPEN":
+                        if track == EARLY:
+                            early_open.add(trade["symbol"])
+                        excursion = (trade["mark_bid"] - trade["entry_ask"]) * 100
+                        trade.update(mae_per_contract=min(0., excursion), mfe_per_contract=max(0., excursion))
             except DataError:
                 trade["reason"] = "Webull or market feed temporarily unavailable"
             assert_lock()
