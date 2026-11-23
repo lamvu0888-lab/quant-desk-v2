@@ -1,30 +1,6 @@
 [
   {
     "symbol": "NVDA",
-    "status": "GET READY",
-    "bias": "Bullish",
-    "score": 75,
-    "bar": "2026-11-11T18:45:00+00:00",
-    "entry_bar": "2026-11-11T18:46:00+00:00",
-    "triggered_at_utc": "2026-11-11T18:46:32.685640+00:00",
-    "price": 177.26,
-    "scope": "2026-11-11",
-    "setup": "Breakout and retest",
-    "entry": 177.26,
-    "trigger": 177.14,
-    "invalidation": 177.14,
-    "stop": 177.09,
-    "tp1": 177.5,
-    "tp2": 177.68,
-    "rr": 1.41,
-    "rr2": 2.47,
-    "regime": "Compressing",
-    "validation": "Unvalidated",
-    "id": "signal:Tradytics:0:NVDA:2026-11-11T18:45:00+00:00:18355af3c7",
-    "explanation": "Aligned 3m and 1m entry timing."
-  },
-  {
-    "symbol": "NVDA",
     "status": "WAIT",
     "bias": "Bullish",
     "score": 75,
@@ -8542,5 +8518,19 @@
     "previous_price": 651.71,
     "id": "move:QQQ:2026-11-23:2026-11-23T17:43:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPX",
+    "status": "EMA TREND",
+    "bar": "2026-11-23T17:48:00+00:00",
+    "triggered_at_utc": "2026-11-23T17:48:02.510723+00:00",
+    "price": 7218.19,
+    "scope": "2026-11-23",
+    "source": "Schwab",
+    "direction": "DOWN",
+    "ema9": 7237.548141572689,
+    "ema21": 7241.7105583823695,
+    "id": "ema921:SPX:2026-11-23:2026-11-23T17:48:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
