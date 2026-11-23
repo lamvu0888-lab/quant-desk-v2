@@ -438,6 +438,9 @@ class PaperWorker:
                 track = row.get("track", BASELINE)
                 pnl[track] += sum(fill["pnl"] for fill in row["fills"] if time_or_none(fill["at"]).astimezone(ET).date() == day)
                 pnl[track] += unrealized(row, self.get_now()) or 0
+            if pnl[BASELINE] + pnl[EARLY] <= DAILY_STOP:
+                halted[EARLY] = True
+                book.set_meta(db, loss_keys[EARLY], str(day))
             for track, value in pnl.items():
                 if value <= DAILY_STOP:
                     halted[track] = True
@@ -477,6 +480,9 @@ class PaperWorker:
                     shadow_open.add(trade["symbol"])
                 pnl[track] += unrealized(trade, self.get_now()) or 0
                 halted[track] = halted[track] or pnl[track] <= DAILY_STOP
+                if pnl[BASELINE] + pnl[EARLY] <= DAILY_STOP:
+                    halted[EARLY] = True
+                    book.set_meta(db, loss_keys[EARLY], str(day))
                 book.save(db, trade, self.get_now())
                 if halted[track]:
                     book.set_meta(db, loss_keys[track], str(day))

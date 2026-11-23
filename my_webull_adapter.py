@@ -2,6 +2,8 @@
 from __future__ import annotations
 import logging
 import os
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from data_utils import DataError, BudgetPause, field, number, records, reported_delay, safe_error, utc
@@ -117,11 +119,6 @@ def aggregate_candles(candles,minutes):
     return result
 
 
-from webull_auth import WebullAuthorization
-import threading
-import time
-
-
 class WebullSDKAdapter:
     def __init__(self,settings=None,*,data=None,app_key=None,app_secret=None,region=None,authorize=False):
         self.settings=settings or Settings.load()
@@ -136,6 +133,7 @@ class WebullSDKAdapter:
         if not key or not secret or 'your_' in key.lower() or 'your_' in secret.lower():
             raise DataError('Add your existing WEBULL_APP_KEY and WEBULL_APP_SECRET to the local .env, then reconnect.')
         if (region or os.getenv('WEBULL_REGION','us'))!='us': raise DataError('This adapter supports the Webull US region')
+        from webull_auth import WebullAuthorization
         from webull.core.client import ApiClient
         from webull.data.data_client import DataClient
         api=ApiClient(key,secret,'us',connect_timeout=3,timeout=8,auto_retry=False,

@@ -34,6 +34,11 @@ def reported_expiry(value):
     # Some SDK responses carry a duration without an absolute validity timestamp.
     if str(value).isdigit() and int(value) > 1_000_000_000:
         return utc(value)
+    if isinstance(value, str) and "T" in value:
+        try:
+            return utc(value)
+        except DataError:
+            pass
     return None
 
 
@@ -98,9 +103,15 @@ class WebullAuthorization:
                         expiry = reported_expiry(state.get("expires"))
                         if (state.get("status") == "NORMAL" and expiry and
                                 0 < (expiry - datetime.now(timezone.utc)).total_seconds() <= 300):
-                            refreshed = ops.refresh_token(state.get("token") or token)
-                            if refreshed.status_code not in (404, 405):
-                                state = response_body(refreshed)
+                            try:
+                                refreshed = ops.refresh_token(state.get("token") or token)
+                            except Exception as exc:
+                                status_code = getattr(exc, "get_http_status", lambda: None)()
+                                if status_code not in (404, 405):
+                                    raise
+                            else:
+                                if refreshed.status_code not in (404, 405):
+                                    state = response_body(refreshed)
                         status = state.get("status")
                         token = state.get("token") or token
                         if not token or status not in ("NORMAL", "PENDING"):
