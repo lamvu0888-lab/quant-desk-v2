@@ -2,35 +2,6 @@
   {
     "symbol": "TSLA",
     "status": "LEVEL CROSSING",
-    "bias": "Bearish",
-    "score": 65,
-    "bar": "2026-11-11T18:05:00+00:00",
-    "entry_bar": "2026-11-11T18:05:00+00:00",
-    "triggered_at_utc": "2026-11-11T18:05:01.996031+00:00",
-    "price": 392.495,
-    "scope": "2026-11-11",
-    "setup": "EMA 8/10 pullback",
-    "entry": 392.5,
-    "trigger": 392.61,
-    "invalidation": 392.61,
-    "stop": 392.86,
-    "tp1": 391.96,
-    "tp2": 391.6,
-    "rr": 1.5,
-    "rr2": 2.5,
-    "regime": "Compressing",
-    "validation": "Unvalidated",
-    "crossing": {
-      "level": "Put wall",
-      "price": 392.5,
-      "direction": "below"
-    },
-    "id": "level:Tradytics:0:TSLA:2026-11-11T18:05:00+00:00:Put wall",
-    "explanation": "A completed 5m close crossed a level recorded before this bar."
-  },
-  {
-    "symbol": "TSLA",
-    "status": "LEVEL CROSSING",
     "bias": "Neutral",
     "score": 0,
     "bar": "2026-11-11T18:10:00+00:00",
@@ -8654,5 +8625,20 @@
     "ema21": 650.8674548351613,
     "id": "ema921:QQQ:2026-11-23:2026-11-23T16:45:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "SPX",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-23T16:48:00+00:00",
+    "triggered_at_utc": "2026-11-23T16:48:01.915411+00:00",
+    "price": 7231.43,
+    "scope": "2026-11-23",
+    "source": "Schwab",
+    "direction": "UP",
+    "window": "1m",
+    "change_pct": 0.23827873760784435,
+    "previous_price": 7214.24,
+    "id": "move:SPX:2026-11-23:2026-11-23T16:48:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
