@@ -7,6 +7,12 @@ set "REMOTE_URL=https://github.com/lamvu0888-lab/quant-desk-v2.git"
 set "BRANCH=main"
 
 cd /d "%~dp0"
+if /i "%~1"=="--review-branch" goto :review_branch
+for /f "delims=" %%B in ('git branch --show-current') do if "%%B"=="review/quant-desk-combined" goto :review_branch
+for /f "delims=" %%F in ('git diff --name-only --diff-filter^=U') do (
+    echo Upload stopped. Resolve the active conflict before publishing.
+    exit /b 1
+)
 echo.
 echo ================================================
 echo        Quant Desk - GitHub Upload
@@ -103,6 +109,13 @@ echo Streamlit will redeploy automatically if it is connected to this repository
 echo.
 pause
 exit /b 0
+
+:review_branch
+rem Push only an existing, inspected branch. Never stage working files or change main.
+git show-ref --verify --quiet refs/heads/review/quant-desk-combined
+if errorlevel 1 exit /b 1
+git push "%REMOTE_URL%" refs/heads/review/quant-desk-combined:refs/heads/review/quant-desk-combined
+exit /b %errorlevel%
 
 :failed
 echo.
