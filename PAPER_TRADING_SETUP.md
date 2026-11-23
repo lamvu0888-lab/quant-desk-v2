@@ -13,7 +13,7 @@ The original strategy and the Gemini comparison each have a paper book. Gemini d
 
 ### What the experiment tests
 
-A paper candidate requires a published scenario, a matching completed Quant Desk setup, a score of at least 71, fresh data, directional flow, structural room and the existing price-path model checks. For trend setups it can act on aligned 1m/3m timing and 5m momentum with the latest aligned 5m premium close. A scenario can require two flow closes. Range reversals still require a 3m edge rejection and subsequent 1m follow-through. The underlying must clear the planned trigger, and the detected setup must be within one 5m ATR of that level. A scenario can tighten protection or cap the target.
+A paper candidate requires a published scenario, a matching completed Quant Desk setup, the configured evidence minimum (default 60/100), fresh data, directional flow, structural room and the existing price-path model checks. For trend setups it can act on aligned 1m/3m timing and 5m momentum with the latest aligned 5m premium close. A scenario can require two flow closes. Range reversals still require a 3m edge rejection and subsequent 1m follow-through. The underlying must clear the planned trigger, and the detected setup must be within one 5m ATR of that level. A scenario can tighten protection or cap the target.
 
 Fills use the existing Webull simulation, including executable quotes, the spread limit, the 20% premium stop, the two-contract maximum and the $1,000 entry cap. Each simulated book has its own $500 daily loss stop. Gemini candidates go directly to the comparison book. Only the original monitor publishes Discord signals. The comparison includes no brokerage order calls.
 

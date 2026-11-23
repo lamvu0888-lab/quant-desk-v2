@@ -11,8 +11,8 @@ from ema_trend import EMA_PULLBACK
 from market_session import ET
 from terminal_data import numeric, positive, time_or_none
 
-# A rules score, not a calibrated probability. "Above 70" means at least 71/100.
-MIN_ENTRY_SCORE = 61
+from entry_score import MIN_ENTRY_SCORE
+
 MIN_RELATIVE_VOLUME = 1.25
 ENTRY_COOLDOWN = 10 * MINUTE
 DIRECTION = {-1: "Down", 0: "Flat", 1: "Up"}

@@ -7,6 +7,7 @@ import sqlite3
 
 from data_utils import DataError, reported_delay
 from decision_engine import MIN_REWARD_R
+from entry_score import MIN_ENTRY_SCORE
 from gemini_advisor import BASELINE, SHADOW
 from live_chain import contract_symbol, occ_info, unwrap
 from market_session import ET, rth_bounds, session_state
@@ -146,7 +147,7 @@ def valid_plan(plan):
     direction = ENTRY.get(plan.get("status"))
     prices = [positive(plan.get(k)) for k in ("stop", "entry", "tp1", "tp2")]
     return bool(direction and direction == plan.get("direction") and not plan.get("demo")
-                and (numeric(plan.get("score")) or 0) > 70
+                and (numeric(plan.get("score")) or 0) >= MIN_ENTRY_SCORE
                 and 0 < (numeric(plan.get("hold")) or 0) <= 15 and all(prices)
                 and all(direction * (b - a) > 0 for a, b in zip(prices, prices[1:]))
                 and positive(plan.get("trigger")) and positive(plan.get("invalidation")))

@@ -132,7 +132,7 @@ def test_shared_gates_and_optional_context():
     assert sum(f["possible"] for f in q()["score_details"]) == 100
     flat_flow = [dict(r, net_premium_usd=50000) for r in args["flow_rows"]]
     borderline = q(gamma={}, flow_rows=flat_flow)
-    assert borderline["score"] == 70 and borderline["status"] == "GET READY"
+    assert borderline["score"] == 70 and borderline["status"] == "ENTER LONG"
     assert apply_model_gate(q(), {"p_tp1": .2, "ev_ci": (-.7,-.2), "baseline_ev_ci": (-.6,-.1)})["status"] == "AVOID"
 
 

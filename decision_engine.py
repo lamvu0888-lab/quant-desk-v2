@@ -279,6 +279,8 @@ def make_trade_plan(*, candles, buckets, flow_rows, levels, now, session, expiry
                                  "possible": weight, "state": "Agrees" if earned else "Missing or opposing"}
                                 for label, weight, earned in pieces]
     result["score"] = sum(row["points"] for row in result["score_details"])
+    if result["score"] < MIN_ENTRY_SCORE:
+        missing.append(f"Evidence score {result['score']}/100 is below {MIN_ENTRY_SCORE}.")
     if not core_ready:
         result["status"] = "WAIT"
     elif stops:

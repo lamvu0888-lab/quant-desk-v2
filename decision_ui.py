@@ -12,6 +12,7 @@ import streamlit as st
 from data_utils import DataError, utc
 from dealer_hedging import HORIZONS, hedge_change, hedge_scenarios
 from decision_engine import ENTRY_STATES, paper_outcome
+from entry_score import MIN_ENTRY_SCORE
 from decision_flow import apply_model_gate, build_decision, get_hedge, model_summary, read_iv
 from desk_analytics import MINUTE
 from gemini_views import scenario_panel
@@ -173,7 +174,7 @@ def command_panel(ctx, plan, iv, candles, *, key, track=False, bar_ok=True):
     flow = plan["flow"].get("recent_net")
     flow_agreement = plan["direction"] * (plan["flow"].get("direction") or 0)
     kpis([metric("Market bias", plan["bias"], plan["regime"] or "Regime pending"),
-          metric("Entry evidence", f"{plan['score']}/100", "Rule points · entry above 70", plan["direction"]),
+          metric("Entry evidence", f"{plan['score']}/100", f"Minimum {MIN_ENTRY_SCORE}/100", plan["direction"]),
           metric("15m options flow", compact(flow, currency=True, signed=True),
                  "Confirms setup" if flow_agreement > 0 else
                  "Opposes setup" if flow_agreement < 0 else "Awaiting directional agreement", flow),
@@ -200,7 +201,7 @@ def command_panel(ctx, plan, iv, candles, *, key, track=False, bar_ok=True):
     if shown.get("outcome") and shown["outcome"].get("r") is not None:
         st.caption(f"Paper result {shown['outcome']['r']:+.2f}R after modeled costs.")
     with st.expander("Evidence and entry conditions", expanded=key == "trade"):
-        st.caption("This is a 0–100 rule score, not a 70% chance of winning. An entry needs more than 70 points AND every mandatory price, flow, quote and risk check.")
+        st.caption(f"Entry requires at least {MIN_ENTRY_SCORE}/100 evidence points and all mandatory price, flow, quote and risk checks.")
         if plan.get("score_details"):
             show_table([{"Evidence": row["factor"], "Points": f"{row['points']}/{row['possible']}",
                          "Reading": row["state"]} for row in plan["score_details"]], 390)

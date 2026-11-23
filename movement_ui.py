@@ -260,7 +260,7 @@ def detector_view(ctx, read, plan, iv):
     if model.get("p_tp1") is not None and model.get("ev_r") is not None:
         trigger += f" Monte Carlo estimate · TP1 first {ratio_pct(model['p_tp1'])} · {model['ev_r']:+.2f}R."
     show_stage(8, plan["status"], f"{trigger} Evidence {plan['score']}/100 · entry minimum {MIN_ENTRY_SCORE}.")
-    st.caption("Entry requires more than 70 rule points plus the mandatory checks. This score is not a win probability.")
+    st.caption(f"Entry requires {MIN_ENTRY_SCORE}/100 evidence points and every mandatory check.")
     if plan.get("score_details"):
         with st.expander("How the entry evidence is scored"):
             st.dataframe(pd.DataFrame([{"Factor": row["factor"], "Earned": row["points"], "Max": row["possible"],
