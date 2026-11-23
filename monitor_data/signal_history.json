@@ -1,29 +1,5 @@
 [
   {
-    "symbol": "SPX",
-    "status": "DATA QUALITY",
-    "bias": "Bullish",
-    "score": 55,
-    "bar": "2026-11-11T17:30:00+00:00",
-    "entry_bar": "2026-11-11T17:30:00+00:00",
-    "triggered_at_utc": "2026-11-11T17:30:01.736652+00:00",
-    "price": 7628.95,
-    "scope": "2026-11-11",
-    "setup": "Breakout and retest",
-    "entry": 7628.95,
-    "trigger": 7628.45,
-    "invalidation": 7628.45,
-    "stop": 7627.56,
-    "tp1": 7631.03,
-    "tp2": 7632.42,
-    "rr": 1.5,
-    "rr2": 2.5,
-    "regime": "Normal",
-    "validation": "Unvalidated",
-    "id": "quality:SPX:2026-11-11:17:1",
-    "explanation": "Current regular-session quote."
-  },
-  {
     "symbol": "TSLA",
     "status": "DATA QUALITY",
     "bias": "Neutral",
@@ -8734,6 +8710,21 @@
     "change_pct": 0.3515712349301925,
     "previous_price": 7244.62,
     "id": "move:SPX:2026-11-23:2026-11-23T16:13:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPY",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-23T16:13:00+00:00",
+    "triggered_at_utc": "2026-11-23T16:13:05.014903+00:00",
+    "price": 725.37,
+    "scope": "2026-11-23",
+    "source": "Webull",
+    "direction": "UP",
+    "window": "10m",
+    "change_pct": 0.35417329588689483,
+    "previous_price": 722.81,
+    "id": "move:SPY:2026-11-23:2026-11-23T16:13:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
