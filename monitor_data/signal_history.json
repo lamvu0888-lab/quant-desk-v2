@@ -1,29 +1,5 @@
 [
   {
-    "symbol": "SPY",
-    "status": "DATA QUALITY",
-    "bias": "Bullish",
-    "score": 55,
-    "bar": "2026-11-11T16:40:00+00:00",
-    "entry_bar": "2026-11-11T16:40:00+00:00",
-    "triggered_at_utc": "2026-11-11T16:40:01.620444+00:00",
-    "price": 759.01,
-    "scope": "2026-11-11",
-    "setup": "Breakout and retest",
-    "entry": 759.01,
-    "trigger": 758.91,
-    "invalidation": 758.91,
-    "stop": 758.83,
-    "tp1": 759.28,
-    "tp2": 759.46,
-    "rr": 1.5,
-    "rr2": 2.5,
-    "regime": "Normal",
-    "validation": "Unvalidated",
-    "id": "quality:SPY:2026-11-11:16:1",
-    "explanation": "Current regular-session quote."
-  },
-  {
     "symbol": "TSLA",
     "status": "DATA QUALITY",
     "bias": "Neutral",
@@ -8758,6 +8734,20 @@
     "ema9": 700.9062822683111,
     "ema21": 696.8132842097489,
     "id": "ema921:SPY:2026-11-23:2026-11-23T14:36:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "EMA TREND",
+    "bar": "2026-11-23T14:36:00+00:00",
+    "triggered_at_utc": "2026-11-23T14:36:03.511140+00:00",
+    "price": 647.29,
+    "scope": "2026-11-23",
+    "source": "Webull",
+    "direction": "UP",
+    "ema9": 624.2000593428202,
+    "ema21": 618.233062631147,
+    "id": "ema921:QQQ:2026-11-23:2026-11-23T14:36:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
