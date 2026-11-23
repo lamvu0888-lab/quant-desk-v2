@@ -1,30 +1,6 @@
 [
   {
     "symbol": "SPY",
-    "status": "DATA QUALITY",
-    "bias": "Bullish",
-    "score": 35,
-    "bar": "2026-11-11T17:30:00+00:00",
-    "entry_bar": "2026-11-11T17:34:00+00:00",
-    "triggered_at_utc": "2026-11-11T17:34:01.450482+00:00",
-    "price": 760.97,
-    "scope": "2026-11-11",
-    "setup": "Breakout watch",
-    "entry": 761.2,
-    "trigger": 761.15,
-    "invalidation": 761.15,
-    "stop": 760.6,
-    "tp1": 762.1,
-    "tp2": 762.7,
-    "rr": 1.5,
-    "rr2": 2.5,
-    "regime": "Normal",
-    "validation": "Unvalidated",
-    "id": "quality:SPY:2026-11-11:17:1",
-    "explanation": "Current regular-session quote."
-  },
-  {
-    "symbol": "SPY",
     "status": "LEVEL CROSSING",
     "bias": "Bullish",
     "score": 35,
@@ -8706,6 +8682,21 @@
     "change_pct": -0.26210874894749825,
     "previous_price": 7256.53,
     "id": "move:SPX:2026-11-23:2026-11-23T16:38:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-23T16:38:00+00:00",
+    "triggered_at_utc": "2026-11-23T16:38:07.816151+00:00",
+    "price": 649.85,
+    "scope": "2026-11-23",
+    "source": "Webull",
+    "direction": "DOWN",
+    "window": "5m",
+    "change_pct": -0.2656462152282324,
+    "previous_price": 651.5809,
+    "id": "move:QQQ:2026-11-23:2026-11-23T16:38:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
