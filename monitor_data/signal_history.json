@@ -1,29 +1,5 @@
 [
   {
-    "symbol": "SPY",
-    "status": "WAIT",
-    "bias": "Bearish",
-    "score": 70,
-    "bar": "2026-11-11T19:20:00+00:00",
-    "entry_bar": "2026-11-11T19:23:00+00:00",
-    "triggered_at_utc": "2026-11-11T19:23:01.658481+00:00",
-    "price": 759.89,
-    "scope": "2026-11-11",
-    "setup": "Breakout watch",
-    "entry": 760.1,
-    "trigger": 760.15,
-    "invalidation": 760.15,
-    "stop": 760.31,
-    "tp1": 759.79,
-    "tp2": 759.58,
-    "rr": 1.48,
-    "rr2": 2.48,
-    "regime": "Normal",
-    "validation": "Unvalidated",
-    "id": "signal:Tradytics:0:SPY:2026-11-11T19:20:00+00:00:ac1b0f03a4",
-    "explanation": "The recent breakout failed back through its range boundary."
-  },
-  {
     "symbol": "SPX",
     "status": "DATA QUALITY",
     "bias": "Bearish",
@@ -8377,6 +8353,21 @@
     "change_pct": 0.16752550579284264,
     "previous_price": 7228.75,
     "id": "move:SPX:2026-11-23:2026-11-23T19:02:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPY",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-23T19:02:00+00:00",
+    "triggered_at_utc": "2026-11-23T19:02:04.712983+00:00",
+    "price": 722.4033,
+    "scope": "2026-11-23",
+    "source": "Webull",
+    "direction": "UP",
+    "window": "1m",
+    "change_pct": 0.16545804966652256,
+    "previous_price": 721.21,
+    "id": "move:SPY:2026-11-23:2026-11-23T19:02:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
