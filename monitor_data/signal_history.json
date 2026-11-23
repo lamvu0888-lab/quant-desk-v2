@@ -1,29 +1,5 @@
 [
   {
-    "symbol": "NVDA",
-    "status": "WAIT",
-    "bias": "Bullish",
-    "score": 75,
-    "bar": "2026-11-11T18:45:00+00:00",
-    "entry_bar": "2026-11-11T18:46:00+00:00",
-    "triggered_at_utc": "2026-11-11T18:47:02.886045+00:00",
-    "price": 177.26,
-    "scope": "2026-11-11",
-    "setup": "Breakout and retest",
-    "entry": 177.26,
-    "trigger": 177.14,
-    "invalidation": 177.14,
-    "stop": 177.09,
-    "tp1": 177.5,
-    "tp2": 177.68,
-    "rr": 1.41,
-    "rr2": 2.47,
-    "regime": "Compressing",
-    "validation": "Unvalidated",
-    "id": "signal:Tradytics:0:NVDA:2026-11-11T18:45:00+00:00:ac1b0f03a4",
-    "explanation": "Current regular-session quote."
-  },
-  {
     "symbol": "SPY",
     "status": "GET READY",
     "bias": "Bullish",
@@ -8531,6 +8507,20 @@
     "ema9": 7237.548141572689,
     "ema21": 7241.7105583823695,
     "id": "ema921:SPX:2026-11-23:2026-11-23T17:48:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "SPY",
+    "status": "EMA TREND",
+    "bar": "2026-11-23T17:48:00+00:00",
+    "triggered_at_utc": "2026-11-23T17:48:04.510761+00:00",
+    "price": 720.045,
+    "scope": "2026-11-23",
+    "source": "Webull",
+    "direction": "DOWN",
+    "ema9": 722.0453696698556,
+    "ema21": 722.4789486727183,
+    "id": "ema921:SPY:2026-11-23:2026-11-23T17:48:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
