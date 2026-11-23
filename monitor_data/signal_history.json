@@ -1,29 +1,5 @@
 [
   {
-    "symbol": "SPX",
-    "status": "DATA QUALITY",
-    "bias": "Bullish",
-    "score": 65,
-    "bar": "2026-11-11T17:00:00+00:00",
-    "entry_bar": "2026-11-11T17:00:00+00:00",
-    "triggered_at_utc": "2026-11-11T17:00:01.725583+00:00",
-    "price": 7623.48,
-    "scope": "2026-11-11",
-    "setup": "Breakout close",
-    "entry": 7623.48,
-    "trigger": 7620.25,
-    "invalidation": 7620.25,
-    "stop": 7619.4,
-    "tp1": 7629.6,
-    "tp2": 7633.68,
-    "rr": 1.5,
-    "rr2": 2.5,
-    "regime": "Normal",
-    "validation": "Unvalidated",
-    "id": "quality:SPX:2026-11-11:17:0",
-    "explanation": "Current regular-session quote."
-  },
-  {
     "symbol": "NVDA",
     "status": "WAIT",
     "bias": "Bullish",
@@ -8694,6 +8670,21 @@
     "change_pct": 0.5370829059187621,
     "previous_price": 7194.42,
     "id": "move:SPX:2026-11-23:2026-11-23T15:02:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPY",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-23T15:02:00+00:00",
+    "triggered_at_utc": "2026-11-23T15:02:05.132555+00:00",
+    "price": 721.78,
+    "scope": "2026-11-23",
+    "source": "Webull",
+    "direction": "UP",
+    "window": "10m",
+    "change_pct": 0.5614768373388923,
+    "previous_price": 717.75,
+    "id": "move:SPY:2026-11-23:2026-11-23T15:02:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
