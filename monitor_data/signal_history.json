@@ -1,30 +1,6 @@
 [
   {
     "symbol": "NVDA",
-    "status": "GET READY",
-    "bias": "Bullish",
-    "score": 55,
-    "bar": "2026-11-11T16:50:00+00:00",
-    "entry_bar": "2026-11-11T16:53:00+00:00",
-    "triggered_at_utc": "2026-11-11T16:53:02.190892+00:00",
-    "price": 175.885,
-    "scope": "2026-11-11",
-    "setup": "Breakout watch",
-    "entry": 176.32,
-    "trigger": 176.26,
-    "invalidation": 176.26,
-    "stop": 175.64,
-    "tp1": 177.34,
-    "tp2": 178.02,
-    "rr": 1.5,
-    "rr2": 2.5,
-    "regime": "Normal",
-    "validation": "Unvalidated",
-    "id": "signal:Tradytics:0:NVDA:2026-11-11T16:50:00+00:00:edff37b4f0",
-    "explanation": "Aligned 3m and 1m entry timing."
-  },
-  {
-    "symbol": "NVDA",
     "status": "ENTER LONG",
     "bias": "Bullish",
     "score": 85,
@@ -8739,6 +8715,21 @@
     "change_pct": 0.472952173061314,
     "previous_price": 714.66,
     "id": "move:SPY:2026-11-23:2026-11-23T14:46:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPX",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-23T14:46:00+00:00",
+    "triggered_at_utc": "2026-11-23T14:46:03.923950+00:00",
+    "price": 7194.96,
+    "scope": "2026-11-23",
+    "source": "Schwab",
+    "direction": "UP",
+    "window": "5m",
+    "change_pct": 0.4718502702770522,
+    "previous_price": 7161.17,
+    "id": "move:SPX:2026-11-23:2026-11-23T14:46:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
