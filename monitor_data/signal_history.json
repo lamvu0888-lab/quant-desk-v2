@@ -1,29 +1,5 @@
 [
   {
-    "symbol": "SPY",
-    "status": "AVOID",
-    "bias": "Bullish",
-    "score": 40,
-    "bar": "2026-11-11T17:30:00+00:00",
-    "entry_bar": "2026-11-11T17:30:00+00:00",
-    "triggered_at_utc": "2026-11-11T17:30:01.627771+00:00",
-    "price": 760.7,
-    "scope": "2026-11-11",
-    "setup": "Breakout and retest",
-    "entry": 760.7,
-    "trigger": 760.61,
-    "invalidation": 760.61,
-    "stop": 760.46,
-    "tp1": 761.0,
-    "tp2": 761.3,
-    "rr": 1.25,
-    "rr2": 2.5,
-    "regime": "Normal",
-    "validation": "Unvalidated",
-    "id": "signal:Tradytics:0:SPY:2026-11-11T17:30:00+00:00:9df679e4f7",
-    "explanation": "Call wall is only 1.25R from entry."
-  },
-  {
     "symbol": "SPX",
     "status": "DATA QUALITY",
     "bias": "Bullish",
@@ -8743,6 +8719,21 @@
     "change_pct": 0.2893248062968867,
     "previous_price": 650.48,
     "id": "move:QQQ:2026-11-23:2026-11-23T16:08:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPX",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-23T16:13:00+00:00",
+    "triggered_at_utc": "2026-11-23T16:13:03.014813+00:00",
+    "price": 7270.09,
+    "scope": "2026-11-23",
+    "source": "Schwab",
+    "direction": "UP",
+    "window": "10m",
+    "change_pct": 0.3515712349301925,
+    "previous_price": 7244.62,
+    "id": "move:SPX:2026-11-23:2026-11-23T16:13:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
