@@ -1,29 +1,5 @@
 [
   {
-    "symbol": "NVDA",
-    "status": "DATA QUALITY",
-    "bias": "Neutral",
-    "score": 0,
-    "bar": "2026-11-11T17:30:00+00:00",
-    "entry_bar": "2026-11-11T17:31:00+00:00",
-    "triggered_at_utc": "2026-11-11T17:31:02.587422+00:00",
-    "price": 176.29,
-    "scope": "2026-11-11",
-    "setup": null,
-    "entry": null,
-    "trigger": null,
-    "invalidation": null,
-    "stop": null,
-    "tp1": null,
-    "tp2": null,
-    "rr": null,
-    "rr2": null,
-    "regime": "Compressing",
-    "validation": "Unvalidated",
-    "id": "quality:NVDA:2026-11-11:17:1",
-    "explanation": "Waiting for price and options flow from the same completed 5-minute bar."
-  },
-  {
     "symbol": "SPY",
     "status": "DATA QUALITY",
     "bias": "Bullish",
@@ -8716,5 +8692,20 @@
     "ema21": 7247.569456382299,
     "id": "ema921:SPX:2026-11-23:2026-11-23T16:18:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "SPX",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-23T16:38:00+00:00",
+    "triggered_at_utc": "2026-11-23T16:38:02.615236+00:00",
+    "price": 7237.51,
+    "scope": "2026-11-23",
+    "source": "Schwab",
+    "direction": "DOWN",
+    "window": "3m",
+    "change_pct": -0.26210874894749825,
+    "previous_price": 7256.53,
+    "id": "move:SPX:2026-11-23:2026-11-23T16:38:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
