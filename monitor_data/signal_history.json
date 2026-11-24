@@ -1,19 +1,5 @@
 [
   {
-    "symbol": "SPX",
-    "status": "EMA TREND",
-    "bar": "2026-11-17T18:33:00+00:00",
-    "triggered_at_utc": "2026-11-17T18:33:00.908179+00:00",
-    "price": 7349.48,
-    "scope": "2026-11-17",
-    "source": "Tradytics",
-    "direction": "UP",
-    "ema9": 7342.254000515581,
-    "ema21": 7339.903660992715,
-    "id": "ema921:SPX:2026-11-17:2026-11-17T18:33:00+00:00",
-    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
-  },
-  {
     "symbol": "SPY",
     "status": "EMA TREND",
     "bar": "2026-11-17T18:33:00+00:00",
@@ -8167,6 +8153,20 @@
     "ema9": 718.1876869258981,
     "ema21": 718.3525413673054,
     "id": "ema921:SPY:2026-11-24:2026-11-24T18:57:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "SPX",
+    "status": "EMA TREND",
+    "bar": "2026-11-24T19:00:00+00:00",
+    "triggered_at_utc": "2026-11-24T19:00:01.909341+00:00",
+    "price": 7186.27,
+    "scope": "2026-11-24",
+    "source": "Schwab",
+    "direction": "DOWN",
+    "ema9": 7195.433956160441,
+    "ema21": 7198.123159105026,
+    "id": "ema921:SPX:2026-11-24:2026-11-24T19:00:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
