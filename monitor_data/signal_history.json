@@ -1,21 +1,6 @@
 [
   {
     "symbol": "QQQ",
-    "status": "MOVE WATCH",
-    "bar": "2026-11-17T18:25:00+00:00",
-    "triggered_at_utc": "2026-11-17T18:25:04.029727+00:00",
-    "price": 655.3683,
-    "scope": "2026-11-17",
-    "source": "Webull",
-    "direction": "UP",
-    "window": "1m",
-    "change_pct": 0.20462364111737408,
-    "previous_price": 654.03,
-    "id": "move:QQQ:2026-11-17:2026-11-17T18:25:00+00:00",
-    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
-  },
-  {
-    "symbol": "QQQ",
     "status": "EMA TREND",
     "bar": "2026-11-17T18:30:00+00:00",
     "triggered_at_utc": "2026-11-17T18:30:04.424975+00:00",
@@ -8168,5 +8153,20 @@
     },
     "id": "exit:candidate:Webull:0:QQQ:2026-11-24T17:32:00+00:00",
     "explanation": "Tracked setup closed by time limit."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-24T17:58:00+00:00",
+    "triggered_at_utc": "2026-11-24T17:58:05.423511+00:00",
+    "price": 639.92,
+    "scope": "2026-11-24",
+    "source": "Webull",
+    "direction": "UP",
+    "window": "5m",
+    "change_pct": 0.2726503494312027,
+    "previous_price": 638.18,
+    "id": "move:QQQ:2026-11-24:2026-11-24T17:58:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
