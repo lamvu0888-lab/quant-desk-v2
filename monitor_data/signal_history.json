@@ -1,20 +1,5 @@
 [
   {
-    "symbol": "SPX",
-    "status": "MOVE WATCH",
-    "bar": "2026-11-17T17:15:00+00:00",
-    "triggered_at_utc": "2026-11-17T17:15:00.026169+00:00",
-    "price": 7338.91,
-    "scope": "2026-11-17",
-    "source": "Tradytics",
-    "direction": "UP",
-    "window": "10m",
-    "change_pct": 0.35841754755425725,
-    "previous_price": 7312.7,
-    "id": "move:SPX:2026-11-17:2026-11-17T17:15:00+00:00",
-    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
-  },
-  {
     "symbol": "QQQ",
     "status": "EMA TREND",
     "bar": "2026-11-17T17:15:00+00:00",
@@ -8096,6 +8081,21 @@
     "change_pct": 0.21475887800355142,
     "previous_price": 7161.52,
     "id": "move:SPX:2026-11-24:2026-11-24T17:06:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPY",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-24T17:06:00+00:00",
+    "triggered_at_utc": "2026-11-24T17:06:04.514991+00:00",
+    "price": 716.2486,
+    "scope": "2026-11-24",
+    "source": "Webull",
+    "direction": "UP",
+    "window": "1m",
+    "change_pct": 0.22509235419232443,
+    "previous_price": 714.64,
+    "id": "move:SPY:2026-11-24:2026-11-24T17:06:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
