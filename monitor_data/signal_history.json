@@ -1,19 +1,5 @@
 [
   {
-    "symbol": "SPY",
-    "status": "EMA TREND",
-    "bar": "2026-11-17T14:36:00+00:00",
-    "triggered_at_utc": "2026-11-17T14:36:05.251489+00:00",
-    "price": 738.25,
-    "scope": "2026-11-17",
-    "source": "Webull",
-    "direction": "DOWN",
-    "ema9": 738.9604188759898,
-    "ema21": 739.1821933837676,
-    "id": "ema921:SPY:2026-11-17:2026-11-17T14:36:00+00:00",
-    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
-  },
-  {
     "symbol": "SPX",
     "status": "MOVE WATCH",
     "bar": "2026-11-17T15:04:00+00:00",
@@ -8162,6 +8148,21 @@
     "change_pct": -0.3352423522838377,
     "previous_price": 715.9,
     "id": "move:SPY:2026-11-24:2026-11-24T15:45:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPX",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-24T15:45:00+00:00",
+    "triggered_at_utc": "2026-11-24T15:45:06.217258+00:00",
+    "price": 7149.63,
+    "scope": "2026-11-24",
+    "source": "Schwab",
+    "direction": "DOWN",
+    "window": "5m",
+    "change_pct": -0.3516444920179551,
+    "previous_price": 7174.86,
+    "id": "move:SPX:2026-11-24:2026-11-24T15:45:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
