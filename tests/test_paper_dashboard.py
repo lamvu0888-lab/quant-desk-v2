@@ -23,9 +23,11 @@ def test_worker_from_confirmed_alert_to_partial_and_stop(tmp_path, monkeypatch, 
     book.start(START)
     if early:
         journal.record_early("early", "SPY", "0DTE", START, dict(PLAN, stop=673.8, score=60), timedelta(minutes=10))
+    adaptive = {"profile": "Expanding trend", "tp1": 678., "tp2": 682., "rr": 1.5, "rr2": 3.5}
     for ident, state in (() if early else (("sent-id", "sent"), ("reserved-id", "claimed"))):
         journal.record_candidate(ident, "SPY", "0DTE", START,
-                                 {"plan": {**PLAN, "setup": ident}, "decision_status": PLAN["status"]},
+                                 {"plan": {**PLAN, "setup": ident, "adaptive_exit": adaptive},
+                                  "decision_status": PLAN["status"]},
                                  alert_id=ident, cooldown=timedelta(minutes=10))
         journal.claim_delivery(ident)
         journal.delivery_state(ident, state)
@@ -71,8 +73,17 @@ def test_worker_from_confirmed_alert_to_partial_and_stop(tmp_path, monkeypatch, 
         worker.poll(assert_lock)
         assert rows()[0]["remaining"] == 1
         assert rows()[0]["fills"][0]["reason"] == "TP1"
+        worker = PaperWorker(PaperLedger(journal), Quotes(), None, lambda: now)
         worker.poll(assert_lock)
         assert rows()[0]["remaining"] == 1
+        with journal.connection() as db:
+            twins = book.rows(db, trials=True)
+        if early:
+            assert twins == []
+        else:
+            assert len(twins) == 1 and twins[0]["remaining"] == 2
+            assert twins[0]["entry_ask"] == rows()[0]["entry_ask"]
+            assert twins[0]["contract"] == rows()[0]["contract"]
 
         now, spot, bid = START + timedelta(seconds=25), 672.95, 1.70
         worker.poll(assert_lock)
@@ -80,6 +91,12 @@ def test_worker_from_confirmed_alert_to_partial_and_stop(tmp_path, monkeypatch, 
         assert done["state"] == "CLOSED"
         assert done["fills"][-1]["reason"] == "STOP"
         assert realized(done) == round(option_pnl(done, 2.90, 1) + option_pnl(done, 1.70, 1), 2)
+
+        if not early:
+            with journal.connection() as db:
+                twin, = book.rows(db, trials=True)
+            assert twin["state"] == "CLOSED"
+            assert realized(twin) == option_pnl(twin, 1.70, 2)
 
 
 def test_next_listed_expiration_and_slow_classification():

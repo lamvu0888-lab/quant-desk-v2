@@ -204,6 +204,11 @@ def command_panel(ctx, plan, iv, candles, *, key, track=False, bar_ok=True):
                      f"{amount(shown['rr'])}R / {amount(shown['rr2'])}R")], small=True)
         if shown["trigger_text"]:
             st.caption(shown["trigger_text"])
+        if adaptive := shown.get("adaptive_exit"):
+            detail = adaptive.get("reason") or (
+                f"TP1 {amount(adaptive['tp1'])} ({adaptive['rr']:.2f}R) · "
+                f"TP2 {amount(adaptive['tp2'])} ({adaptive['rr2']:.2f}R)")
+            st.caption(f"Adaptive paper exits · {adaptive['profile']} · {detail}")
         if shown["target_note"]:
             st.caption(shown["target_note"])
     if shown.get("outcome") and shown["outcome"].get("r") is not None:

@@ -11,6 +11,7 @@ import time
 
 from dotenv import dotenv_values
 
+from adaptive_exits import performance_by_profile
 from gemini_advisor import AdvisorQueue, BASELINE, GeminiClient, MODEL
 from gemini_views import paper_comparison
 from early_flow import EARLY, STANDARD
@@ -298,6 +299,39 @@ def dashboard():
                            "and trigger within ten minutes. Positive values favor Early. Premium comparisons require the same contract.")
                 if pairs:
                     st.dataframe(pairs, hide_index=True)
+        if not is_demo and st.toggle("Compare adaptive paper exits", key="compare_adaptive_exits"):
+            from contextlib import closing
+            try:
+                with closing(read_connection()) as db:
+                    pairs = [(json.loads(a), json.loads(b)) for a, b in db.execute(
+                        "SELECT p.body,t.body FROM qd_exit_trial t JOIN qd_paper_trade p ON p.id=t.id "
+                        "ORDER BY t.origin DESC,t.id")]
+            except Exception:
+                st.info("Adaptive comparison unavailable. Check the paper worker version and journal connection.")
+            else:
+                closed_pairs = [(a, b) for a, b in pairs if a["state"] == b["state"] == "CLOSED"]
+                skipped = sum(b["state"] == "SKIPPED" for _, b in pairs)
+                sessions = len({a["session"] for a, _ in closed_pairs})
+                st.caption(f"{len(pairs)} Standard fills evaluated · {len(closed_pairs)} completed pairs over "
+                           f"{sessions} sessions · {skipped} adaptive skips · "
+                           f"{len(pairs)-skipped-len(closed_pairs)} pending or unresolved. "
+                           "Both simulations use the same entry ask and quantity. Exits use observed bids and "
+                           "modeled fees. The paired mean excludes skips and incomplete outcomes.")
+                if closed_pairs:
+                    mean = sum(realized(b) - realized(a) for a, b in closed_pairs) / len(closed_pairs)
+                    st.metric("Mean adaptive minus Standard per completed pair", f"${mean:,.2f}")
+                if pairs:
+                    st.caption("Per-opportunity figures count a skipped adaptive entry as $0 once its "
+                               "Standard trade closes. Open and unresolved outcomes are excluded.")
+                    st.dataframe(performance_by_profile(pairs, realized), hide_index=True)
+                    st.dataframe([{"Ticker": a["symbol"], "Entry ET": display_time(a["opened"]),
+                                   "Profile": b["plan"]["adaptive_exit"]["profile"], "Standard": a["state"],
+                                   "Adaptive": b["state"], "Adaptive detail": b["reason"],
+                                   "Standard net $": realized(a) if a["state"] == "CLOSED" else None,
+                                   "Adaptive net $": realized(b) if b["state"] == "CLOSED" else None,
+                                   "Adaptive TP1": b["plan"].get("tp1") if b["state"] != "SKIPPED" else None,
+                                   "Adaptive TP2": b["plan"].get("tp2") if b["state"] != "SKIPPED" else None}
+                                  for a, b in pairs], hide_index=True)
         with learning:
             if not reports:
                 st.caption("A report appears after a completed market session.")
