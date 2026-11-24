@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from adaptive_exits import propose as propose_exits
 from data_utils import DataError, field, utc
 from dealer_hedging import UNITS, hedge_scenarios, hedge_snapshot, level_crossings
 from futures_proxy import recent_pressure
@@ -214,8 +215,8 @@ def build_decision(ctx, read, *, warm_options=True):
     plan["reference_move"] = iv["reference_move"]
     plan["premium_review_required"] = bool(ctx.expiry and (iv["ratio"] or 0) >= 1.5 and
                                            max(iv["rank30"] or 0, iv["percentile30"] or 0) >= .8)
-    levels = gamma.get("levels") if isinstance(gamma.get("levels"), dict) else {}
-    plan["gamma_levels"] = {key: positive(levels.get(key)) for key in ("flip", "call_wall", "put_wall")}
+    gamma_prices = gamma.get("levels") if isinstance(gamma.get("levels"), dict) else {}
+    plan["gamma_levels"] = {key: positive(gamma_prices.get(key)) for key in ("flip", "call_wall", "put_wall")}
     if spot and gamma_levels:
         wall = min((level for level in gamma_levels if level.label.endswith("wall")),
                    default=None, key=lambda level: abs(level.price - spot))
@@ -247,6 +248,8 @@ def build_decision(ctx, read, *, warm_options=True):
             if not footprint.error and footprint.snapshot and footprint.snapshot.meta.get("delay_minutes") == 0:
                 points = footprint.obj.get("points", [])
     plan["confirmation_modes"] = confirmation(plan, ctx.now, flow1, points, footprint_source, read["candles"])
+    if ctx.ticker in ("SPY", "SPX", "QQQ"):
+        plan["adaptive_exit"] = propose_exits(plan, read["regime"].get("atr"), levels)
     return plan, iv
 
 

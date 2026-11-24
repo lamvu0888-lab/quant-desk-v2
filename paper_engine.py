@@ -5,6 +5,7 @@ import json
 import math
 import sqlite3
 
+from adaptive_exits import POLICY
 from data_utils import DataError, reported_delay
 from decision_engine import MIN_REWARD_R
 from entry_score import MIN_ENTRY_SCORE
@@ -54,6 +55,10 @@ class PaperLedger:
             db.execute("""CREATE TABLE IF NOT EXISTS qd_paper_trade (
                 id TEXT PRIMARY KEY, origin TEXT NOT NULL, session TEXT NOT NULL,
                 updated TEXT NOT NULL, state TEXT NOT NULL, body TEXT NOT NULL)""")
+            db.execute("""CREATE TABLE IF NOT EXISTS qd_exit_trial (
+                id TEXT PRIMARY KEY, origin TEXT NOT NULL, session TEXT NOT NULL,
+                updated TEXT NOT NULL, state TEXT NOT NULL, body TEXT NOT NULL)""")
+            db.execute("CREATE INDEX IF NOT EXISTS qd_exit_active ON qd_exit_trial(state,updated)")
             db.execute("CREATE INDEX IF NOT EXISTS qd_paper_active ON qd_paper_trade(state,updated)")
             db.execute("CREATE TABLE IF NOT EXISTS qd_paper_meta (key TEXT PRIMARY KEY, body TEXT NOT NULL)")
             self.execute(db, "INSERT INTO qd_paper_meta VALUES (?,?) ON CONFLICT(key) DO NOTHING",
@@ -132,13 +137,37 @@ class PaperLedger:
             self.execute(db, "INSERT INTO qd_paper_trade VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING",
                          ident, origin, day, origin, trade["state"], dump(trade))
 
-    def rows(self, db, where="", *args):
-        result = self.execute(db, "SELECT body FROM qd_paper_trade " + where + " ORDER BY origin,id", *args)
+    def rows(self, db, where="", *args, trials=False):
+        table = "qd_exit_trial" if trials else "qd_paper_trade"
+        result = self.execute(db, f"SELECT body FROM {table} " + where + " ORDER BY origin,id", *args)
         return [json.loads(row[0]) for row in result.fetchall()]
 
     def save(self, db, row, now):
-        self.execute(db, "UPDATE qd_paper_trade SET updated=?,state=?,body=? WHERE id=?",
+        table = "qd_exit_trial" if row.get("track") == POLICY else "qd_paper_trade"
+        self.execute(db, f"UPDATE {table} SET updated=?,state=?,body=? WHERE id=?",
                      stamp(now), row["state"], dump(row), row["id"])
+
+
+def begin_exit_trial(book, db, trade, halted, now):
+    proposal = trade["plan"].get("adaptive_exit")
+    if trade.get("track", BASELINE) != BASELINE or trade["state"] != "OPEN" or not proposal:
+        return None
+    plan = dict(trade["plan"])
+    side, spot = plan["direction"], trade["spot"]
+    reason = "Daily paper loss stop" if halted else proposal.get("reason")
+    if not reason:
+        if side * (proposal["tp1"] - spot) + 1e-9 < MIN_REWARD_R * side * (spot - plan["stop"]):
+            reason = "Adaptive TP1 below minimum reward/risk at fill"
+        else:
+            plan.update({k: proposal[k] for k in ("tp1", "tp2", "rr", "rr2")})
+    trial = {**trade, "track": POLICY, "fills": [], "plan": plan}
+    if reason:
+        # Keep the signal link. A skipped trial has no simulated position.
+        trial = {k: trial[k] for k in ("id", "origin", "session", "symbol", "track", "plan", "fills")}
+        skip(trial, reason)
+    book.execute(db, "INSERT INTO qd_exit_trial VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING",
+                 trial["id"], trial["origin"], trial["session"], stamp(now), trial["state"], dump(trial))
+    return trial
 
 
 def fast_setup(plan):
@@ -306,6 +335,12 @@ def price_exit(trade, ctx):
         return
     direction = plan["direction"]
     cursor, deadline = (time_or_none(trade[k]) for k in ("next_bar", "deadline"))
+    tightened_at = time_or_none(trade.get("runner_stop_from"))
+    def protective_stop(observed):
+        if tightened_at and observed >= tightened_at:
+            return trade["spot"]
+        return plan["stop"]
+
     prices = read_price(ctx)
     for bar in prices["candles"] if prices["bars_usable"] else ():
         at = time_or_none(bar.get("time_utc"))
@@ -317,7 +352,7 @@ def price_exit(trade, ctx):
         # Accept known later minutes even after a feed gap. Never invent a touch in a gap.
         trade["next_bar"] = stamp(closed)
         adverse, favorable = (bar["low"], bar["high"]) if direction == 1 else (bar["high"], bar["low"])
-        if direction * (adverse - plan["stop"]) <= 0:
+        if direction * (adverse - protective_stop(at)) <= 0:
             queue_exit(trade, closed, "STOP")
         elif direction * (favorable - plan["tp2"]) >= 0:
             queue_exit(trade, closed, "TP2")
@@ -333,7 +368,7 @@ def price_exit(trade, ctx):
     if not quote or not time_or_none(trade["opened"]) <= quote["at"] < deadline:
         return
     price = quote["price"]
-    if direction * (price - plan["stop"]) <= 0:
+    if direction * (price - protective_stop(quote["at"])) <= 0:
         queue_exit(trade, quote["at"], "STOP")
     elif direction * (price - plan["tp2"]) >= 0:
         queue_exit(trade, quote["at"], "TP2")
@@ -379,6 +414,11 @@ def update_trade(trade, ctx, quote, halted):
         trade.update(state="CLOSED", closed=stamp(now), reason=trade["exit_reason"])
     elif not trade["exit_qty"]:
         trade["reason"] = "TP1 filled · tracking remaining contract"
+        if (trade.get("track") == POLICY and trade["exit_reason"] == "TP1"
+                and trade["plan"]["adaptive_exit"]["profile"] in ("Ordinary trend", "Range rotation")):
+            # Use the actual underlying fill reference and only later observations.
+            trade["runner_stop_from"] = stamp(now + timedelta(microseconds=1))
+            trade["reason"] = "TP1 filled · runner protected at underlying entry"
 
 
 def realized(trade):
@@ -403,7 +443,8 @@ class PaperWorker:
         with book.journal.connection() as db:
             book.ingest(db)
             active = book.rows(db, "WHERE state IN ('OPEN','PENDING')")
-            loss_keys = {BASELINE: "loss_stop", SHADOW: "gemini_loss_stop", EARLY: "early_loss_stop"}
+            active.extend(book.rows(db, "WHERE state='OPEN'", trials=True))
+            loss_keys = {POLICY: "adaptive_exit_loss_stop", BASELINE: "loss_stop", SHADOW: "gemini_loss_stop", EARLY: "early_loss_stop"}
             halted = {track: book.meta(db, key) == str(day) for track, key in loss_keys.items()}
         open_rows = [trade for trade in active if trade["state"] == "OPEN"]
         symbols = [t["symbol"] for t in active if t["plan"].get("source") == "Webull"]
@@ -423,7 +464,7 @@ class PaperWorker:
         for trade in open_rows:
             try:
                 track = trade.get("track", BASELINE)
-                stop = halted[track] or (track == EARLY and halted[BASELINE])
+                stop = halted[track] or (track in (EARLY, POLICY) and halted[BASELINE])
                 update_trade(trade, desk(trade), quotes.get(trade["contract"]), stop)
             except DataError:
                 trade["reason"] = "Waiting for verified market data"
@@ -433,6 +474,7 @@ class PaperWorker:
                 book.save(db, trade, self.get_now())
             local_midnight = now.astimezone(ET).replace(hour=0, minute=0, second=0, microsecond=0)
             today = book.rows(db, "WHERE state='OPEN' OR updated>=?", stamp(local_midnight))
+            today.extend(book.rows(db, "WHERE state='OPEN' OR updated>=?", stamp(local_midnight), trials=True))
             pnl = {track: 0. for track in loss_keys}
             for row in today:
                 track = row.get("track", BASELINE)
@@ -484,6 +526,12 @@ class PaperWorker:
                     halted[EARLY] = True
                     book.set_meta(db, loss_keys[EARLY], str(day))
                 book.save(db, trade, self.get_now())
+                trial = begin_exit_trial(book, db, trade, halted[POLICY] or halted[BASELINE], self.get_now())
+                if trial and trial["state"] == "OPEN":
+                    pnl[POLICY] += unrealized(trial, self.get_now()) or 0
+                    if pnl[POLICY] <= DAILY_STOP:
+                        halted[POLICY] = True
+                        book.set_meta(db, loss_keys[POLICY], str(day))
                 if halted[track]:
                     book.set_meta(db, loss_keys[track], str(day))
         with book.journal.connection() as db:
