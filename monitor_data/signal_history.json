@@ -1,19 +1,5 @@
 [
   {
-    "symbol": "NVDA",
-    "status": "EMA TREND",
-    "bar": "2026-11-19T14:36:00+00:00",
-    "triggered_at_utc": "2026-11-19T14:36:15.321408+00:00",
-    "price": 156.21,
-    "scope": "2026-11-19",
-    "source": "Webull",
-    "direction": "UP",
-    "ema9": 152.8798642415291,
-    "ema21": 151.90764890781162,
-    "id": "ema921:NVDA:2026-11-19:2026-11-19T14:36:00+00:00",
-    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
-  },
-  {
     "symbol": "TSLA",
     "status": "EMA TREND",
     "bar": "2026-11-19T14:36:00+00:00",
@@ -8312,6 +8298,21 @@
     "change_pct": -0.28223431310421265,
     "previous_price": 7164.26,
     "id": "move:SPX:2026-11-25:2026-11-25T18:34:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-25T18:38:00+00:00",
+    "triggered_at_utc": "2026-11-25T18:38:04.516760+00:00",
+    "price": 629.04,
+    "scope": "2026-11-25",
+    "source": "Webull",
+    "direction": "UP",
+    "window": "5m",
+    "change_pct": 0.2885703808810147,
+    "previous_price": 627.23,
+    "id": "move:QQQ:2026-11-25:2026-11-25T18:38:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
