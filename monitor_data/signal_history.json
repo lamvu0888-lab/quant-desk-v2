@@ -1,20 +1,5 @@
 [
   {
-    "symbol": "TSLA",
-    "status": "MOVE WATCH",
-    "bar": "2026-11-19T14:35:00+00:00",
-    "triggered_at_utc": "2026-11-19T14:35:08.412206+00:00",
-    "price": 393.06,
-    "scope": "2026-11-19",
-    "source": "Webull",
-    "direction": "UP",
-    "window": "5m",
-    "change_pct": 0.8091714648440052,
-    "previous_price": 389.905,
-    "id": "move:TSLA:2026-11-19:2026-11-19T14:35:00+00:00",
-    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
-  },
-  {
     "symbol": "SPCX",
     "status": "MOVE WATCH",
     "bar": "2026-11-19T14:35:00+00:00",
@@ -8309,6 +8294,21 @@
     "change_pct": 0.18585639822923383,
     "previous_price": 7129.16,
     "id": "move:SPX:2026-11-25:2026-11-25T18:16:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPY",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-25T18:17:00+00:00",
+    "triggered_at_utc": "2026-11-25T18:17:05.114394+00:00",
+    "price": 714.02,
+    "scope": "2026-11-25",
+    "source": "Webull",
+    "direction": "UP",
+    "window": "5m",
+    "change_pct": 0.29215945163916235,
+    "previous_price": 711.94,
+    "id": "move:SPY:2026-11-25:2026-11-25T18:17:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
