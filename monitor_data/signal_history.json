@@ -1,20 +1,5 @@
 [
   {
-    "symbol": "NVDA",
-    "status": "MOVE WATCH",
-    "bar": "2026-11-19T15:02:00+00:00",
-    "triggered_at_utc": "2026-11-19T15:02:07.799474+00:00",
-    "price": 155.55,
-    "scope": "2026-11-19",
-    "source": "Webull",
-    "direction": "UP",
-    "window": "5m",
-    "change_pct": 0.3953206938281717,
-    "previous_price": 154.9375,
-    "id": "move:NVDA:2026-11-19:2026-11-19T15:02:00+00:00",
-    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
-  },
-  {
     "symbol": "SPCX",
     "status": "EMA TREND",
     "bar": "2026-11-19T15:09:00+00:00",
@@ -8383,6 +8368,21 @@
     "change_pct": -0.28811391067357084,
     "previous_price": 7191.6,
     "id": "move:SPX:2026-11-25:2026-11-25T20:00:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-25T20:00:00+00:00",
+    "triggered_at_utc": "2026-11-25T20:00:04.520573+00:00",
+    "price": 631.8373,
+    "scope": "2026-11-25",
+    "source": "Webull",
+    "direction": "DOWN",
+    "window": "5m",
+    "change_pct": -0.36626403431310184,
+    "previous_price": 634.16,
+    "id": "move:QQQ:2026-11-25:2026-11-25T20:00:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
