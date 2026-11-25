@@ -2,21 +2,6 @@
   {
     "symbol": "SPX",
     "status": "MOVE WATCH",
-    "bar": "2026-11-18T16:22:00+00:00",
-    "triggered_at_utc": "2026-11-18T16:22:01.812563+00:00",
-    "price": 7287.4,
-    "scope": "2026-11-18",
-    "source": "Tradytics",
-    "direction": "DOWN",
-    "window": "10m",
-    "change_pct": -0.39037938971783204,
-    "previous_price": 7315.96,
-    "id": "move:SPX:2026-11-18:2026-11-18T16:22:00+00:00",
-    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
-  },
-  {
-    "symbol": "SPX",
-    "status": "MOVE WATCH",
     "bar": "2026-11-18T16:25:00+00:00",
     "triggered_at_utc": "2026-11-18T16:25:01.824451+00:00",
     "price": 7314.0,
@@ -8305,6 +8290,21 @@
     "change_pct": -0.3565183906898417,
     "previous_price": 701.17,
     "id": "move:SPY:2026-11-25:2026-11-25T15:26:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "SPX",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-25T15:34:00+00:00",
+    "triggered_at_utc": "2026-11-25T15:34:02.625314+00:00",
+    "price": 7025.27,
+    "scope": "2026-11-25",
+    "source": "Schwab",
+    "direction": "UP",
+    "window": "1m",
+    "change_pct": 0.26889585709126695,
+    "previous_price": 7006.43,
+    "id": "move:SPX:2026-11-25:2026-11-25T15:34:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
