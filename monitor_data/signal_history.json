@@ -1,20 +1,5 @@
 [
   {
-    "symbol": "SPY",
-    "status": "MOVE WATCH",
-    "bar": "2026-11-19T14:55:00+00:00",
-    "triggered_at_utc": "2026-11-19T14:55:06.911859+00:00",
-    "price": 736.2901,
-    "scope": "2026-11-19",
-    "source": "Webull",
-    "direction": "DOWN",
-    "window": "5m",
-    "change_pct": -0.36804644050824065,
-    "previous_price": 739.01,
-    "id": "move:SPY:2026-11-19:2026-11-19T14:55:00+00:00",
-    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
-  },
-  {
     "symbol": "QQQ",
     "status": "MOVE WATCH",
     "bar": "2026-11-19T14:55:00+00:00",
@@ -8383,6 +8368,21 @@
     "change_pct": 0.2698659060083708,
     "previous_price": 715.17,
     "id": "move:SPY:2026-11-25:2026-11-25T19:54:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
+  },
+  {
+    "symbol": "QQQ",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-25T19:54:00+00:00",
+    "triggered_at_utc": "2026-11-25T19:54:04.625756+00:00",
+    "price": 633.6,
+    "scope": "2026-11-25",
+    "source": "Webull",
+    "direction": "UP",
+    "window": "5m",
+    "change_pct": 0.40886184273083437,
+    "previous_price": 631.02,
+    "id": "move:QQQ:2026-11-25:2026-11-25T19:54:00+00:00",
     "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
