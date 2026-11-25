@@ -1,20 +1,5 @@
 [
   {
-    "symbol": "SPCX",
-    "status": "MOVE WATCH",
-    "bar": "2026-11-19T15:25:00+00:00",
-    "triggered_at_utc": "2026-11-19T15:25:13.619585+00:00",
-    "price": 142.58,
-    "scope": "2026-11-19",
-    "source": "Webull",
-    "direction": "DOWN",
-    "window": "5m",
-    "change_pct": -0.30416389889170725,
-    "previous_price": 143.015,
-    "id": "move:SPCX:2026-11-19:2026-11-19T15:25:00+00:00",
-    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
-  },
-  {
     "symbol": "TSLA",
     "status": "MOVE WATCH",
     "bar": "2026-11-19T15:26:00+00:00",
@@ -8381,6 +8366,20 @@
     "ema9": 716.4738220039812,
     "ema21": 716.1021440916471,
     "id": "ema921:SPY:2026-11-25:2026-11-25T20:57:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "SPX",
+    "status": "EMA TREND",
+    "bar": "2026-11-25T20:57:00+00:00",
+    "triggered_at_utc": "2026-11-25T20:57:03.520336+00:00",
+    "price": 7199.2,
+    "scope": "2026-11-25",
+    "source": "Schwab",
+    "direction": "UP",
+    "ema9": 7179.972769510779,
+    "ema21": 7176.327182887266,
+    "id": "ema921:SPX:2026-11-25:2026-11-25T20:57:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
