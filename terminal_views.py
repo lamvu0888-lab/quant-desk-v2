@@ -16,6 +16,7 @@ from decision_ui import (command_panel, dashboard_decision, dealer_center, iv_ce
                          probability_center, validation_view)
 from desk_analytics import (FIVE_MINUTES, MINUTE, candles_on, flow_read, mark_orders, order_rows, price_levels,
                             realized_regime, replay_setups, session_window, setup_read, share_cvd, signed_moves)
+from dealer_heatmap import heatmap_view, level_name, nearby_levels, read_column, spot_reference
 from ema_trend import ema_trend
 from market_session import ET, active_session, rth_bounds, session_state
 from movement_detector import early_price_move
@@ -501,6 +502,7 @@ def price_panel(ctx, read):
             labels = a.toggle("Show strike and premium labels", key="price_order_labels", disabled=daily)
             more_levels = b.toggle("Show more levels", key="price_more_levels", disabled=daily)
             show_ema = c.toggle("EMA 9 and 21", value=True, key="price_ema")
+            show_gamma = a.toggle("Gamma brake / amplifier", value=True, key="price_gamma_markers", disabled=daily)
         candles, feed = ctx.history(daily=True) if daily else (read["candles"], read["bars"])
         using_webull = ctx.price_provider == "Webull" and not daily
         rows = candles if daily else chart_buckets(candles, {"1m": 1, "3m": 3, "5m": 5, "15m": 15, "1h": 60}[timeframe],
@@ -516,12 +518,26 @@ def price_panel(ctx, read):
             end = utc(visible[-1]["time_utc"]) + interval_length(timeframe)
             marks = mark_orders([order for order in prints if start <= order["stamp"] < end],
                                 candles_on(candles, ctx.session), 14 if labels else 32)
-        fig = (price_figure(rows, ctx.ticker, timeframe, levels=nearest_chart_levels(levels, rows, more_levels),
+        chart_levels = nearest_chart_levels(levels, rows, more_levels)
+        if show_gamma and not daily and not ctx.expiry_waiting and rows:
+            column = read_column(ctx, "gamma", ctx.expiry, read["gamma_feed"])
+            spot, _ = spot_reference(ctx, column)
+            for strike, net in nearby_levels(column.values, spot):
+                label = f"{level_name(net)} {strike:g}"
+                # Keep an existing wall label when the two indicators occupy the same strike.
+                same = next((i for i, level in enumerate(chart_levels) if level[1] == strike), None)
+                if same is not None:
+                    label = f"{chart_levels.pop(same)[0]} · {label}"
+                chart_levels.append((label, strike, TEAL if net > 0 else VIOLET))
+        fig = (price_figure(rows, ctx.ticker, timeframe, levels=chart_levels,
                             overlays=overlays and not daily, orders=marks, order_labels=labels,
                             quote=ctx.chart_quote if not daily else None, show_ema=show_ema) if rows else None)
         if not daily:
             chart_quote_caption(ctx)
         render_chart(fig, "price_action_chart", feed, "Waiting for completed candles in this timeframe.")
+        if show_gamma and not daily and not ctx.expiry_waiting:
+            st.caption(f"Gamma markers · {ctx.scope} · latest usable exposure snapshot. Brake may slow a move; "
+                       "amplifier may extend it in either direction. See Dealer Positioning → Heat map for all levels.")
         if ctx.price_provider == "Schwab" and daily:
             last = time_or_none(rows[-1]["time_utc"]).date() if rows else "—"
             st.caption(f"Schwab $SPX · latest completed daily candle {last}")
@@ -933,8 +949,11 @@ def comparison_panel(ctx, greek, feed):
 
 
 def positioning(ctx):
-    view = st.segmented_control("Positioning view", ["Hedge context", "Exposure", "Option chain", "Compare sources"], default="Hedge context",
+    view = st.segmented_control("Positioning view", ["Hedge context", "Heat map", "Exposure", "Option chain", "Compare sources"], default="Hedge context",
                                 key="positioning_view", label_visibility="collapsed") or "Hedge context"
+    if view == "Heat map":
+        heatmap_view(ctx)
+        return
     if view == "Option chain":
         chain_panel(ctx)
         return

@@ -168,6 +168,14 @@
 
 ## Positioning
 
+### Strike-by-expiration heat map
+
+**Start at the spot arrow.** Each row is a strike. Compare the signed dollar reading across dates to see whether exposure is concentrated in one expiration. The All column comes from a separate all-expiration request. In Gamma, the outlined cells identify up to two strikes in the selected scope. Green **Brake** marks positive gamma where hedging might slow a move. Purple **Amplifier** marks negative gamma where a move could accelerate in either direction.
+
+**Example.** With spot at 701.54, a brake at 702 and an amplifier at 700 describe two different places to watch. A rally toward 702 could lose momentum. A move through 700 could gain speed if price and flow confirm. These are modeled exposures. The table below the map shows each column’s observation time and totals for all available strikes on each side of spot.
+
+**On the candles.** Open Overview → Price chart filters → Gamma brake / amplifier. The labels use the sidebar expiration and appear when the strike fits the intraday chart. Switch to Vanna in the heat map to inspect modeled delta sensitivity per IV point.
+
 ### Hedge-pressure heatmap and scenario table
 
 **What you see.** The horizontal axis is hypothetical spot, the vertical axis is the IV shock in percentage points, and the selected horizon supplies elapsed time. The color/hover value is estimated hedge demand in share-equivalents or SPX index-equivalents. Positive values represent modeled buying. The map uses combined gamma, vanna and charm when compatible inputs exist, and otherwise labels a gamma-only map.
