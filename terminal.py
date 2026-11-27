@@ -143,6 +143,19 @@ def open_symbol():
         st.session_state["desk_symbol_error"] = str(exc)
 
 
+PAGE_GROUPS = {
+    "Trading desk": ("Overview", "Movement Detector", "Trade Plan"),
+    "Options research": ("Positioning", "Options Flow", "Volatility", "Forecast"),
+    "Market scans": ("Scanner", "Money Map", "Dark Pool", "Signals"),
+    "Tools & help": ("Data Health", "TradingView", "Learn"),
+}
+
+
+def open_heatmap():
+    st.session_state["positioning_view"] = "Heat map"
+    go_to("Positioning")
+
+
 def go_to(page):
     if page in PAGES_LABEL:
         st.session_state["desk_page"] = page
@@ -293,9 +306,14 @@ def main():
         dte, expiry_mode = expiration_picker(ticker, DEMO_AT if mode == "Preview" else datetime.now(UTC), mode == "Preview",
                                              st.session_state.get("desk_paused", False), store)
         st.markdown('<div class="qd-rule"></div><div class="qd-nav-label">Workspace</div>', unsafe_allow_html=True)
-        page = st.radio("Workspace navigation", list(PAGES_LABEL),
-                        format_func=lambda p: f"{PAGES_LABEL[p][2]}  {NAV_LABELS.get(p, p)}",
-                        key="desk_page", label_visibility="collapsed", width="stretch")
+        first, second = st.columns(2, gap="small")
+        first.button("Chart", key="desk_chart", on_click=go_to, args=("Overview",), width="stretch")
+        second.button("Movement", key="desk_movement", on_click=go_to, args=("Movement Detector",), width="stretch")
+        first.button("Trade plan", key="desk_plan", on_click=go_to, args=("Trade Plan",), width="stretch")
+        second.button("Dealer map", key="desk_map", on_click=open_heatmap, width="stretch")
+        grouped = {page: f"{group} · {NAV_LABELS.get(page, page)}"
+                   for group, pages in PAGE_GROUPS.items() for page in pages}
+        page = st.selectbox("Browse workspace", list(grouped), format_func=grouped.get, key="desk_page")
         with st.expander("Feed controls"):
             providers = ["Auto", "Webull", "Tradytics"]
             if ticker == "SPX":

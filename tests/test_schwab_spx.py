@@ -243,7 +243,7 @@ def test_rendered_dashboard_and_worker_share_selected_source(monkeypatch):
     assert not app.exception
     assert "Schwab" in app.selectbox(key="desk_price_provider").options
     assert any("Schwab reported price 7,012.50" in caption.value for caption in app.caption)
-    app.radio(key="desk_page").set_value("Data Health").run()
+    app.selectbox(key="desk_page").set_value("Data Health").run()
     assert not app.exception
     assert any("Schwab $SPX candles" in caption.value for caption in app.caption)
     _, reports = MonitorScan(demo, None, "Auto", None, index).run(["SPX"], DEMO_AT, 30, dry_run=True)

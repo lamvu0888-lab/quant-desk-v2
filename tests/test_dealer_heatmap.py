@@ -72,7 +72,7 @@ def test_dashboard_heatmap_and_price_markers(monkeypatch):
     assert has_marker()
     app.toggle(key="price_gamma_markers").set_value(False).run()
     assert not has_marker()
-    app.radio(key="desk_page").set_value("Positioning").run()
+    app.selectbox(key="desk_page").set_value("Positioning").run()
     app.segmented_control(key="positioning_view").set_value("Heat map").run()
     for symbol in ("SPY", "SPX", "QQQ"):
         app.button(key=f"watch_{symbol}").click().run()

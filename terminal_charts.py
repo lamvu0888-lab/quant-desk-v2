@@ -9,6 +9,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from chart_studies import ANCHOR, BANDS, OPENING, PIVOTS, RSI, close_studies, heikin_ashi, swing_levels
 from desk_analytics import flow_read
 from data_utils import utc
 from ema_trend import ema_lines
@@ -25,21 +26,32 @@ def quote_marker(quote, x):
 
 
 def price_figure(bars, ticker, timeframe, *, levels=None, overlays=True, orders=(), order_labels=False, quote=None,
-                 show_ema=False):
+                 show_ema=False, studies=(), oscillator="Off", levels_by_close=None, five_minute_ema=None, chart_type="Candles"):
     rows = bars[-105:]
     times = [utc(row["time_utc"]) for row in rows]
     labels = [stamp.strftime("%b %d") if timeframe == "1D" else stamp.astimezone(ET).strftime("%b %d · %H:%M") for stamp in times]
     positions = list(range(len(rows)))
     volume_present = any(row.get("volume") is not None for row in rows)
-    fig = make_subplots(rows=2 if volume_present else 1, cols=1, shared_xaxes=True,
-                        vertical_spacing=.055, row_heights=[.81, .19] if volume_present else [1])
-    fig.add_trace(go.Candlestick(x=positions,
-        open=[r["open"] for r in rows], high=[r["high"] for r in rows],
-        low=[r["low"] for r in rows], close=[r["close"] for r in rows], text=labels,
-        increasing=dict(line=dict(color=TEAL, width=1), fillcolor=TEAL),
-        decreasing=dict(line=dict(color=RED, width=1), fillcolor=RED), name=ticker), row=1, col=1)
+    pane = oscillator != "Off"
+    heights = [1] + ([.23] if volume_present else []) + ([.32] if pane else [])
+    fig = make_subplots(rows=len(heights), cols=1, shared_xaxes=True,
+                        vertical_spacing=.055, row_heights=heights)
+    width = None if timeframe == "1D" else interval_length(timeframe)
+    price_rows = heikin_ashi(bars[-320:], width)[-len(rows):] if chart_type == "Heikin-Ashi" else rows
+    if chart_type == "Close line":
+        fig.add_scatter(x=positions, y=[r["close"] for r in rows], name=ticker, mode="lines",
+                        line=dict(color=BLUE), customdata=labels,
+                        hovertemplate="%{customdata}<br>Close %{y:.2f}<extra></extra>", row=1, col=1)
+    else:
+        trace = go.Ohlc if chart_type == "OHLC bars" else go.Candlestick
+        up, down = dict(line=dict(color=TEAL, width=1)), dict(line=dict(color=RED, width=1))
+        if trace == go.Candlestick:
+            up["fillcolor"] = "rgba(0,0,0,0)" if chart_type == "Hollow up candles" else TEAL
+            down["fillcolor"] = RED
+        fields = {key: [r[key] for r in price_rows] for key in ("open", "high", "low", "close")}
+        fig.add_trace(trace(x=positions, **fields, text=labels, increasing=up, decreasing=down,
+                            name=f"{ticker} · Heikin-Ashi" if chart_type == "Heikin-Ashi" else ticker), row=1, col=1)
     if show_ema:
-        width = None if timeframe == "1D" else interval_length(timeframe)
         lines = ema_lines(bars[-210:], width)[-len(rows):]
         for values, name, color in zip(zip(*lines), ("EMA 9", "EMA 21"), (BLUE, AMBER)):
             if any(value is not None for value in values):
@@ -53,6 +65,34 @@ def price_figure(bars, ticker, timeframe, *, levels=None, overlays=True, orders=
             if any(v is not None for v in vwaps):
                 fig.add_trace(go.Scatter(x=positions, y=vwaps, name=name, line=dict(color=VIOLET, width=1.4, dash=dash),
                                          customdata=labels, hovertemplate="%{customdata}<br>%{y:,.2f}<extra>%{fullData.name}</extra>"), row=1, col=1)
+    extra = close_studies(bars[-320:], width, BANDS in studies, oscillator) if BANDS in studies or pane else {}
+    if PIVOTS in studies:
+        extra.update(swing_levels(bars, width))
+    if levels_by_close and width:
+        sampled = [levels_by_close.get(stamp + width, (None, None, None)) for stamp in times]
+        for index, (study, label) in enumerate(((OPENING, "Opening high"), (OPENING, "Opening low"),
+                                                  (ANCHOR, "Anchored VWAP estimate"))):
+            if study in studies:
+                extra[label] = [v[index] for v in sampled]
+    if five_minute_ema and width:
+        extra["Completed 5m EMA 21"] = [five_minute_ema.get(stamp + width) for stamp in times]
+    colors = {"Swing support": TEAL, "Swing resistance": RED, "Completed 5m EMA 21": "#a15c20", "Opening high": TEAL, "Opening low": RED, "Anchored VWAP estimate": AMBER,
+              "Upper band": BLUE, "Lower band": BLUE, "RSI": VIOLET, "MACD": BLUE, "Signal": AMBER}
+    for name, values in extra.items():
+        values = values[-len(rows):]
+        if any(value is not None for value in values):
+            oscillator_line = name in ("RSI", "MACD", "Signal")
+            fig.add_scatter(x=positions, y=values, name=name, mode="lines", connectgaps=False,
+                            line=dict(color=colors[name], width=1.5, dash="dot" if "band" in name else "solid",
+                                      shape="hv" if name.startswith("Swing") or name == "Completed 5m EMA 21" else "linear"),
+                            customdata=labels, hovertemplate="%{customdata}<br>%{y:.2f}<extra>%{fullData.name}</extra>",
+                            row=len(heights) if oscillator_line else 1, col=1)
+    if pane:
+        fig.update_yaxes(title="RSI" if oscillator == RSI else "MACD", nticks=3, row=len(heights), col=1)
+        if oscillator == RSI:
+            fig.update_yaxes(range=[0, 100], row=len(heights), col=1)
+            for guide in (30, 70):
+                fig.add_hline(y=guide, line_color=MUTED, line_dash="dot", opacity=.5, row=len(heights), col=1)
     if volume_present:
         fig.add_trace(go.Bar(x=positions, y=[r.get("volume") for r in rows],
                              marker_color=["#287d75" if r["close"] >= r["open"] else "#7c435a" for r in rows],
@@ -90,7 +130,7 @@ def price_figure(bars, ticker, timeframe, *, levels=None, overlays=True, orders=
                      ticktext=[labels[i] for i in ticks], range=[-.8, len(rows)+4], showgrid=False)
     fig.update_yaxes(side="right", tickformat=",.2f", row=1, col=1)
     fig.update_layout(bargap=.15)
-    return style_chart(fig, 395, hover="closest", revision=f"{ticker}:{timeframe}")
+    return style_chart(fig, 495 if pane else 395, hover="closest", revision=f"{ticker}:{timeframe}")
 
 
 def dated_rows(rows, field="time"):

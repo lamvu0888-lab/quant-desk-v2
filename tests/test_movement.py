@@ -172,5 +172,5 @@ def test_movement_navigation_and_spx_proxy(monkeypatch):
     assert any("SPY estimated 10m CVD" in row.value for row in app.caption)
     app.button(key="movement_open_trade").click().run()
     assert any("Option quote check" in row.value for row in app.markdown)
-    assert all("Strategy Lab" not in option and "History" not in option for option in app.radio(key="desk_page").options)
+    assert all("Strategy Lab" not in option and "History" not in option for option in app.selectbox(key="desk_page").options)
     assert not app.exception
