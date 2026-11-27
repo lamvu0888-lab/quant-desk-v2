@@ -1,20 +1,5 @@
 [
   {
-    "symbol": "SPX",
-    "status": "MOVE WATCH",
-    "bar": "2026-11-19T15:34:00+00:00",
-    "triggered_at_utc": "2026-11-19T15:34:00.625117+00:00",
-    "price": 7309.57,
-    "scope": "2026-11-19",
-    "source": "Tradytics",
-    "direction": "DOWN",
-    "window": "10m",
-    "change_pct": -0.38621351311204366,
-    "previous_price": 7337.91,
-    "id": "move:SPX:2026-11-19:2026-11-19T15:34:00+00:00",
-    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
-  },
-  {
     "symbol": "NVDA",
     "status": "MOVE WATCH",
     "bar": "2026-11-19T15:41:00+00:00",
@@ -8381,5 +8366,20 @@
     "ema21": 633.8617130321712,
     "id": "ema921:QQQ:2026-11-27:2026-11-27T14:36:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "SPX",
+    "status": "MOVE WATCH",
+    "bar": "2026-11-27T14:38:00+00:00",
+    "triggered_at_utc": "2026-11-27T14:38:03.308877+00:00",
+    "price": 7242.42,
+    "scope": "2026-11-27",
+    "source": "Schwab",
+    "direction": "DOWN",
+    "window": "5m",
+    "change_pct": -0.26000853841599003,
+    "previous_price": 7261.3,
+    "id": "move:SPX:2026-11-27:2026-11-27T14:38:00+00:00",
+    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
   }
 ]
