@@ -1,20 +1,5 @@
 [
   {
-    "symbol": "SPY",
-    "status": "MOVE WATCH",
-    "bar": "2026-11-19T15:33:00+00:00",
-    "triggered_at_utc": "2026-11-19T15:33:04.521896+00:00",
-    "price": 729.05,
-    "scope": "2026-11-19",
-    "source": "Webull",
-    "direction": "DOWN",
-    "window": "5m",
-    "change_pct": -0.26948647095839107,
-    "previous_price": 731.02,
-    "id": "move:SPY:2026-11-19:2026-11-19T15:33:00+00:00",
-    "explanation": "Price move watch. Check the live quote and Trade Plan for confirmation."
-  },
-  {
     "symbol": "NVDA",
     "status": "EMA TREND",
     "bar": "2026-11-19T15:33:00+00:00",
@@ -8381,6 +8366,20 @@
     "ema9": 7204.9474979895185,
     "ema21": 7189.439220838294,
     "id": "ema921:SPX:2026-11-27:2026-11-27T14:36:00+00:00",
+    "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
+  },
+  {
+    "symbol": "SPY",
+    "status": "EMA TREND",
+    "bar": "2026-11-27T14:36:00+00:00",
+    "triggered_at_utc": "2026-11-27T14:36:06.733849+00:00",
+    "price": 722.3,
+    "scope": "2026-11-27",
+    "source": "Webull",
+    "direction": "UP",
+    "ema9": 718.9713968660385,
+    "ema21": 717.4144583744969,
+    "id": "ema921:SPY:2026-11-27:2026-11-27T14:36:00+00:00",
     "explanation": "Two completed 3m closes confirm the EMA 9/21 trend."
   }
 ]
