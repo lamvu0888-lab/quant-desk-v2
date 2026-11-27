@@ -1,5 +1,15 @@
 ## Overview
 
+### Chart studies and timeframe trends
+
+Start with the 5-minute EMA trend, then compare the 1-minute and 3-minute readings to see whether the shorter moves agree. On a 1-minute or 3-minute chart, select **5m EMA 21 overlay** to see the last confirmed 5-minute average at each candle close. A missing close flags a gap in the expected session data. The trend strip is a chart reading, independent of the Trade Plan’s entry checklist.
+
+Use **Price chart style** to switch between candles, hollow up candles, OHLC bars, the closing-price line, and Heikin-Ashi. Heikin-Ashi smooths the candle body. Exact trigger prices come from the underlying.
+
+Under **Price chart filters**, add only the study that answers your question. **Opening range** draws the high and low once the first 15 regular-session minutes have closed. **Highest-volume anchored VWAP** tracks an estimated average price paid since the largest completed volume minute so far. A larger volume minute resets the anchor going forward. Cash SPX does not have share volume. **Confirmed swing levels** mark a local high or low after two completed bars on either side establish it. The level first appears when the second confirming candle closes. **Bollinger bands** show two population standard deviations around a 20-close moving average.
+
+Use the **Momentum pane** for **RSI**, which compares the size of recent gains and losses, or **MACD**, which shows the separation of two moving averages alongside its signal line. All three price-derived studies use the chart’s selected timeframe. Indicator readings start once enough completed bars are available.
+
 ### Market overview and Entry Command Center
 
 **What you see.** The index tape shows the latest reported index levels and changes. The command center shows the selected ticker, expiration scope, session state, price source, evidence score, price alignment, flow and the reason for the current status.

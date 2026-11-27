@@ -10,6 +10,7 @@ from functools import cached_property
 import pandas as pd
 import streamlit as st
 
+from chart_studies import ANCHOR, BANDS, MACD, MTF, OPENING, PIVOTS, RSI, completed_five_minute_ema, intraday_levels, trend_strip
 from data_utils import DataError, field, utc
 from decision_flow import price_quote_issues, usable_exposure
 from decision_ui import (command_panel, dashboard_decision, dealer_center, iv_center, journal_panel, option_entry_panel,
@@ -503,6 +504,14 @@ def price_panel(ctx, read):
             more_levels = b.toggle("Show more levels", key="price_more_levels", disabled=daily)
             show_ema = c.toggle("EMA 9 and 21", value=True, key="price_ema")
             show_gamma = a.toggle("Gamma brake / amplifier", value=True, key="price_gamma_markers", disabled=daily)
+            chart_type = st.selectbox("Price chart style", ["Candles", "Hollow up candles", "OHLC bars", "Close line", "Heikin-Ashi"],
+                                      key="chart_price_style")
+            options = [BANDS, PIVOTS] if daily else [OPENING, ANCHOR, PIVOTS, BANDS]
+            if timeframe in ("1m", "3m"):
+                options.append(MTF)
+            studies = st.multiselect("Price overlays", options,
+                                     key="chart_daily_studies" if daily else "chart_session_studies")
+            oscillator = st.selectbox("Momentum pane", ["Off", RSI, MACD], key="chart_oscillator")
         candles, feed = ctx.history(daily=True) if daily else (read["candles"], read["bars"])
         using_webull = ctx.price_provider == "Webull" and not daily
         rows = candles if daily else chart_buckets(candles, {"1m": 1, "3m": 3, "5m": 5, "15m": 15, "1h": 60}[timeframe],
@@ -529,12 +538,30 @@ def price_panel(ctx, read):
                 if same is not None:
                     label = f"{chart_levels.pop(same)[0]} · {label}"
                 chart_levels.append((label, strike, TEAL if net > 0 else VIOLET))
-        fig = (price_figure(rows, ctx.ticker, timeframe, levels=chart_levels,
+        levels_by_close = intraday_levels(candles, ctx.session, ctx.now) if OPENING in studies or ANCHOR in studies else {}
+        if not daily:
+            if ctx.paused or feed.error or feed_has_delay(feed):
+                st.caption("Timeframe trends unavailable · price feed paused, delayed or reporting an error.")
+            else:
+                trends = trend_strip(candles, ctx.session, ctx.now)
+                st.markdown("**EMA trend**  " + "  ·  ".join(f"{m}m **{v}**" for m, v in trends))
+        fig = (price_figure(rows, ctx.ticker, timeframe, levels=chart_levels, studies=studies,
+                            oscillator=oscillator, levels_by_close=levels_by_close, chart_type=chart_type,
+                            five_minute_ema=completed_five_minute_ema(candles, ctx.session, ctx.now) if MTF in studies else None,
                             overlays=overlays and not daily, orders=marks, order_labels=labels,
                             quote=ctx.chart_quote if not daily else None, show_ema=show_ema) if rows else None)
         if not daily:
             chart_quote_caption(ctx)
         render_chart(fig, "price_action_chart", feed, "Waiting for completed candles in this timeframe.")
+        if chart_type == "Heikin-Ashi":
+            st.caption("Heikin-Ashi candles show smoothed prices. Studies and trade checks use the underlying’s observed prices.")
+        if ANCHOR in studies:
+            if ctx.ticker in INDICES or not levels_by_close or next(reversed(levels_by_close.values()))[2] is None:
+                st.caption("Anchored VWAP unavailable at the latest minute · requires continuous regular-session share volume.")
+            else:
+                st.caption("Anchored VWAP estimate · volume-weighted typical minute prices since the highest-volume minute observed so far.")
+        if OPENING in studies and not any(v[0] is not None for v in levels_by_close.values()):
+            st.caption("Opening range needs all 15 completed one-minute bars from the regular-session open.")
         if show_gamma and not daily and not ctx.expiry_waiting:
             st.caption(f"Gamma markers · {ctx.scope} · latest usable exposure snapshot. Brake may slow a move; "
                        "amplifier may extend it in either direction. See Dealer Positioning → Heat map for all levels.")
@@ -652,22 +679,11 @@ def cvd_panel(ctx, candles, feed):
 def overview(ctx):
     read = read_workspace(ctx)
     decision, iv = dashboard_decision(ctx, read)
-    command_panel(ctx, decision, iv, read["candles"], key="overview")
-    nav_button("Open Movement Detector", "Movement Detector", "overview_open_movement")
     quote = ctx.quote()
     flow, regime = read["flow"], read["regime"]
     gamma, vol = read["gamma"], read["vol"]
     spot, change = positive(quote.get("price")), numeric(quote.get("change_pct"))
     net = net_sum(flow.rows, "net_premium_usd")
-    panel_header("Market pulse", "overview", "overview_kpis", ctx.scope)
-    kpis([
-        metric("Underlying", amount(spot), f"{signed_pct(change)} · {ctx.price_provider}", change),
-        metric("Volatility regime", regime["label"], "Completed 5m candles"),
-        metric("5m EMA 9/21", {1: "Up", -1: "Down", 0: "Neutral"}[decision["direction"]], "Completed price trend"),
-        metric("Net GEX", compact(gamma.get("total"), currency=True, signed=True), "$ per 1% move", gamma.get("total")),
-        metric("Options net flow", compact(net, currency=True, signed=True), "Completed intervals", net),
-        metric("IV rank", ratio_pct(vol.obj.get("iv_rank")), f"30D ATM IV {ratio_pct(vol.obj.get('atm_iv_30d'))}"),
-    ])
     left, right = st.columns([2.55, 1], gap="medium")
     with left:
         prints, prints_feed = price_panel(ctx, read)
@@ -681,6 +697,17 @@ def overview(ctx):
             render_chart(flow_figure(flow.rows, compact=True), "overview_flow_spark", flow,
                          "No completed options-flow interval has arrived for the selected session and DTE yet.")
             feed_stamp("timeline", flow, ctx)
+    command_panel(ctx, decision, iv, read["candles"], key="overview")
+    nav_button("Open Movement Detector", "Movement Detector", "overview_open_movement")
+    panel_header("Market pulse", "overview", "overview_kpis", ctx.scope)
+    kpis([
+        metric("Underlying", amount(spot), f"{signed_pct(change)} · {ctx.price_provider}", change),
+        metric("Volatility regime", regime["label"], "Completed 5m candles"),
+        metric("5m EMA 9/21", {1: "Up", -1: "Down", 0: "Neutral"}[decision["direction"]], "Completed price trend"),
+        metric("Net GEX", compact(gamma.get("total"), currency=True, signed=True), "$ per 1% move", gamma.get("total")),
+        metric("Options net flow", compact(net, currency=True, signed=True), "Completed intervals", net),
+        metric("IV rank", ratio_pct(vol.obj.get("iv_rank")), f"30D ATM IV {ratio_pct(vol.obj.get('atm_iv_30d'))}"),
+    ])
     # Independently request 0DTE; fall forward only when the current expiry
     # has no usable, fresh gamma data. Do not alter the workspace DTE setting.
     with st.container(border=True):

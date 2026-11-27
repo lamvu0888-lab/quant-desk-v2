@@ -278,9 +278,9 @@ def test_all_workspace_pages_and_v25_probability_run(monkeypatch):
     assert any("ENTRY COMMAND CENTER" in m.value for m in app.markdown)
     assert app.button(key="discord_test_button").disabled
     for value in PAGES_LABEL:
-        app.radio(key="desk_page").set_value(value).run()
+        app.selectbox(key="desk_page").set_value(value).run()
         assert not app.exception, value
-    app.radio(key="desk_page").set_value("Forecast").run()
+    app.selectbox(key="desk_page").set_value("Forecast").run()
     app.selectbox(key="desk_expiry_mode").set_value("0 DTE").run()
     app.button(key="qd25_run_plan_mc").click().run()
     assert not app.exception
@@ -291,6 +291,6 @@ def test_all_workspace_pages_and_v25_probability_run(monkeypatch):
     assert app.session_state["qd25_result"][2]["mode"] == "option"
     assert app.session_state["qd25_result"][2]["models"]["Conditioned block"]["Immediate"]["option_detail"]["max_loss"] > 0
     app.button(key="watch_SPX").click().run()
-    app.radio(key="desk_page").set_value("Positioning").run()
+    app.selectbox(key="desk_page").set_value("Positioning").run()
     assert not app.exception
     assert app.get("plotly_chart")

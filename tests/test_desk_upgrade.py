@@ -128,7 +128,7 @@ def test_upgrade_preview_pages_expiry_and_exports(monkeypatch):
     assert not app.exception
     assert any("3 DTE" in value.value for value in app.markdown)
     for page in ("Money Map", "Trade Plan", "Scanner", "TradingView", "Options Flow"):
-        app.radio(key="desk_page").set_value(page).run()
+        app.selectbox(key="desk_page").set_value(page).run()
         assert not app.exception, page
         if page == "TradingView":
             app.button(key="generate_tv").click().run()
@@ -141,7 +141,7 @@ def test_upgrade_preview_pages_expiry_and_exports(monkeypatch):
         if page == "Options Flow":
             app.toggle(key="flow_contract_cvd").set_value(True).run()
             assert not app.exception and len(app.get("plotly_chart")) >= 3
-    assert all("History" not in option for option in app.radio(key="desk_page").options)
+    assert all("History" not in option for option in app.selectbox(key="desk_page").options)
     reopened = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "terminal.py"), default_timeout=30)
     reopened.session_state["desk_page"] = "History"
     reopened.run()
