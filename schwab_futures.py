@@ -181,7 +181,7 @@ def leg_features(series, target):
                 persistence=persistence, divergence=divergence, possible_absorption=absorption, possible_reversal=reversal)
 
 
-def context(feed, target, now):
+def context(feed, target, now, *, include_history=False):
     if not target or not timedelta(0)<=now-target<MINUTE or not feed or feed.error or not feed.snapshot or simulated_feed(feed):
         return None
     if (feed.snapshot.meta.get("source") != "Schwab" or feed.snapshot.meta.get("delay_minutes") != 0
@@ -195,6 +195,8 @@ def context(feed, target, now):
             leg = leg_features(series, target)
             if leg:
                 leg["classified_notional"] = leg["classified"] * MULTIPLIER[root] * series["points"][-1]["close"]
+                if include_history:
+                    leg["history"] = series["points"]
                 legs[root] = leg
     if not legs:
         return None
@@ -238,13 +240,13 @@ def proxy_caption(proxy):
             f"{leg['coverage']:.0%} classified volume in sampled intervals · ES/MES {proxy['agreement'].lower()} · research only")
 
 
-def fetch_context(ctx, close):
+def fetch_context(ctx, close, *, include_history=False):
     if ctx.ticker != "SPX" or ctx.preview or ctx.paused or not getattr(ctx, "schwab_store", None) or not close:
         return None
     bounds = rth_bounds(ctx.session)
     if not bounds or not bounds[0] <= ctx.now < bounds[1]:
         return None
-    return context(request_feed(ctx.schwab_store), close, ctx.now)
+    return context(request_feed(ctx.schwab_store), close, ctx.now, include_history=include_history)
 
 
 def request_feed(store):

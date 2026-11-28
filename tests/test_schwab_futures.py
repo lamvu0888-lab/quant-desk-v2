@@ -82,6 +82,10 @@ def test_partial_volume_is_never_promoted_to_observed_cvd_or_signed_in_full():
     assert es["acceleration"]==0 and es["persistence"]==1 and es["samples"]==19
     assert es["coverage"]==pytest.approx(38/285) and es["classified_notional"]>0
     assert "research only" in proxy_caption(proxy)
+    assert "history" not in es
+    history = context(feed, at, at, include_history=True)["legs"]["ES"]["history"]
+    assert [point["delta"] for point in history] == [38, 38, 38]
+    assert history[-1]["cvd"] == 114
     assert context(feed,at-MINUTE,at) is None
     assert context(Feed(feed.snapshot,FeedError("STALE","stale")),at,at) is None
     assert context(Feed(Snapshot(feed.obj,{**META,"preview":True},at)),at,at) is None
