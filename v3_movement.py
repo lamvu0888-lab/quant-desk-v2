@@ -5,10 +5,11 @@ import os
 from statistics import median
 
 from early_flow import window
+from v3_provenance import live_signal, simulated_context, simulated_feed
 from terminal_data import numeric, time_or_none, feed_has_delay
 from market_session import ET, rth_bounds
 
-VERSION = "3.0-shadow.1"
+VERSION = "3.0-shadow.2"
 HORIZONS = (3, 5, 10, 15)
 MINUTE = timedelta(minutes=1)
 THRESHOLDS = {"Aggressive": 55, "Balanced": 65, "Conservative": 75}
@@ -16,6 +17,11 @@ THRESHOLDS = {"Aggressive": 55, "Balanced": 65, "Conservative": 75}
 
 def enabled(name, default=False):
     return os.getenv("QD_V3_" + name, str(default)).strip().lower() in ("1", "true", "yes", "on")
+
+
+def active_mode():
+    requested = os.getenv("QD_V3_MODE", "Balanced").strip().title()
+    return requested if requested in THRESHOLDS else "Balanced"
 
 
 def score(value):
@@ -30,15 +36,18 @@ def robust_scale(values, floor):
 def signal(ctx, read, plan, flow, points, cvd_source, gamma):
     now, close = ctx.now, read.get("minute_close")
     scope = str(ctx.session)
-    mode = os.getenv("QD_V3_MODE", "Balanced").title()
-    threshold = THRESHOLDS.get(mode, 65)
-    event = dict(version=VERSION, symbol=ctx.ticker, session=scope, mode=mode if mode in THRESHOLDS else "Balanced",
+    mode = active_mode()
+    threshold = THRESHOLDS[mode]
+    event = dict(version=VERSION, symbol=ctx.ticker, session=scope, mode=mode,
                  state="INSUFFICIENT DATA", side=0, scores={}, features={}, forecasts={}, price=None,
                  at=close.isoformat() if close else None, processed=now.isoformat(), source=ctx.price_provider,
                  probability=None, reason="Waiting for current, contiguous completed regular-session prices.",
-                 action="Monitor independent setups", preview=ctx.preview, regime=plan.get("regime"))
+                 action="Monitor independent setups", preview=bool(simulated_context(ctx,read)), regime=plan.get("regime"),
+                 freshness={}, cross_market=None)
     bounds = rth_bounds(ctx.session)
-    if not (bounds and bounds[0] <= now <= bounds[1] and read.get("bars_ready") and close and
+    if not (bounds and bounds[0] <= now <= bounds[1] and read.get("bars_ready") and close
+            and (ctx.preview and read.get("bars") is None or read.get("bars") is not None
+                 and not read["bars"].error and not feed_has_delay(read["bars"])) and
             timedelta(0) <= now-close < MINUTE and not ctx.paused):
         return event
     candles = []
@@ -80,7 +89,7 @@ def signal(ctx, read, plan, flow, points, cvd_source, gamma):
     snap = flow.snapshot
     usable = (snap and not flow.error and not feed_has_delay(flow) and snap.meta.get("interval")=="1m"
               and snap.meta.get("symbol") in (None,ctx.ticker) and snap.meta.get("expiry") in (None,ctx.expiry)
-              and not snap.meta.get("delayed") and not snap.meta.get("sandbox")
+              and not snap.meta.get("delayed") and (ctx.preview or not simulated_feed(flow))
               and 0 <= (now-snap.received_at).total_seconds() <= 90)
     premium = window(flow.rows, "net_premium_usd", times, starts=True) if usable else []
     delta = window(points, "delta", times)
@@ -147,7 +156,13 @@ def signal(ctx, read, plan, flow, points, cvd_source, gamma):
     absorption=bool(signed_pressure and abs(velocity)<.5)
     if absorption and path=="Range":path="Possible absorption"
     vwap=numeric(plan.get("vwap"))
-    features = dict(pressure_weights=list(weights),absorption=absorption,
+    range_ratio = median(ranges[-3:])/median(ranges[:-3]) if len(ranges)>=10 and median(ranges[:-3])>0 else None
+    features = dict(range_high=hi, range_low=lo, compressed=compressed, range_ratio=range_ratio,
+                    net_value=premium[-1] if net is not None else None,
+                    net_acceleration=premium[-1]-2*premium[-2]+premium[-3] if net is not None else None,
+                    footprint_value=delta[-1] if cvd is not None else None,
+                    footprint_acceleration=delta[-1]-2*delta[-2]+delta[-3] if cvd is not None else None,
+                    footprint_units="contracts" if ctx.ticker=="SPX" else "shares",pressure_weights=list(weights),absorption=absorption,
                     vwap_distance=(spot-vwap)/scale if vwap else None,atm_iv=numeric(plan.get("atm_iv")),
                     realized_volatility=float((sum(v*v for v in changes)/len(changes))**.5/spot),
                     aligned_flow_inputs=len(flow_parts),change_point_mass=change_probability([v/scale for v in changes]),cusum_up=cusum_up,cusum_down=cusum_down,ewma_velocity=ewma,seasonal_sessions=len(days),price_z=z, velocity=velocity, acceleration=(changes[-1]-changes[-2])/scale,
@@ -155,7 +170,10 @@ def signal(ctx, read, plan, flow, points, cvd_source, gamma):
                     net_pressure=net, footprint_pressure=cvd, net_change=premium[-1]-premium[-2] if net is not None else None,
                     footprint_change=delta[-1]-delta[-2] if cvd is not None else None,
                     relative_volume=relvol, gex=gex, volatility_scale=scale)
-    return {**event,"state":state,"side":side,"scores":dict(readiness=readiness,bullish=bull,bearish=bear,
+    freshness = {"price":close.isoformat(), "netflow":close.isoformat() if net is not None else None,
+                 "cvd":close.isoformat() if cvd is not None else None, "gamma":plan.get("gamma_at"),
+                 "iv":plan.get("iv_at")}
+    return {**event,"freshness":freshness,"cross_market":plan.get("cross_market"),"state":state,"side":side,"scores":dict(readiness=readiness,bullish=bull,bearish=bear,
             ignition=ignition,continuation=continuation,exhaustion=exhaustion,data_confidence=confidence),
             "features":features,"forecasts":forecasts,"price":spot,"type":path,"reason":f"{path} · {state.lower()}",
             "action":action,"invalidation":lo if side==1 else hi if side==-1 else None,
@@ -164,11 +182,46 @@ def signal(ctx, read, plan, flow, points, cvd_source, gamma):
                        "book":"unavailable","cross_market_lead":"unvalidated"}}
 
 
+def scan_key(ctx, sig):
+    return f"v3:{sig['version']}:{sig['mode']}:{ctx.ticker}:{ctx.scope}:{sig['at']}:{ctx.price_provider}"
+
+
+def prior_state(journal, ctx, sig):
+    """Never transfer prior invalidations across feeds, builds or sensitivity settings."""
+    if journal is None or not enabled("RECORD") or not live_signal(sig):
+        return {}
+    try:
+        rows = journal.records(ctx.ticker, "v3_transition", scope=sig["session"]+"|"+ctx.scope, limit=32)
+    except Exception:
+        return {}
+    for row in rows:
+        previous = row["payload"]
+        if not live_signal(previous) or any(previous.get(k) != sig.get(k) for k in ("source","mode","version")):
+            continue
+        return previous
+    return {}
+
+
+def resolve_state(sig, previous):
+    if (previous.get("state", "").endswith(("IGNITION","EXPANSION"))
+            and previous.get("invalidation") is not None and previous.get("side")
+            and sig.get("price") is not None and previous.get("at") and sig.get("at")
+            and sig["at"] > previous["at"]
+            and previous["side"]*(sig["price"]-previous["invalidation"]) < 0):
+        return {**sig, "state":"INVALIDATED", "reason":"Completed price crossed the prior movement invalidation",
+                "prior_invalidation":previous["invalidation"], "action":"Review the broken price level and protected exits"}
+    # Re-evaluating the same closed bar must produce the same invalidation on the dashboard and worker.
+    if (previous.get("state") == "INVALIDATED" and previous.get("at")==sig.get("at")
+            and previous.get("price")==sig.get("price")):
+        return {**sig, **{k:previous.get(k) for k in ("state","reason","prior_invalidation","action")}}
+    return sig
+
+
 def record(journal, ctx, read, plan):
     sig = plan.get("movement_v3")
-    if not sig or ctx.preview or not enabled("RECORD") or not sig["at"]:
+    if not enabled("RECORD") or not live_signal(sig) or simulated_context(ctx, read) or not sig["at"]:
         return None
-    key = f"v3:{sig['version']}:{sig['mode']}:{ctx.ticker}:{ctx.scope}:{sig['at']}:{ctx.price_provider}"
+    key = scan_key(ctx, sig)
     fresh = read.get("bars_ready") and read["minute_close"] and timedelta(0) <= ctx.now-read["minute_close"] < MINUTE
     bar = read["candles"][-1] if fresh and read["candles"] else {}
     if bar and (bar.get("forming") or not bar.get("closed",True)):
@@ -193,24 +246,20 @@ def record(journal, ctx, read, plan):
 
 def transition(journal,ctx,plan,ident):
     sig=plan["movement_v3"]
-    old=journal.records(ctx.ticker,"v3_transition",scope=sig["session"]+"|"+ctx.scope,limit=1)
-    before=old[0]["payload"] if old else {}
-    if (before.get("invalidation") is not None and before.get("side") and sig.get("price")
-            and before.get("state","").endswith(("IGNITION","EXPANSION"))
-            and before["side"]*(sig["price"]-before["invalidation"])<0):
-        sig={**sig,"state":"INVALIDATED","action":"Review structural invalidation of the prior movement"}
-    if before.get("state")==sig["state"] and before.get("source")==sig["source"]:return None
-    key=ident+":transition"
+    if not live_signal(sig) or ctx.preview:return None
+    before=prior_state(journal,ctx,sig)
+    if before.get("state")==sig["state"]:return None
+    key=f"{ident}:transition:{sig['state']}"
     if not journal.insert(key,ctx.ticker,"v3_transition",sig["session"]+"|"+ctx.scope,ctx.now,sig):
         return None
     if not enabled("DISCORD") or sig["state"] in ("QUIET","INSUFFICIENT DATA"):return None
     return key,dict(symbol=ctx.ticker,status="V3 WATCH",movement_state=sig["state"],source=sig["source"],
-                    triggered_at_utc=sig["processed"],bar=sig["at"],price=sig["price"],explanation=sig["action"])
+                    version=sig["version"], mode=sig["mode"], triggered_at_utc=sig["processed"],bar=sig["at"],price=sig["price"],explanation=sig["action"])
 
 
 def provisional(journal,ctx,prices):
     """Only compare two genuinely distinct observed quotes. No synthetic five-second candles."""
-    if not enabled("RECORD") or not enabled("PROVISIONAL") or ctx.preview or not prices.get("bars_ready"):
+    if not enabled("RECORD") or not enabled("PROVISIONAL") or simulated_context(ctx, prices) or not prices.get("bars_ready"):
         return None
     q=ctx.chart_quote
     if not q or not 0<=(ctx.now-q["at"]).total_seconds()<=15:return None

@@ -17,11 +17,16 @@ def activity(bars_payload, footprint_payload, contract, now, day):
     bounds = rth_bounds(day)
     if not bounds or reported_delay(bars_payload, contract) != 0:
         raise DataError('Futures bars require explicit zero-delay data and a regular session')
+    from terminal_data import positive
     bars = {}
+    prices = {}
     for row in records(bars_payload, contract):
         stamp = utc(row.get('time'))
         if stamp.second or stamp.microsecond or not bounds[0] <= stamp < bounds[1] or stamp + timedelta(minutes=1) > now:
             continue
+        if row.get("forming") or row.get("closed") is False:
+            continue
+        prices[stamp] = positive(row.get("close"))
         bars[stamp] = number(row.get('volume'), 'futures contracts', minimum=0)
     delta = {}
     if footprint_payload is not None and reported_delay(footprint_payload, contract) == 0:
@@ -39,9 +44,21 @@ def activity(bars_payload, footprint_payload, contract, now, day):
         if stamp in delta:
             cumulative += delta[stamp]
         points.append({'time': (stamp + timedelta(minutes=1)).isoformat(), 'volume': volume,
-                       'delta': delta.get(stamp), 'cvd': cumulative if stamp in delta else None})
+                       'close': prices[stamp], 'delta': delta.get(stamp), 'cvd': cumulative if stamp in delta else None})
         previous = stamp
     return points
+
+
+def price_confirmation(points, close, contract):
+    """Two exact consecutive completed futures closes, on the cash-index clock."""
+    from early_flow import window
+    if not close or not contract:
+        return None
+    a,b = window(points,"close",[close-timedelta(minutes=1),close])
+    if a is None or b is None or min(a,b)<=0:
+        return None
+    return {"symbol":contract, "at":close.isoformat(), "change_pct":100*(b/a-1),
+            "direction":int(b>a)-int(b<a), "source":"Webull"}
 
 
 def recent_pressure(points, close, *, count=10):

@@ -218,7 +218,8 @@ class AdvisorQueue:
                  ident, kind, symbol, session, at, at, deadline, at, packed(data))
 
     def review(self, db, trade, now):
-        if trade["state"] == "CLOSED" and trade.get("fills") and not trade.get("remaining") and not trade["plan"].get("demo"):
+        from v3_provenance import display_plan
+        if trade["state"] == "CLOSED" and trade.get("fills") and not trade.get("remaining") and not display_plan(trade["plan"]):
             self.enqueue(db, "review:" + trade["id"], "review", trade["symbol"], trade["session"], now, trade_report(trade))
 
     def prior_reviews(self, db, symbol, day, cutoff):

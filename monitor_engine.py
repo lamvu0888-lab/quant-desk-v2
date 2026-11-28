@@ -14,6 +14,7 @@ from market_session import ET, session_state
 from movement_detector import ENTRY_COOLDOWN, MIN_ENTRY_SCORE, early_price_move
 from research_journal import plan_scope
 from terminal_data import feed_has_delay, positive
+from v3_provenance import display_plan, simulated_context
 from trade_validation import paper_records, performance, settle_candidates, settle_hedges
 
 
@@ -53,7 +54,7 @@ def tracked_entry(payload):
 
 def price_alert(journal, ctx, read):
     """Observe price before the option, quote and model checks for a paper entry."""
-    if (not read.get("bars_ready", True) or read["bars"].error or feed_has_delay(read["bars"])
+    if (simulated_context(ctx, read) or not read.get("bars_ready", True) or read["bars"].error or feed_has_delay(read["bars"])
             or session_state(ctx.now)["status"] != "OPEN"):
         return None
     source = getattr(ctx, "price_provider", "Tradytics")
@@ -86,6 +87,9 @@ def price_alert(journal, ctx, read):
 
 def process_scan(journal, ctx, read, *, check_move=True):
     plan, _ = build_decision(ctx, read, warm_options=False)
+    if display_plan(plan) or simulated_context(ctx, read):
+        plan["demo"] = True
+        return [], plan
     scope, symbol, now = plan_scope(plan), ctx.ticker, ctx.now
     market_open = session_state(now)["status"] == "OPEN"
     alerts = []
@@ -225,9 +229,14 @@ def process_scan(journal, ctx, read, *, check_move=True):
         payload = {**notification(plan), "semantic": semantic, "quality": reason_key}
         journal.insert(decision_id, symbol, "decision", scope, now, payload)
     if plan.get("movement_v3"):
-        from v3_movement import record, transition
+        from v3_movement import enabled, record, scan_key, transition
         try:
+            sig = plan["movement_v3"]
             ident = record(journal, ctx, read, plan)
+            # Flow can arrive just after a completed price bar. Preserve its first
+            # observation for research and still journal an updated lifecycle state.
+            if ident is None and enabled("RECORD") and sig.get("price") is not None and sig.get("at"):
+                ident = scan_key(ctx, sig)
             notice = transition(journal, ctx, plan, ident) if ident else None
             if notice:
                 alerts.append(notice)

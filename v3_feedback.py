@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import requests
 
-from v3_movement import enabled
+from v3_movement import enabled, THRESHOLDS, active_mode
 
 MODEL="gpt-5-mini"
 INPUT_RATE=.25/1_000_000
@@ -15,6 +15,10 @@ MAX_OUTPUT=2500
 BOUNDS={"ignition_threshold":(50,85),"persistence_minutes":(1,5),"cooldown_minutes":(1,15)}
 CURRENT={"ignition_threshold":65,"persistence_minutes":3,"cooldown_minutes":3}
 FIELDS=("summary","weakness","evidence","ticker","regime","uncertainty","downside","required_test","promotion","rollback","recommendation")
+
+
+def parameters():
+    return {**CURRENT, "ignition_threshold": THRESHOLDS[active_mode()]}
 
 
 def schema():
@@ -34,7 +38,7 @@ def validate(data):
     if key not in BOUNDS: raise ValueError("Parameter outside allowlist")
     a,b=BOUNDS[key]; x=data["proposed"]
     if (type(x) not in (int,float) or not math.isfinite(x) or x!=int(x) or not a<=x<=b
-            or type(data["current"]) not in (int,float) or data["current"]!=CURRENT[key]):
+            or type(data["current"]) not in (int,float) or data["current"]!=parameters()[key]):
         raise ValueError("Invalid parameter value")
     return data
 
@@ -72,7 +76,7 @@ def feedback(journal,day,report,*,transport=requests.post):
         return {"status":"Disabled or external aggregate permission missing"}
     # Only round-trip our own aggregate fields; never serialize rows, trade text, environment or credentials.
     aggregate={"session":str(day),"symbols":{s:{k:v for k,v in block.items() if k in ("recorded","unavailable","independent_events","model_metrics","heldout","horizons","pricing","episodes","paper","profile")}
-               for s,block in report.items() if s in ("SPY","SPX","QQQ")},"current":CURRENT}
+               for s,block in report.items() if s in ("SPY","SPX","QQQ")},"current":parameters()}
     if not any(x.get("recorded") for x in aggregate["symbols"].values()):return {"status":"No observations"}
     content=json.dumps(aggregate,allow_nan=False)
     if len(content)>24000: return {"status":"Report too large"}

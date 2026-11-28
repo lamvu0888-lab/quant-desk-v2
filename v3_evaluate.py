@@ -1,4 +1,5 @@
 """Read private V3 Parquet archives and run a local, matched-session comparison."""
+from v3_provenance import live_record
 import argparse
 import json
 from pathlib import Path
@@ -7,6 +8,8 @@ import numpy as np
 import pyarrow.parquet as pq
 from v3_research import SYMBOLS, benchmark, matured, market_events, pricing_errors
 from v3_challenger import threshold_search
+from v3_research import same_model
+from v3_movement import VERSION, THRESHOLDS, active_mode
 
 
 def bootstrap_difference(days, seed=1979):
@@ -31,18 +34,20 @@ def archive_rows(path):
     for batch in pq.ParquetFile(path).iter_batches(batch_size=128,columns=["id","origin","payload"]):
         for row in batch.to_pylist():
             if row["id"] in seen:continue
-            seen.add(row["id"])
             row["payload"]=json.loads(row["payload"])
+            if not live_record(row):continue
+            seen.add(row["id"])
             row["scope"]=row["payload"]["signal"]["session"]
             yield row
 
 
-def evaluate(root,symbol):
+def evaluate(root,symbol,*,version=VERSION,mode=None):
+    mode=mode or active_mode()
     files=sorted(Path(root).glob(f"*-{symbol}.parquet"))
-    result={"symbol":symbol,"days":[]}
+    result={"symbol":symbol,"version":version,"mode":mode,"days":[]}
     labels=[];daily_counts=[]
     for path in files:
-        records=list(archive_rows(path))
+        records=[r for r in archive_rows(path) if same_model(r,version,mode)]
         if not records:continue
         scopes={r["scope"] for r in records}
         if len(scopes)!=1 or any(r["payload"]["signal"]["symbol"]!=symbol for r in records):
@@ -70,6 +75,8 @@ if __name__=="__main__":
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("archive_directory",type=Path)
     parser.add_argument("--symbol",choices=SYMBOLS,required=True)
+    parser.add_argument("--version", default=VERSION, help="Recorded movement build to evaluate")
+    parser.add_argument("--mode", choices=THRESHOLDS, default=active_mode())
     args=parser.parse_args()
     if not args.archive_directory.is_dir():parser.error("Provide a readable private archive directory.")
-    print(json.dumps(evaluate(args.archive_directory,args.symbol),allow_nan=False,indent=2))
+    print(json.dumps(evaluate(args.archive_directory,args.symbol,version=args.version,mode=args.mode),allow_nan=False,indent=2))

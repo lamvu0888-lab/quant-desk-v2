@@ -1,4 +1,5 @@
 """Offline shadow experiments. No production model loader or trading permissions."""
+from v3_provenance import live_record
 from collections import defaultdict, deque
 from math import log, sqrt
 import statistics
@@ -28,7 +29,7 @@ def lead_lag(series,leader,follower):
         obs={}
         for e in rows:
             s=e["payload"]["signal"]
-            if s.get("preview") or not s["price"]:continue
+            if not live_record(e) or not s["price"]:continue
             stamp=time_or_none(s["at"])
             obs.setdefault(stamp,(s["price"],time_or_none(e["origin"]),s["source"]))
         pairs[sym]=obs
@@ -73,7 +74,8 @@ def replay_proposal(examples,proposal):
         past={};pending=defaultdict(deque);correct=sent=events=0
         for r in rows:
             side=r["side"]; k=(r["symbol"],r["session"]);t=time_or_none(r["at"])
-            threshold=param if key=="ignition_threshold" else 65
+            from v3_movement import THRESHOLDS
+            threshold=param if key=="ignition_threshold" else THRESHOLDS.get(r.get("mode","Balanced"),65)
             length=param if key=="persistence_minutes" else 1
             cooldown=param if key=="cooldown_minutes" else 3
             history=pending[k]
