@@ -179,6 +179,8 @@ def test_encrypted_token_rotation_across_clients(backend, tmp_path, monkeypatch)
     assert post.call_count == 2
     with initial._db() as db:
         ciphertext = initial._query(db, "SELECT ciphertext FROM qd_schwab_oauth WHERE app=?", initial._key).fetchone()[0]
+        if isinstance(ciphertext, bytes):
+            ciphertext = ciphertext.decode("ascii")
         assert "next-refresh" not in ciphertext and "next-access" not in ciphertext
         assert b"next-refresh" in initial._cipher.decrypt(ciphertext.encode())
     with pytest.raises(FeedError, match="does not match"):

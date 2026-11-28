@@ -118,7 +118,7 @@ class SchwabTokens:
                 if not row:
                     raise FeedError("AUTH REQUIRED", AUTHORIZE, 30)
                 try:
-                    token = json.loads(self._cipher.decrypt(row[0].encode()))
+                    token = json.loads(self._cipher.decrypt(row[0].encode("ascii") if isinstance(row[0], str) else row[0]))
                 except (InvalidToken, ValueError, TypeError):
                     raise FeedError("AUTH REQUIRED", "Stored authorization does not match the app secret. " + AUTHORIZE) from None
                 if not usable(token):

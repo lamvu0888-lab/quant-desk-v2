@@ -114,7 +114,10 @@ class SchwabMarketData:
             raise FeedError("READ ERROR", "Schwab returned an unrecognized market-data response.")
         return body
 
-    def get(self, name, *, session=None):
+    def get(self, name, *, session=None, symbol=None, expiry=None, right=None):
+        if name in ("option_expirations", "option_chain"):
+            from contract_sources import read_schwab_contracts
+            return read_schwab_contracts(self,name,symbol,expiry,right)
         if name == "quote":
             raw = self._get("/quotes", {"symbols": SYMBOL, "fields": "quote"})
             return normalize_quote(raw, datetime.now(UTC))
@@ -158,7 +161,7 @@ class SchwabMarketData:
 
 
 def cadence(name, snapshot):
-    if name == "daily" or snapshot.meta.get("session"):
+    if name in ("daily", "option_expirations") or snapshot.meta.get("session"):
         return 300
     state = session_state(snapshot.received_at)
     opened = time_or_none(state["open_utc"])
