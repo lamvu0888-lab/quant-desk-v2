@@ -27,11 +27,13 @@ from option_quotes import age_text, quote_age
 from webull_feed import INDEX_SYMBOLS, WebullFeedStore, price_source
 
 UTC = timezone.utc
-VERSION = "2.9.0"
+VERSION = "3.0.0-rc1"
 WEBULL_CHART_PAGES = {"Overview", "Movement Detector"}
 PAGES_LABEL = {
+    "Contracts": ("Options Contract Intelligence", "Compare contracts, target timing and premium scenarios.", "◇"),
+    "Learning": ("AI Learning Center", "Forward coverage, matured outcomes and research candidates.", "▤"),
     "Overview": ("Market overview", "Entry timing, market direction, flow and nearby levels.", "◈"),
-    "Movement Detector": ("Movement Detector", "Follow the checks in order before acting on a setup.", "⇥"),
+    "Movement Detector": ("Movement Intelligence", "Track pressure, ignition and the next Trade Plan check.", "⇥"),
     "Trade Plan": ("Trade plan", "A checklist for the next price level, with supporting and conflicting evidence.", "▷"),
     "Options Flow": ("Flow & bubbles", "See how options flow builds, then look at the largest trades.", "≋"),
     "Money Map": ("Money map", "See which stocks, sectors or watchlist names lead in net options premium.", "▦"),
@@ -145,9 +147,9 @@ def open_symbol():
 
 PAGE_GROUPS = {
     "Trading desk": ("Overview", "Movement Detector", "Trade Plan"),
-    "Options research": ("Positioning", "Options Flow", "Volatility", "Forecast"),
+    "Options research": ("Contracts", "Positioning", "Options Flow", "Volatility", "Forecast"),
     "Market scans": ("Scanner", "Money Map", "Dark Pool", "Signals"),
-    "Tools & help": ("Data Health", "TradingView", "Learn"),
+    "Tools & help": ("Learning", "Data Health", "TradingView", "Learn"),
 }
 
 
@@ -394,7 +396,7 @@ def main():
     if price_provider == "Schwab" and not schwab:
         st.info("Set SCHWAB_CLIENT_ID and SCHWAB_CLIENT_SECRET privately, then run AUTHORIZE_SCHWAB_SPX.cmd.")
     journal = None
-    if not preview and page in ("Overview", "Movement Detector", "Trade Plan", "Forecast", "Positioning"):
+    if not preview and page in ("Overview", "Movement Detector", "Trade Plan", "Forecast", "Positioning", "Learning", "Contracts"):
         journal = journal_resource(config_value(local, "MONITOR_JOURNAL_PATH"), config_value(local, "MONITOR_JOURNAL_DSN"))
 
     fast_quotes = bool(not paused and page in WEBULL_CHART_PAGES and

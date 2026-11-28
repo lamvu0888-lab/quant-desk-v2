@@ -17,6 +17,13 @@ LIMITS = {"decision": 28, "candidate": 190, "hedge": 44}
 def publish_snapshot(journal, shared, symbols, now):
     data = {symbol: {kind: journal.records(symbol, kind, limit=limit)
                      for kind, limit in LIMITS.items()} for symbol in symbols}
+    # V3 observations and reconstructed conditional prices belong in the private journal.
+    for group in data.values():
+        for rows in group.values():
+            for row in rows:
+                for payload in (row["payload"],row["payload"].get("plan") or {}):
+                    for field in ("movement_v3","v3_contracts","v3_quote_samples"):
+                        payload.pop(field,None)
     if not any(rows for symbol in data.values() for rows in symbol.values()):
         return False
     raw = json.dumps(data, sort_keys=True, allow_nan=False, separators=(",", ":")).encode()

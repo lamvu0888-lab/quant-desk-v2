@@ -11,6 +11,8 @@ import pandas as pd
 import streamlit as st
 
 from chart_studies import ANCHOR, BANDS, MACD, MTF, OPENING, PIVOTS, RSI, completed_five_minute_ema, intraday_levels, trend_strip
+from v3_views import contracts as contracts_v3, learning as learning_v3, movement_panel
+from v3_movement import enabled as v3_enabled
 from data_utils import DataError, field, utc
 from decision_flow import price_quote_issues, usable_exposure
 from decision_ui import (command_panel, dashboard_decision, dealer_center, iv_center, journal_panel, option_entry_panel,
@@ -1377,12 +1379,29 @@ def money_map(ctx):
 def movement_page(ctx):
     read = read_workspace(ctx)
     decision, iv = dashboard_decision(ctx, read)
-    detector_view(ctx, read, decision, iv)
+    if decision.get("movement_v3"):
+        movement_panel(ctx, decision)
+        with st.expander("V2 confirmation details", expanded=False):
+            detector_view(ctx, read, decision, iv)
+    else:
+        detector_view(ctx, read, decision, iv)
 
 
 def trade_plan(ctx):
     read = read_workspace(ctx)
     decision, iv = dashboard_decision(ctx, read)
+    if v3_enabled("PLAN",True) and decision.get("movement_v3"):
+        sig = decision["movement_v3"]
+        st.info(f"Movement timing · {sig['state']} · {sig['action']}")
+        comparison = decision.get("v3_contracts")
+        if comparison:
+            choice = comparison["choice"] or "No suitable contract"
+            st.caption(f"Shadow contract comparison · {choice} · target {comparison['target']:,.2f}.")
+            with st.expander("Compare contract scenarios"):
+                st.caption(comparison["reason"])
+                st.dataframe(comparison["alternatives"], hide_index=True)
+    if decision.get("v3_input_issue"):
+        st.caption(decision["v3_input_issue"])
     shown = command_panel(ctx, decision, iv, read["candles"], key="trade", track=True,
                           bar_ok=read["bars_usable"])
     option_entry_panel(ctx, decision)
@@ -1790,7 +1809,7 @@ def health_page(ctx):
         st.caption("Quotes and models use the provider source time. Tradytics quote snapshots typically update about every 30 seconds and positioning models about every five minutes.")
 
 
-PAGES = {"Overview": overview, "Movement Detector": movement_page, "Options Flow": options_flow, "Money Map": money_map, "Positioning": positioning,
+PAGES = {"Contracts": contracts_v3, "Learning": learning_v3, "Overview": overview, "Movement Detector": movement_page, "Options Flow": options_flow, "Money Map": money_map, "Positioning": positioning,
          "Volatility": volatility_page, "Dark Pool": dark_pool, "Trade Plan": trade_plan, "Signals": signals_page,
          "Forecast": forecast_page, "Scanner": scanner, "TradingView": tradingview_page, "Data Health": health_page}
 

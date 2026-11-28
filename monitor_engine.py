@@ -215,6 +215,15 @@ def process_scan(journal, ctx, read, *, check_move=True):
         decision_id = event_id("decision", scope, symbol, now.isoformat(), fingerprint)
         payload = {**notification(plan), "semantic": semantic, "quality": reason_key}
         journal.insert(decision_id, symbol, "decision", scope, now, payload)
+    if plan.get("movement_v3"):
+        from v3_movement import record, transition
+        try:
+            ident = record(journal, ctx, read, plan)
+            notice = transition(journal, ctx, plan, ident) if ident else None
+            if notice:
+                alerts.append(notice)
+        except Exception as exc:
+            print(f"V3 recording unavailable ({type(exc).__name__}).", flush=True)
     if entry_alert:
         alerts.append((entry_alert, notification(plan)))
     return alerts, plan

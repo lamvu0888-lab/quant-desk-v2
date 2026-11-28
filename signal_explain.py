@@ -37,6 +37,8 @@ def discord_text(signal):
     from terminal_style import amount
 
     f = signal.get
+    if signal["status"] == "V3 WATCH":
+        return f"**{signal['symbol']} · {signal['movement_state']}** · {amount(f('price'))}\n{signal['explanation']} · Research warning only."
     if signal["status"] == "EMA TREND":
         up = f("direction") == "UP"
         next_step = "Watch for EMA 9 to hold on a pullback." if up else "Watch for a bounce to reject at EMA 9."

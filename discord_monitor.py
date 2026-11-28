@@ -176,6 +176,13 @@ class MonitorScan:
                 ctx = Desk(symbol, now, self.store, False, False, dte, True, sources[symbol],
                            webull_store=self.webull, webull_prices=snapshots.get(symbol), schwab_store=self.schwab)
                 ctx, prices = route_price(ctx, self.preference)
+                provisional_move = None
+                if market_open and not dry_run:
+                    from v3_movement import provisional
+                    try:
+                        provisional_move = provisional(self.journal,ctx,prices)
+                    except Exception as exc:
+                        print(f"V3 quote recording unavailable ({type(exc).__name__}).", flush=True)
                 minute_close = prices["minute_close"]
                 candle_key = (ctx.price_provider, minute_close)
                 if market_open and not dry_run and prices["bars_ready"] and self.move_closes.get(symbol) != candle_key:
@@ -192,7 +199,7 @@ class MonitorScan:
                          completed_boundary(now, day, FIVE_MINUTES), flow_key,
                          not price_quote_issues(ctx, quote, setup_close=minute_close), bool(timeline and timeline.error))
                 before, due = self.scans.get(symbol, (None, now))
-                if not dry_run and state == before and now < due:
+                if not dry_run and state == before and now < due and (provisional_move or {}).get("state")!="PROVISIONAL IMPULSE":
                     continue
                 read = read_workspace(ctx, include_flow=market_open, prices=prices, timeline=timeline)
                 if dry_run:
@@ -291,6 +298,10 @@ def main():
     retry = {}
     resume_sends = 0.
     next_snapshot = 0.
+    from v3_movement import enabled as v3_enabled
+    from v3_daily import daily as v3_daily
+    research_job = None
+    next_research = 0.
     next_watchlist = 0.
     watchlist = {"enabled": False, "symbols": [], "interval_seconds": args.interval}
     config_read = snapshot_write = delivery = None
@@ -312,6 +323,11 @@ def main():
             interval = max(args.interval, watchlist["interval_seconds"])
             now = datetime.now(UTC)
             symbols = watchlist["symbols"] if watchlist["enabled"] else []
+            if not args.dry_run and v3_enabled("RECORD") and started >= next_research and (research_job is None or research_job.done()):
+                if research_job is not None and research_job.exception():
+                    print("V3 daily research will retry after its lease expires.", flush=True)
+                research_job = io.submit(v3_daily, journal, now, webhook=webhook)
+                next_research = started + 300
             alerts, diagnostics = scanner.run(symbols, now, interval, dry_run=args.dry_run)
             for alert_id, alert in alerts:
                 retry.setdefault(alert_id, (alert, alert_deadline(alert, now)))
