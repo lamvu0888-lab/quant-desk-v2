@@ -183,14 +183,13 @@ def test_three_minute_flow_omits_incomplete_bins():
     assert buckets[-1]["net_premium_usd"] == 3000
 
 
-def test_overview_price_chart_owns_ema_overlays(monkeypatch):
+def test_overview_price_chart_owns_ema_overlays(monkeypatch, overview_spec):
     for name in ("TRADYTICS_API_KEY", "WEBULL_APP_KEY", "WEBULL_APP_SECRET", "DEFAULT_TICKER"):
         monkeypatch.delenv(name, raising=False)
     app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "terminal.py"), default_timeout=30).run()
 
     def chart_spec():
-        chart = next(item.proto for item in app.get("plotly_chart") if "price_action_chart" in item.proto.id)
-        return json.loads(chart.spec)
+        return overview_spec(app)
 
     for timeframe in ("1m", "3m", "5m"):
         app.segmented_control(key="overview_timeframe").set_value(timeframe).run()
@@ -201,5 +200,8 @@ def test_overview_price_chart_owns_ema_overlays(monkeypatch):
     assert all(not trace["name"].startswith("EMA ") for trace in chart_spec()["data"])
     app.button(key="watch_SPX").click().run()
     assert "Volume" not in {trace["name"] for trace in chart_spec()["data"]}
-    assert app.selectbox(key="cvd_proxy_SPX").options == ["Off", "SPY", "ES", "MES"]
+    app.session_state["overview_market_detail"] = True
+    app.run()
+    app.segmented_control(key="overview_market_section").set_value("Volume delta").run()
+    assert {"SPY", "ES", "MES"} <= set(app.selectbox(key="cvd_proxy_SPX").options)
     assert not app.exception

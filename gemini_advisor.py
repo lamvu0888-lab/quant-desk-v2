@@ -1,4 +1,4 @@
-"""Private Gemini requests for prospective session plans and settled paper trades."""
+"""Durable prospective ABC plans and settled paper trade reviews across providers."""
 import json
 import re
 import uuid
@@ -66,6 +66,25 @@ def response_schema(kind, data):
                            "flow": choice(FLOW_CHOICES), "reason": {"type": "string"}}) for name in LEGS})
 
 
+def openai_schema(kind, data):
+    base = response_schema(kind, data)
+    if kind == "review":
+        return base
+    for scenario in base["properties"].values():
+        scenario["properties"]["hold_minutes"] = {"type": "integer", "enum": [5, 10, 15]}
+        scenario["required"].append("hold_minutes")
+    return obj({"bias": choice(("Bullish", "Bearish", "Neutral", "Conflicting")),
+                "regime": choice(("Trend", "Range", "Expansion", "Compression", "Unclear")),
+                "risk_factor": {"type": "string"}, "legs": base})
+
+
+def unpack_plan(result):
+    # Earlier releases stored the four legs as the root object.
+    if result and "legs" in result:
+        return result["legs"], {key: result[key] for key in ("bias", "regime", "risk_factor")}
+    return result or {}, {}
+
+
 class ResponseError(ValueError):
     """Messages contain only local validation rules and fixed scenario names."""
 
@@ -111,6 +130,53 @@ def validate(kind, data, answer):
             raise ResponseError(f"{name}: invalidation, trigger and target must be strictly " + ("ascending" if side == 1 else "descending"))
         legs[name] = leg
     return legs
+
+
+class OpenAIAdvisor:
+    def __init__(self, journal, key, get, *, post=None, lookup=None):
+        from openai_intelligence import policy
+        self.model, self.effort = policy(get, "routine")
+        self.journal, self.key, self.get = journal, key, get
+        self.post, self.lookup = post, lookup
+
+    def run_job(self, kind, data, ident, attempt, now):
+        from openai_intelligence import structured
+        schema = openai_schema(kind, data)
+        prompt = PLAN_PROMPT if kind == "plan" else REVIEW_PROMPT
+        raw, _ = structured(self.journal, self.key, self.model, self.effort, kind, prompt, data, schema,
+                            f"openai:abc:{ident}:{attempt}", get=self.get, post=self.post,
+                            lookup=self.lookup, now=now, group=f"openai:abc:{ident}:")
+        if kind == "review":
+            return validate(kind, data, raw)
+        if not isinstance(raw, dict) or set(raw) != set(schema["required"]):
+            raise ResponseError("Missing plan context")
+        if any(raw[k] not in schema["properties"][k]["enum"] for k in ("bias", "regime")):
+            raise ResponseError("Invalid market context")
+        legs = validate(kind, data, raw["legs"])
+        for name in legs:
+            hold = raw["legs"][name].get("hold_minutes")
+            if type(hold) is not int or hold not in (5, 10, 15):
+                raise ResponseError("Invalid holding duration")
+            legs[name]["hold_minutes"] = hold
+        return {"legs": legs, "bias": raw["bias"], "regime": raw["regime"],
+                "risk_factor": short_text(raw["risk_factor"])}
+
+
+def plans_enabled(get):
+    return str(get("QD_AI_PLANS", get("GEMINI_PAPER_PLANS", ""))).strip().lower() in ("true", "1", "yes")
+
+
+def configured_advisor(journal, get):
+    if not plans_enabled(get):
+        return None
+    provider = str(get("QD_AI_PROVIDER", "openai")).strip().lower()
+    if provider == "gemini":
+        key = get("GEMINI_API_KEY")
+        return GeminiClient(key, get("GEMINI_MODEL", MODEL)) if key else None
+    if provider == "openai":
+        key = get("OPENAI_API_KEY")
+        return OpenAIAdvisor(journal, key, get) if key else None
+    raise ValueError("Unsupported QD_AI_PROVIDER")
 
 
 class GeminiClient:
@@ -160,6 +226,19 @@ def evidence(plan):
                                 (plan.get("flow_confirmation") or {}).get("intervals", [])[-2:]]
     result["cvd"] = select_fields(plan.get("cvd_proxy") or {}, "quality delta close")
     result["option_check"] = select_fields(plan.get("option_quote") or {}, "ready source status")
+    movement = plan.get("movement_v3") or {}
+    result["v3"] = select_fields(movement, "version mode state side regime reason invalidation scores quality freshness cross_market forecasts futures_cvd")
+    result["v3_features"] = select_fields(movement.get("features") or {},
+        "velocity acceleration relative_volume realized_volatility net_value net_change net_acceleration footprint_value footprint_change footprint_acceleration footprint_units persistence absorption breakout")
+    result["dealer"] = select_fields(plan, "gex dex vanna charm gamma_levels")
+    result["monte_carlo"] = select_fields(plan.get("model") or {}, "p_tp1 p_stop ev_r horizon stress_p_tp1")
+    result["validation"] = select_fields(plan, "validation validation_sample expectancy_validation")
+    contract = plan.get("contract_recommendation") or {}
+    result["contract"] = select_fields(contract, "status direction hold_minutes reason mode")
+    selected = contract.get("selected") or {}
+    result["contract"]["selected"] = select_fields(selected, "contract expiry dte source type strike bid ask spread iv delta gamma theta quote_at expected_net target_premium stop_premium tail_loss target_before_stop")
+    result["futures_proxy"] = select_fields(plan.get("cvd_proxy") or {}, "source quality contract agreement persistence velocity acceleration status close")
+
     return result
 
 
@@ -178,7 +257,7 @@ def trade_report(trade):
             "model": select_fields(plan.get("model") or {}, "p_tp1 ev_r stress_p_tp1"),
             "trade": select_fields(trade, "symbol session origin opened closed qty entry_ask entry_quote_at spot strike "
                                           "dte spread cost reason"),
-            "option_fill_source": "Webull", "exit_fills": fills, "net_pnl_usd": net, "gross_pnl_usd": gross,
+            "option_fill_source": trade.get("quote_source") or trade.get("entry_provider") or "Webull", "exit_fills": fills, "net_pnl_usd": net, "gross_pnl_usd": gross,
             "estimated_fees_usd": round(gross - net, 2) if gross is not None else None,
             "holding_seconds": round((closed - opened).total_seconds()) if opened and closed else None,
             "net_return_pct": round(100 * net / trade["cost"], 2) if positive(trade.get("cost")) else None}
@@ -219,7 +298,7 @@ class AdvisorQueue:
 
     def review(self, db, trade, now):
         from v3_provenance import display_plan
-        if trade["state"] == "CLOSED" and trade.get("fills") and not trade.get("remaining") and not display_plan(trade["plan"]):
+        if trade["state"] == "CLOSED" and trade.get("fills") and not trade.get("remaining") and not display_plan(trade) and not display_plan(trade["plan"]):
             self.enqueue(db, "review:" + trade["id"], "review", trade["symbol"], trade["session"], now, trade_report(trade))
 
     def prior_reviews(self, db, symbol, day, cutoff):
@@ -238,8 +317,9 @@ class AdvisorQueue:
                        WHERE kind='plan' AND session=? AND symbol=? ORDER BY created DESC,id DESC LIMIT 1""", str(day),symbol).fetchone()
         if row:
             ident, state, at, data, result, issue, model = row
+            legs, context = unpack_plan(json.loads(result) if result else {})
             return {"id": ident, "state": state, "at": datetime.fromtimestamp(at, timezone.utc),
-                    "input": json.loads(data), "legs": json.loads(result) if result else {}, "issue": issue, "model": model}
+                    "input": json.loads(data), "legs": legs, "context": context, "issue": issue, "model": model}
         return None
 
     def process_one(self, client, clock):
@@ -263,15 +343,20 @@ class AdvisorQueue:
         if previous_issue and previous_issue.startswith("Validation: "):
             data["previous_validation_error"] = previous_issue
         try:
-            answer = validate(kind, data, client.generate(kind, data))
+            if isinstance(client, OpenAIAdvisor):
+                answer = client.run_job(kind, data, ident, attempts+1, datetime.fromtimestamp(now, timezone.utc))
+            else:
+                answer = validate(kind, data, client.generate(kind, data))
             state, issue, result = "ready", None, packed(answer)
         except Exception as exc:
             # Provider bodies and free-form exceptions may contain sensitive input.
-            issue = str(exc) if type(exc) is AdvisorError else (
-                "Gemini connection unavailable" if isinstance(exc, requests.RequestException) else "Invalid Gemini response")
+            from openai_intelligence import IntelligenceError, UnconfirmedRequest
+            issue = str(exc) if isinstance(exc, (AdvisorError, IntelligenceError)) else (
+                "AI connection unavailable" if isinstance(exc, requests.RequestException) else "Invalid AI response")
             if isinstance(exc, ResponseError):
                 issue = "Validation: " + str(exc)
-            state, result = "retry", None
+            terminal = isinstance(exc, UnconfirmedRequest) or (isinstance(client, OpenAIAdvisor) and attempts >= 3)
+            state, result = ("failed" if terminal else "retry"), None
         end = clock().timestamp()
         delay = min(1800, 30 * 2 ** min(attempts, 6)) if state == "retry" else 0
         with self.journal.connection() as db:

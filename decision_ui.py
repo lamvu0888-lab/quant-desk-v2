@@ -13,7 +13,7 @@ from data_utils import DataError, utc
 from dealer_hedging import HORIZONS, hedge_change, hedge_scenarios
 from decision_engine import ENTRY_STATES, paper_outcome
 from entry_score import MIN_ENTRY_SCORE
-from decision_flow import apply_model_gate, build_decision, get_hedge, model_summary, read_iv
+from decision_flow import apply_model_gate, build_decision, finalize_contract, get_hedge, model_summary, read_iv
 from desk_analytics import MINUTE
 from gemini_views import scenario_panel
 from market_session import calendar, session_state
@@ -96,8 +96,8 @@ def plan_signature(plan):
     return tuple(plan.get(key) for key in ("symbol", "dte", "source", "bar", "entry_bar", "trigger", "stop", "tp1", "tp2", "demo"))
 
 
-def dashboard_decision(ctx, read):
-    plan, iv = build_decision(ctx, read)
+def dashboard_decision(ctx, read, *, contracts=True, mode=None):
+    plan, iv = build_decision(ctx, read, defer_contract=contracts)
     modes = plan.get("confirmation_modes") or {}
     prequalified = modes.get("status") == "EARLY PAPER CANDIDATE"
     if plan["status"] in ENTRY_STATES or prequalified:
@@ -121,6 +121,8 @@ def dashboard_decision(ctx, read):
         if review["blocked"] and plan["status"] in ENTRY_STATES:
             plan["status"] = "AVOID"
             plan["blocks"] = plan["blocks"] + [review["message"]]
+    if contracts:
+        plan = finalize_contract(ctx, plan, read, mode=mode)
     return plan, iv
 
 

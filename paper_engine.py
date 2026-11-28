@@ -5,6 +5,8 @@ import json
 import math
 import sqlite3
 
+import psycopg
+
 from adaptive_exits import POLICY
 from data_utils import DataError, reported_delay
 from decision_engine import MIN_REWARD_R
@@ -15,6 +17,7 @@ from live_chain import contract_symbol, occ_info, unwrap
 from v3_provenance import display_plan
 from market_session import ET, rth_bounds, session_state
 from option_quotes import fresh_option_rows, spread_fraction
+from ranked_position import approved_series, new_fill_quantity, open_risk, reprice
 from terminal_data import first_listed_dte, listed_dtes, numeric, positive, time_or_none
 from terminal_views import Desk, read_price
 from webull_feed import supports_options
@@ -28,6 +31,8 @@ MAX_DEBIT = 1000
 DAILY_STOP = -500
 PREMIUM_STOP = 0.20
 ENTRY = {"ENTER LONG": 1, "ENTER SHORT": -1}
+LOSS_KEYS = {POLICY: "adaptive_exit_loss_stop", BASELINE: "loss_stop", SHADOW: "gemini_loss_stop", EARLY: "early_loss_stop"}
+HEARTBEAT_MAX_AGE = 60
 
 
 def clock():
@@ -223,6 +228,8 @@ def candidate_contracts(chain, symbol, expiry, spot, direction, fast, now):
 def snapshot_quotes(webull, codes, get_now=clock):
     """Fetch exact option codes so an open strike remains visible as spot moves."""
     result = {}
+    if getattr(getattr(webull, "settings", None), "endpoint", None) == "api.sandbox.webull.com":
+        return result
     codes = sorted(set(codes))
     for offset in range(0, len(codes), 20):
         group = codes[offset:offset + 20]
@@ -262,7 +269,7 @@ def skip(trade, reason):
     trade.update(state="SKIPPED", reason=reason)
 
 
-def attempt_entry(trade, ctx, webull, halted, get_now=clock):
+def attempt_entry(trade, ctx, webull, halted, get_now=clock, *, remaining_risk=None):
     plan, symbol, now = trade["plan"], trade["symbol"], ctx.now
     alert = time_or_none(trade["origin"])
     if getattr(ctx, "preview", False) or display_plan(plan):
@@ -285,30 +292,63 @@ def attempt_entry(trade, ctx, webull, halted, get_now=clock):
     if trade.get("track") in (SHADOW, EARLY) and side * (plan["tp1"] - spot) < MIN_REWARD_R * side * (spot - plan["stop"]):
         return skip(trade, "Scenario reward/risk fell below the minimum at fill time")
     day, fast = now.astimezone(ET).date(), fast_setup(plan)
-    expiry = expiry_for(ctx, day, fast)
-    if not expiry:
-        trade["reason"] = "Waiting for next listed expiration"
-        return
-    chain = webull.options(symbol, expiry, spot, now)
-    choices = candidate_contracts(chain, symbol, expiry, spot, side, fast, now)
-    trade["reason"] = "Waiting for exact-expiry Webull contracts" if not choices else "Waiting for executable Webull quotes"
-    if not choices:
-        return
+    ranking = plan.get("contract_recommendation") or {}
+    ranked = bool(plan.get("rank_contracts") or ranking)
+    selected = ranking.get("selected") or {}
+    if ranked:
+        spec, issue = approved_series(trade, now)
+        if issue:
+            return skip(trade, issue)
+        expiry = selected["expiry"]
+        choices = [(0., 0., spec.code, spec.strike)]
+        trade["reason"] = "Waiting for a fresh post-alert executable quote on the ranked contract"
+    else:
+        # A signal written by a prior release can finish under its original contract rule.
+        expiry = expiry_for(ctx, day, fast)
+        if not expiry:
+            trade["reason"] = "Waiting for next listed expiration"
+            return
+        chain = webull.options(symbol, expiry, spot, now)
+        choices = candidate_contracts(chain, symbol, expiry, spot, side, fast, now)
+        trade["reason"] = "Waiting for exact-expiry Webull contracts" if not choices else "Waiting for executable Webull quotes"
+        if not choices:
+            return
     quotes = snapshot_quotes(webull, [c[2] for c in choices], get_now)
     filled_at = get_now()
     deadline = min(ceil_minute(alert) + timedelta(minutes=plan["hold"]), bounds[1] - timedelta(seconds=30))
+    if ranked:
+        if filled_at >= time_or_none(ranking["expires_at"]):
+            return skip(trade, "Ranked contract expired during executable quote verification")
+        deadline = min(deadline, spec.last_trade, spec.expires)
     if not quote["at"] <= filled_at < min(alert + timedelta(seconds=ENTRY_WINDOW), deadline):
         return skip(trade, "Entry window elapsed during lookup")
     if (filled_at - quote["at"]).total_seconds() > 45:
         return
     for _, _, code, strike in choices:
         row = quotes.get(code)
-        if not row or row["at"] < alert or not row["ask"]:
+        if not row or row["at"] < alert or not 0 <= (filled_at-row["at"]).total_seconds() <= QUOTE_AGE or not row["ask"]:
             continue
         spread = spread_fraction(row)
         cost = row["ask"] * 100 + FEE
         size = row["ask_size"]
         qty = min(2, math.floor(MAX_DEBIT / cost), math.floor(size) if size is not None else 1)
+        if ranked:
+            if row["at"] < time_or_none(ranking["origin"]):
+                continue
+            if row["ask"] > selected["ask"]:
+                trade["reason"] = "Executable ask exceeds the ranked entry limit"
+                continue
+            if spread is None or spread > .20:
+                trade["reason"] = "Executable spread exceeds the 20% maximum"
+                continue
+            if qty < 1:
+                trade["reason"] = "Executable ask size or per-trade budget cannot cover one contract"
+                continue
+            capacity = abs(DAILY_STOP) if remaining_risk is None else remaining_risk
+            qty = new_fill_quantity(selected, row, capacity, MAX_DEBIT, FEE, PREMIUM_STOP)
+            if qty < 1:
+                trade["reason"] = "Remaining daily modeled loss capacity cannot cover one ranked contract"
+                continue
         if spread is None or spread > .20 or qty < 1:
             continue
         trade.update(state="OPEN", reason="Tracking Trade Plan", qty=qty, remaining=qty,
@@ -317,8 +357,11 @@ def attempt_entry(trade, ctx, webull, halted, get_now=clock):
                      cost=round(cost * qty, 2), entry_ask=row["ask"], opened=stamp(filled_at),
                      entry_quote_at=stamp(row["at"]), next_bar=stamp(ceil_minute(filled_at)),
                      mark_bid=row["bid"], mark_at=stamp(row["at"]), deadline=stamp(deadline))
+        if ranked:
+            trade["last_trade_at"] = stamp(min(spec.last_trade, spec.expires))
         return
-    trade["reason"] = "No fresh post-alert quote met spread, size and premium limits"
+    if not ranked:
+        trade["reason"] = "No fresh post-alert quote met spread, size and premium limits"
 
 
 def queue_exit(trade, at, reason):
@@ -385,7 +428,7 @@ def option_pnl(trade, bid, qty):
 
 def update_trade(trade, ctx, quote, halted):
     now = ctx.now
-    if now >= rth_bounds(trade["expiry"])[1]:
+    if now >= (time_or_none(trade.get("last_trade_at")) or rth_bounds(trade["expiry"])[1]):
         trade.update(state="UNRESOLVED", reason="Contract expired without a verified exit bid")
         return
     price_exit(trade, ctx)
@@ -397,6 +440,18 @@ def update_trade(trade, ctx, quote, halted):
     if at < time_or_none(trade["mark_at"]) or not 0 <= (now - at).total_seconds() <= QUOTE_AGE:
         return
     trade.update(mark_bid=bid, mark_at=stamp(at))
+    if trade["plan"].get("contract_recommendation"):
+        try:
+            view = reprice(trade, ctx, quote, FEE)
+        except (TypeError, ValueError, ArithmeticError, DataError):
+            view = None
+        trade["position_scenario"] = view
+        # Challenger only. Require a post-fill exhaustion reading and a fresh bid before
+        # studying this exit. Baseline, partial fills and protective stops stay independent.
+        if (trade.get("track") == POLICY and view and view.get("movement") == "EXHAUSTION"
+                and not trade.get("exit_qty") and bid > trade["entry_ask"] and
+                time_or_none(view["movement_at"]) <= at):
+            queue_exit(trade, at, "EXHAUSTION · shadow exit")
     if "mae_per_contract" in trade:
         excursion = (bid - trade["entry_ask"]) * 100
         trade["mae_per_contract"] = min(trade["mae_per_contract"], excursion)
@@ -435,6 +490,68 @@ def unrealized(trade, now):
     return None
 
 
+class SessionRisk:
+    """Realized P/L today, current bid marks, and uncommitted modeled stop risk for each paper book."""
+
+    def __init__(self):
+        self.pnl = dict.fromkeys(LOSS_KEYS, 0.)
+        self.reserved = dict.fromkeys(LOSS_KEYS, 0.)
+        self.unmarked = set()
+
+    def include(self, row, now):
+        track = row.get("track", BASELINE)
+        day = now.astimezone(ET).date()
+        self.pnl[track] += sum(fill["pnl"] for fill in row["fills"]
+                               if time_or_none(fill["at"]).astimezone(ET).date() == day)
+        if row["state"] == "OPEN":
+            mark = unrealized(row, now)
+            if mark is None:
+                self.unmarked.add(track)
+            else:
+                self.pnl[track] += mark
+            self.reserved[track] += open_risk(row, PREMIUM_STOP, FEE)
+
+    def remaining(self, track, halted):
+        books = (BASELINE, EARLY) if track == EARLY else (track,)
+        combined = sum(self.pnl[t] for t in books)
+        if any(halted[t] for t in books) or combined <= DAILY_STOP or self.pnl[track] <= DAILY_STOP:
+            return 0., "Daily paper loss stop"
+        if self.unmarked.intersection(books):
+            return None, "Waiting for fresh executable bid marks on open paper positions"
+        alone = abs(DAILY_STOP) + min(0., self.pnl[track]) - self.reserved[track]
+        pooled = abs(DAILY_STOP) + min(0., combined) - sum(self.reserved[t] for t in books)
+        amount = max(0., min(alone, pooled))
+        return amount, "" if amount else "Open paper risk consumes the remaining daily loss capacity"
+
+
+def ledger_risk(book, db, now):
+    midnight = now.astimezone(ET).replace(hour=0, minute=0, second=0, microsecond=0)
+    totals = SessionRisk()
+    for trials in (False, True):
+        for row in book.rows(db, "WHERE state='OPEN' OR updated>=?", stamp(midnight), trials=trials):
+            totals.include(row, now)
+    return totals
+
+
+def ranking_capacity(journal, now, track):
+    if not journal:
+        return None, "Paper risk ledger unavailable"
+    book = PaperLedger(journal)
+    try:
+        with journal.connection() as db:
+            day = str(now.astimezone(ET).date())
+            halted = {name: book.meta(db, key) == day for name, key in LOSS_KEYS.items()}
+            # A recorded daily halt survives disconnections and worker restarts.
+            if halted[track] or (track == EARLY and halted[BASELINE]):
+                return 0., "Daily paper loss stop"
+            heartbeat = time_or_none(book.meta(db, "heartbeat"))
+            if not heartbeat or not 0 <= (now - heartbeat).total_seconds() <= HEARTBEAT_MAX_AGE:
+                return None, "Waiting for a current paper worker heartbeat"
+            return ledger_risk(book, db, now).remaining(track, halted)
+    except (OSError, sqlite3.Error, psycopg.Error, ValueError, TypeError, KeyError):
+        return None, "Paper risk ledger unreadable"
+
+
 class PaperWorker:
     def __init__(self, ledger, webull, tradytics, get_now=clock, *, schwab=None):
         self.ledger, self.webull, self.tradytics, self.get_now = ledger, webull, tradytics, get_now
@@ -447,8 +564,7 @@ class PaperWorker:
             book.ingest(db)
             active = book.rows(db, "WHERE state IN ('OPEN','PENDING')")
             active.extend(book.rows(db, "WHERE state='OPEN'", trials=True))
-            loss_keys = {POLICY: "adaptive_exit_loss_stop", BASELINE: "loss_stop", SHADOW: "gemini_loss_stop", EARLY: "early_loss_stop"}
-            halted = {track: book.meta(db, key) == str(day) for track, key in loss_keys.items()}
+            halted = {track: book.meta(db, key) == str(day) for track, key in LOSS_KEYS.items()}
         open_rows = [trade for trade in active if trade["state"] == "OPEN"]
         symbols = [t["symbol"] for t in active if t["plan"].get("source") == "Webull"]
         snapshots = self.webull.prices(symbols) if symbols else {}
@@ -462,7 +578,7 @@ class PaperWorker:
             symbol = trade["symbol"]
             return Desk(symbol, self.get_now(), self.tradytics, False, False, None, True,
                         trade["plan"].get("source") or "Tradytics",
-                        webull_store=self.webull, webull_prices=snapshots.get(symbol), schwab_store=self.schwab)
+                        journal=book.journal, webull_store=self.webull, webull_prices=snapshots.get(symbol), schwab_store=self.schwab)
 
         for trade in open_rows:
             try:
@@ -475,21 +591,15 @@ class PaperWorker:
         with book.journal.connection() as db:
             for trade in open_rows:
                 book.save(db, trade, self.get_now())
-            local_midnight = now.astimezone(ET).replace(hour=0, minute=0, second=0, microsecond=0)
-            today = book.rows(db, "WHERE state='OPEN' OR updated>=?", stamp(local_midnight))
-            today.extend(book.rows(db, "WHERE state='OPEN' OR updated>=?", stamp(local_midnight), trials=True))
-            pnl = {track: 0. for track in loss_keys}
-            for row in today:
-                track = row.get("track", BASELINE)
-                pnl[track] += sum(fill["pnl"] for fill in row["fills"] if time_or_none(fill["at"]).astimezone(ET).date() == day)
-                pnl[track] += unrealized(row, self.get_now()) or 0
+            risk = ledger_risk(book, db, self.get_now())
+            pnl = risk.pnl
             if pnl[BASELINE] + pnl[EARLY] <= DAILY_STOP:
                 halted[EARLY] = True
-                book.set_meta(db, loss_keys[EARLY], str(day))
+                book.set_meta(db, LOSS_KEYS[EARLY], str(day))
             for track, value in pnl.items():
                 if value <= DAILY_STOP:
                     halted[track] = True
-                    book.set_meta(db, loss_keys[track], str(day))
+                    book.set_meta(db, LOSS_KEYS[track], str(day))
 
         shadow_open = {t["symbol"] for t in open_rows if t["state"] == "OPEN" and t.get("track") == SHADOW}
         early_open = {t["symbol"] for t in open_rows if t["state"] == "OPEN" and t.get("track") == EARLY}
@@ -504,7 +614,13 @@ class PaperWorker:
                     skip(trade, "Another Early paper position is open for this ticker")
                 else:
                     stop = halted[track] or (track == EARLY and halted[BASELINE])
-                    attempt_entry(trade, desk(trade), self.webull, stop, self.get_now)
+                    available, issue = risk.remaining(track, halted)
+                    if available is None and trade["plan"].get("rank_contracts"):
+                        trade["reason"] = issue
+                        if now - time_or_none(trade["origin"]) >= timedelta(seconds=ENTRY_WINDOW):
+                            skip(trade, "Fill window elapsed · " + issue)
+                    else:
+                        attempt_entry(trade, desk(trade), self.webull, stop, self.get_now, remaining_risk=available or 0.)
                     if trade["state"] == "OPEN":
                         if track == EARLY:
                             early_open.add(trade["symbol"])
@@ -523,19 +639,19 @@ class PaperWorker:
                         skip(trade,"Scenario superseded before the paper fill")
                 if track == SHADOW and trade["state"] == "OPEN":
                     shadow_open.add(trade["symbol"])
-                pnl[track] += unrealized(trade, self.get_now()) or 0
+                risk.include(trade, self.get_now())
                 halted[track] = halted[track] or pnl[track] <= DAILY_STOP
                 if pnl[BASELINE] + pnl[EARLY] <= DAILY_STOP:
                     halted[EARLY] = True
-                    book.set_meta(db, loss_keys[EARLY], str(day))
+                    book.set_meta(db, LOSS_KEYS[EARLY], str(day))
                 book.save(db, trade, self.get_now())
                 trial = begin_exit_trial(book, db, trade, halted[POLICY] or halted[BASELINE], self.get_now())
                 if trial and trial["state"] == "OPEN":
-                    pnl[POLICY] += unrealized(trial, self.get_now()) or 0
+                    risk.include(trial, self.get_now())
                     if pnl[POLICY] <= DAILY_STOP:
                         halted[POLICY] = True
-                        book.set_meta(db, loss_keys[POLICY], str(day))
+                        book.set_meta(db, LOSS_KEYS[POLICY], str(day))
                 if halted[track]:
-                    book.set_meta(db, loss_keys[track], str(day))
+                    book.set_meta(db, LOSS_KEYS[track], str(day))
         with book.journal.connection() as db:
             book.set_meta(db, "heartbeat", stamp(self.get_now()))

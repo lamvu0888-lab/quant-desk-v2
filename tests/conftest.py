@@ -16,3 +16,14 @@ def candles():
                          'high':max(o,price)*1.0001,'low':min(o,price)*.9999,'close':price,
                          'volume':10000.,'closed':True})
     return rows
+
+
+@pytest.fixture
+def overview_spec():
+    import json
+
+    def figure(app):
+        component = next(node.proto for node in app.get("component_instance")
+                         if node.proto.component_name.endswith(".market_price_viewport"))
+        return json.loads(json.loads(component.json_args)["figure"])
+    return figure

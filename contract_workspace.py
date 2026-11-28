@@ -9,6 +9,8 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
+from contract_calibration import calibrate_quote
+from contract_sweep import price_range, sweep_grid, price_figure
 from iv_decision import iv_value
 from market_session import ET, session_state
 from option_quotes import option_rows, quote_status, spread_fraction
@@ -16,7 +18,7 @@ from terminal_data import et_time, first_listed_dte, listed_dtes, numeric, posit
 from terminal_style import kpis, style_chart
 from v3_movement import enabled
 from v3_provenance import live_record, simulated_feed
-from v3_options import (UNITS, YEAR, block_simulation, calibrated_iv, contract_spec, greeks,
+from v3_options import (UNITS, YEAR, block_simulation, contract_spec, greeks,
                         scenario, skew_scenario, timeline, value)
 
 
@@ -93,6 +95,13 @@ def moneyness(strike, side, spot, atm):
 
 def chain_selection(rows, ctx, spot, expiry, side):
     prefix=f"opc_{ctx.ticker}_{expiry}_{side}"
+    link=st.session_state.get("opc_link") or {}
+    if link.get("pending"):
+        st.session_state[prefix+"_chosen"]=link["code"]
+        # An old filter or dataframe selection must never redirect a Trade Plan link.
+        for suffix in ("money","sort","ask","delta","spread","fresh"):
+            st.session_state.pop(prefix+"_"+suffix,None)
+        st.session_state[prefix+"_revision"]=int(st.session_state.get(prefix+"_revision",0))+1
     atm=rows[0][0].strike
     with st.expander("Filter strikes"):
         mny=st.segmented_control("Moneyness",["All","ATM","ITM","OTM"],default="All",key=prefix+"_money") or "All"
@@ -148,12 +157,34 @@ def chain_selection(rows, ctx, spot, expiry, side):
     selected=st.session_state.get(selkey)
     idx=next((i for i,e in enumerate(filtered) if e[0].code==selected),0)
     table=st.dataframe(labels,hide_index=True,width="stretch",row_height=28,
-                       height=min(5,len(filtered))*28+35,key=prefix+"_chain_"+digest,
+                       height=min(5,len(filtered))*28+35,key=prefix+"_chain_"+digest+str(st.session_state.get(prefix+"_revision",0)),
                        on_select="rerun",selection_mode="single-row-required",selection_default={"selection":{"rows":[idx]}})
     picked=table.selection.rows
     idx=picked[0] if picked and picked[0]<len(filtered) else idx
     st.session_state[selkey]=filtered[idx][0].code
     return filtered[idx]
+
+
+def open_recommendation(symbol, expiry, side, contract, target, arrival, entry, *, preview=False, invalidation=None):
+    """Streamlit button callback, before the destination widgets are created."""
+    from terminal_data import valid_date
+    at = time_or_none(arrival)
+    day = valid_date(str(expiry))
+    if symbol not in ("SPY","SPX","QQQ") or not day or not at or side not in ("call","put"):
+        return
+    if not (positive(entry) and positive(target) and isinstance(contract,str)):
+        return
+    code = contract.replace(" ","").upper()
+    st.session_state["opc_link"]={"ticker":symbol,"expiry":day,"side":side,"code":code,
+                                  "target":float(target),"arrival":at,"entry":float(entry),
+                                  "preview":bool(preview),"invalidation":positive(invalidation),"pending":True}
+    st.session_state["desk_page"]="Contracts"
+    st.session_state["desk_ticker"]=symbol
+    st.session_state["desk_symbol_input"]=symbol
+
+
+def clear_link():
+    st.session_state.pop("opc_link",None)
 
 
 def financial_defaults(ctx):
@@ -187,7 +218,13 @@ def advanced(ctx,spec,ask,chain_rate):
     step=a.selectbox("Chart interval (minutes)",[0,1,3,5,15,30,60,240,1440],format_func=lambda x:str(x) if x else "Auto",key="opc_interval")
     norm=b.toggle("Normalize chart",key="opc_norm")
     rth=c.toggle("Regular sessions only",key="opc_sessions")
-    extra=st.multiselect("Additional chart overlays",["underlying","theta","vega","vanna","charm"],key="opc_overlays")
+    extra=st.multiselect("Additional chart overlays",["iv","underlying","vega","vanna","charm"],key="opc_overlays",format_func=lambda k: {"iv":"IV","underlying":"Underlying","vega":"Vega","vanna":"Vanna","charm":"Charm"}[k])
+    eval_mode=st.selectbox("Price chart valuation time",["Target arrival","Now","Expiration payoff"],key="opc_eval")
+    bounds=None
+    if st.toggle("Set underlying range and increment",key="opc_range_override"):
+        a,b,c=st.columns(3)
+        bounds=tuple(col.number_input(text,min_value=.01,value=None,key=f"opc_range_{name}_{spec.code}")
+                     for col,text,name in ((a,"Minimum price ($)","low"),(b,"Maximum price ($)","high"),(c,"Increment ($)","step")))
     path=[]
     if st.toggle("Custom intermediate price path",key="opc_custom"):
         knots=st.text_input("Elapsed minutes, underlying price",placeholder="2,701.50; 4,702.00",key="opc_path_"+spec.code)
@@ -199,7 +236,7 @@ def advanced(ctx,spec,ask,chain_rate):
             except ValueError:
                 raise ValueError("Enter elapsed minutes and price as pairs, separated by semicolons.") from None
             path.append((minute*60,price))
-    return rate,dividend,fee,qty,shock,use_skew,entry,step,norm,rth,extra,path
+    return rate,dividend,fee,qty,shock,use_skew,entry,step,norm,rth,extra,path,eval_mode,bounds
 
 
 def contracts(ctx):
@@ -228,6 +265,17 @@ def contracts(ctx):
         st.info("Waiting for a fresh regular-session underlying quote.")
         return
     spot=quote["price"]
+    link=st.session_state.get("opc_link") or {}
+    if link and (link["ticker"]!=ctx.ticker or link["preview"]!=bool(ctx.preview)):
+        clear_link()
+        link={}
+    if link.get("pending"):
+        if link["expiry"] not in dates or link["arrival"]<=ctx.now:
+            st.warning("The Trade Plan scenario has expired or its series is no longer listed.")
+            st.button("Browse current contracts",on_click=clear_link)
+            return
+        st.session_state["opc_exp_"+ctx.ticker]=link["expiry"]
+        st.session_state["opc_side"]=link["side"]
     a,b=st.columns(2)
     exp=a.selectbox("Expiration",dates,format_func=lambda d:f"{(d-today).days}DTE · {d:%b %d, %Y}",key="opc_exp_"+ctx.ticker)
     side=b.segmented_control("Side",["call","put"],default="call",format_func=str.title,key="opc_side") or "call"
@@ -235,12 +283,34 @@ def contracts(ctx):
     rows=listed_chain(ctx,feed,exp.isoformat(),side,spot)
     if not rows:
         st.info(f"{source} · no verified {side} series is available for {exp:%b %d}. Check quote access in Data Health.")
+        if link.get("pending"):
+            st.button("Browse current contracts",on_click=clear_link)
+        return
+    if link.get("pending") and not any(spec.code==link["code"] for spec,_,_ in rows):
+        st.warning("The exact recommended contract is absent from the current chain.")
+        st.button("Browse current contracts",on_click=clear_link)
         return
     selection=chain_selection(rows,ctx,spot,exp,side)
     if selection is None:
         return
     spec,row,status=selection
     code=spec.code
+    linked=bool(link and link["code"]==code and link["expiry"]==exp and link["side"]==side)
+    if link.get("pending") and not linked:
+        st.warning("Waiting for the recommended strike selection.")
+        return
+    if link and not linked:
+        clear_link()
+        link={}
+    if linked and link.get("pending"):
+        st.session_state["opc_override_"+code]=True
+        st.session_state["opc_entry_"+code]=link["entry"]
+        st.session_state["opc_mode"]="Manual"
+        local_arrival=link["arrival"].astimezone(ET)
+        st.session_state["opc_target_"+code]=link["target"]
+        st.session_state["opc_date_"+code]=local_arrival.date()
+        st.session_state["opc_at_"+code]=local_arrival.time().replace(second=0,microsecond=0)
+        link["pending"]=False
     st.markdown(f"**{contract_label(spec,ctx.ticker,today)}**")
     source_label="Synthetic preview" if ctx.preview else source
     stamp=et_time(row.get("updated_at"))
@@ -259,24 +329,31 @@ def contracts(ctx):
     chart=st.container()
     results=st.container()
     choices=st.container()
+    grid=None
     with st.expander("Advanced settings"):
         try:
-            rate,dividend,fee,qty,shock,use_skew,entry,step,norm,rth,extra,path=advanced(ctx,spec,ask,numeric(feed.snapshot.meta.get("risk_free_rate")) if source=="Schwab" else None)
+            rate,dividend,fee,qty,shock,use_skew,entry,step,norm,rth,extra,path,eval_mode,bounds=advanced(ctx,spec,ask,numeric(feed.snapshot.meta.get("risk_free_rate")) if source=="Schwab" else None)
         except ValueError as exc:
             results.info(str(exc));return
-    observed_iv=iv_value(row.get("iv"))
-    mid=(bid+ask)/2
-    iv=observed_iv or calibrated_iv(spec,spot,ctx.now,mid,rate,dividend)
+    calibration=calibrate_quote(spec,row,spot,quote["at"],ctx.now,rate,dividend,ctx.option_max_age)
+    iv=calibration.iv
     if iv is None:
-        selected_info.info("No usable chain IV. The midpoint also fell outside the supported pricing range.")
+        selected_info.info(f"Pricing paused. {calibration.basis}.")
         return
-    iv_source=f"{source_label} chain" if observed_iv else "fit to quoted midpoint"
+    iv_source=calibration.basis
+    levels={}
+    if linked and link.get("invalidation"):
+        levels["Invalidation"]=link["invalidation"]
     with controls:
         mode=st.segmented_control("Analysis",["Auto","Manual"],default="Auto",key="opc_mode") or "Auto"
         if mode=="Auto":
             ticker_ctx=replace(ctx,dte=(exp-ctx.session).days,expiry_waiting=False)
-            plan,_=dashboard_decision(ticker_ctx,read_workspace(ticker_ctx))
+            plan,_=dashboard_decision(ticker_ctx,read_workspace(ticker_ctx),contracts=False)
             suggested,minutes,basis=auto_scenario(plan,spot)
+            movement=plan.get("movement_v3") or {}
+            features=movement.get("features") or {}
+            levels={key:numeric(val) for key,val in (("Invalidation",plan.get("invalidation") or movement.get("invalidation")),
+                    ("Support",features.get("range_low")),("Resistance",features.get("range_high"))) if positive(val)}
         else:
             suggested,minutes,basis=spot,5,"Manual underlying and arrival scenario"
         # Date and time inputs are minute-resolution ET and refresh automatically in Auto.
@@ -291,6 +368,11 @@ def contracts(ctx):
             day=b.date_input("Arrival date",value=default.astimezone(ET).date(),min_value=today,max_value=spec.expires.astimezone(ET).date(),key="opc_date_"+code)
             at=c.time_input("Arrival time (ET)",value=default.astimezone(ET).time().replace(second=0,microsecond=0),step=60,key="opc_at_"+code)
             arrival=datetime.combine(day,at,tzinfo=ET).astimezone(timezone.utc)
+            if linked:
+                saved=link["arrival"]
+                if arrival==saved.replace(second=0,microsecond=0):
+                    arrival=saved
+                st.caption(f"From Trade Plan · entry assumption {number(link['entry'],dollar=True)} · current ask {number(ask,dollar=True)}.")
         if not ctx.now<arrival<=spec.expires:
             st.info("Choose an arrival after now and through the contract’s payoff reference.")
             return
@@ -306,21 +388,52 @@ def contracts(ctx):
     except ValueError as exc:
         results.info(str(exc));return
     with selected_info:
-        selected_metrics(spec,row,ask,iv,iv_source,stats)
+        st.markdown(f"**Bid {number(bid,dollar=True)} · Ask {number(ask,dollar=True)}**")
+        st.caption(f"Quoted midpoint {number((bid+ask)/2,dollar=True)} · modeled fair now {number(stats['premium'][0],dollar=True)} · "
+                   f"entry assumption {number(entry,dollar=True)} ({number(entry*spec.multiplier,dollar=True)} per contract before fees).")
+        with st.expander("IV and quote alignment"):
+            st.write(f"{iv_source} · IV used {iv:.1%} · provider IV {number(calibration.provider_iv,1,percent=True)} · "
+                     f"midpoint-implied IV {number(calibration.midpoint_iv,1,percent=True)}.")
+            st.caption(f"Provider-IV fair at quote time {number(calibration.provider_fair,dollar=True)} · "
+                       f"underlying and option clocks {calibration.age_gap:.1f}s apart. A quote midpoint is a calibration reference.")
+            selected_metrics(spec,row,ask,iv,iv_source,stats)
     with chart:
+        cfg={"displayModeBar":True,"scrollZoom":True}
+        st.markdown("**How the contract changes over time**")
         history=chart_history(ctx,spec,row,feed)
         fig=combined(spec,times,prices,remaining,stats,entry,qty,fee,norm,rth,arrival,extra,
                      observed=history,preview=ctx.preview,spread=ask-bid)
-        st.plotly_chart(fig,width="stretch",theme=None,key="opc_combined",config={"displayModeBar":True,"scrollZoom":True})
-        st.caption(f"Solid points and lines show available {'synthetic preview' if ctx.preview else 'observed'} quotes. Dashed lines show modeled values. Shading marks hours outside regular underlying trading.")
+        st.plotly_chart(fig,width="stretch",theme=None,key="opc_combined",config=cfg)
+        st.caption(f"Solid marks show available {'synthetic preview' if ctx.preview else 'observed'} quotes. "
+                   "Dashed curves model the selected path. Now marks the assumed entry; Target marks the possible exit. "
+                   + ("Closed sessions are hidden." if rth else "Shading marks hours outside regular underlying trading."))
+        when={"Target arrival":arrival,"Now":ctx.now,"Expiration payoff":spec.expires}[eval_mode]
+        sweep_iv=iv if when==ctx.now else future_iv
+        lo,hi=price_range(spot,spec.strike,target,(when-ctx.now).total_seconds()/YEAR,sweep_iv,levels.values())
+        st.markdown("**How the contract changes with the underlying price**")
+        st.caption(f"Fixed at {et_time(when)} · IV scenario {sweep_iv:.1%}. Theta is dollars per share per calendar day for a long contract.")
+        if when==spec.expires:
+            st.caption("At the payoff reference, only intrinsic value is shown. Greeks and IV are undefined there.")
+        try:
+            low,high,increment=bounds if bounds else (lo,hi,None)
+            grid=sweep_grid(low if low is not None else lo,high if high is not None else hi,increment,
+                            (spot,target,spec.strike,*levels.values()))
+            sweep=price_figure(spec,grid,spot,target,when,sweep_iv,rate,dividend,entry,qty,fee,ask-bid,
+                               normalize=norm,extra=extra,levels=levels)
+            st.plotly_chart(sweep,width="stretch",theme=None,key="opc_price_sweep",config=cfg)
+        except ValueError as exc:
+            st.info(str(exc))
     with results:
         result_metrics(spec,times,stats,ctx.now,spot,target,arrival,entry,iv,future_iv,qty,fee,ask-bid,rate,dividend,skew,shock)
     with choices:
         if enabled("SELECTION",True):
-            rank_scenario(rows,ctx,spot,target,arrival,rate,dividend,fee,qty,future_iv-iv,MAX_DEBIT,today)
+            with st.expander("Compare target outcomes at this expiry",key="opc_strike_outcomes",on_change="rerun") as panel:
+                if panel.open:
+                    rank_scenario(rows,ctx,spot,target,arrival,rate,dividend,fee,qty,future_iv-iv,MAX_DEBIT,today)
         with st.expander("Compare contracts under this scenario",key="opc_comparisons",on_change="rerun") as panel:
             if panel.open:
-                compare_contracts(ctx,dates,exp,side,spec,times,stats,spot,target,arrival,future_iv-iv,rate,dividend,fee,path,iv_basis="provider",primary_entry=entry,primary_spread=ask-bid,qty=qty)
+                compare_contracts(ctx,dates,exp,side,spec,times,stats,spot,target,arrival,future_iv-iv,rate,dividend,fee,path,primary_entry=entry,primary_spread=ask-bid,qty=qty,
+                                  grid=grid,evaluation=when,primary_eval_iv=sweep_iv)
     details(ctx,spec,spot,bid,ask,iv,iv_source,entry,qty,fee,rate,dividend,future_iv,
             target,arrival,times,remaining,stats,fresh,rows)
 
@@ -340,7 +453,7 @@ def selected_metrics(spec,row,ask,iv,iv_source,stats):
 def result_metrics(spec,times,stats,now,spot,target,arrival,entry,iv,future_iv,qty,fee,spread,rate,dividend,skew,shock):
     index=times.index(arrival)
     fair=float(stats["premium"][index])
-    concession=spread/2 if arrival<spec.expires else 0
+    concession=spread/2 if arrival<spec.expires and arrival<=spec.last_trade else 0
     exit_mark=max(0.,fair-concession)
     pnl=(exit_mark-entry)*spec.multiplier*qty-2*fee*qty
     debit=(entry*spec.multiplier+fee)*qty
@@ -371,6 +484,7 @@ def result_metrics(spec,times,stats,now,spot,target,arrival,entry,iv,future_iv,q
 
 def rank_scenario(rows,ctx,spot,target,arrival,rate,dividend,fee,qty,iv_shift,budget,today):
     ranked=[]
+    spot_at=ctx.chart_quote["at"]
     for spec,row,status in rows:
         if status!="Fresh quote" or not ctx.now<arrival<=min(spec.expires,spec.last_trade):
             continue
@@ -378,7 +492,7 @@ def rank_scenario(rows,ctx,spot,target,arrival,rate,dividend,fee,qty,iv_shift,bu
         debit=qty*(ask*spec.multiplier+fee)
         if debit>budget:
             continue
-        iv=iv_value(row.get("iv")) or calibrated_iv(spec,spot,ctx.now,(bid+ask)/2,rate,dividend)
+        iv=calibrate_quote(spec,row,spot,spot_at,ctx.now,rate,dividend,ctx.option_max_age).iv
         if iv is None or not .001<=iv+iv_shift<=5:
             continue
         try:

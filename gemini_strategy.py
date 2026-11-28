@@ -1,4 +1,4 @@
-"""Match a frozen Gemini scenario to a fresh Quant Desk setup for the paper simulator."""
+"""Match a published ABC scenario to a fresh Quant Desk setup for the paper simulator."""
 import json
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
@@ -8,9 +8,9 @@ from data_utils import utc
 from decision_engine import ENTRY_STATES, MIN_REWARD_R
 from decision_flow import apply_model_gate, model_summary
 from desk_analytics import FIVE_MINUTES, MINUTE, candles_on
-from gemini_sessions import session_context, revision_reason, summarize
-from gemini_advisor import FLOW_CHOICES, AdvisorQueue, evidence, packed
-from v3_provenance import display_plan
+from gemini_sessions import session_context, revision_reason, summarize, review_window
+from gemini_advisor import FLOW_CHOICES, SHADOW, AdvisorQueue, evidence, packed, unpack_plan
+from v3_provenance import display_plan, live_record
 from market_session import ET, calendar, rth_bounds, session_state
 from movement_detector import ENTRY_COOLDOWN, MIN_ENTRY_SCORE
 from research_journal import plan_scope
@@ -137,6 +137,9 @@ def assess(plan, read, daily, now):
     details = {"plan_id": daily["id"], "revision": data.get("revision",1), "stage": data.get("stage","Daily"), "published_at": daily["at"].isoformat(), "model": daily.get("model"), "leg": name,
                "flow": leg["flow"], "trigger": leg["trigger"], "invalidation": leg["invalidation"],
                "target": leg["target"], "baseline_status": plan["status"]}
+    if leg.get("hold_minutes") is not None:
+        geometry["hold"] = min(plan["hold"], leg["hold_minutes"])
+        details["planned_hold_minutes"] = leg["hold_minutes"]
     return {**plan, **geometry, "gemini": details, "origin": now.isoformat(),
             "status": "ENTER LONG" if side > 0 else "ENTER SHORT"}, []
 
@@ -148,10 +151,10 @@ class ScenarioMonitor:
         self.journal, self.jobs = journal, AdvisorQueue(journal)
         self.jobs.start()
         self.clock = clock or (lambda: datetime.now(timezone.utc))
-        self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gemini-scan")
+        self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="abc-scan")
         self.pending = {}
 
-    def submit(self, plan, read, now):
+    def submit(self, plan, read, now, ctx=None):
         if display_plan(plan):
             return
         # Coalesce slow scans per ticker instead of delaying regular alerts or replaying a backlog.
@@ -160,11 +163,11 @@ class ScenarioMonitor:
                 try:
                     task.result()
                 except Exception as exc:
-                    print(f"Gemini paper scan unavailable for {symbol} ({type(exc).__name__}).", flush=True)
+                    print(f"ABC paper scan unavailable for {symbol} ({type(exc).__name__}).", flush=True)
                 del self.pending[symbol]
         symbol = plan["symbol"]
         if symbol not in self.pending:
-            self.pending[symbol] = self.pool.submit(self.record, plan, read, now)
+            self.pending[symbol] = self.pool.submit(self.record, plan, read, now, ctx)
 
     def premarket(self, symbols, now):
         day = now.astimezone(ET).date()
@@ -215,9 +218,17 @@ class ScenarioMonitor:
         market = (plan.get("movement") or {}).get("market")
         stage = "Opening range" if complete else "Regular session"
         reason = "First three completed 5m candles" if complete else "First usable regular-session scan"
+        checkpoint = review_window(now, opened, close)
+        scheduled = (daily or {}).get("input", {}).get("scheduled_reviews", [])
+        if daily and daily["state"] == "failed" and not (
+                complete and daily["input"].get("stage") in ("Premarket", "Regular session")
+                or checkpoint and checkpoint not in scheduled):
+            return daily
         if daily and daily["state"] != "expired":
             if complete and daily["input"].get("stage") in ("Premarket","Regular session",None):
                 pass
+            elif checkpoint and checkpoint not in scheduled:
+                stage, reason = checkpoint, f"Scheduled {checkpoint.lower()} review"
             elif daily["state"] == "ready":
                 bar = time_or_none(plan.get("bar"))
                 previous = None
@@ -234,11 +245,26 @@ class ScenarioMonitor:
             else:
                 return daily
         snapshot = market_snapshot(plan, read)
+        current_hedges = self.journal.records(symbol, "hedge", scope=plan_scope(plan), limit=3)
+        for record in current_hedges:
+            payload = record["payload"]
+            dealer = payload.get("snapshot") or {}
+            stamp = time_or_none(dealer.get("stamp"))
+            received = time_or_none(record.get("origin"))
+            if (not display_plan(payload) and received and received <= now and stamp
+                    and timedelta(0) <= now-stamp <= FIVE_MINUTES):
+                fields = ("stamp", "model", "complete", "gex", "gamma_shares_per_point", "vanna_shares_per_iv_point",
+                          "charm_shares_per_day", "delta_shares", "levels")
+                snapshot["dealer_positioning"] = {key: dealer[key] for key in fields if dealer.get(key) is not None}
+                break
         sessions = (daily or {}).get("input",{}).get("sessions",{})
         if any(self.providers) and (not sessions or stage == "Opening range"):
             sessions, anchors = session_context(symbol,now,*self.providers)
             snapshot["levels"].update(anchors)
-        snapshot.update(stage=stage, reason=reason, market=market, sessions=sessions)
+        if checkpoint and not daily:
+            stage, reason = checkpoint, f"First usable snapshot in the {checkpoint.lower()} window"
+        snapshot.update(stage=stage, reason=reason, market=market, sessions=sessions,
+                        scheduled_reviews=list(dict.fromkeys([*scheduled, *([stage] if stage in ("Midday","Afternoon") else [])])))
         if complete:
             snapshot["levels"].update({"Opening 15m high":opening["high"],"Opening 15m low":opening["low"]})
         if len(set(snapshot["levels"].values())) < 3:
@@ -250,6 +276,19 @@ class ScenarioMonitor:
         deadline = min(now+timedelta(minutes=10),cutoff).timestamp()
         if deadline <= max(now,self.clock()).timestamp():
             return previous
+        # Include only completed research strictly preceding this snapshot and scoped to this ticker.
+        lessons = []
+        for row in self.journal.records("DESK", "v3_report", limit=8):
+            if (display_plan(row) or display_plan(row["payload"]) or row["scope"] >= str(session) or not time_or_none(row["origin"]) or
+                    time_or_none(row["origin"]) > now):
+                continue
+            block = row["payload"].get(symbol) or {}
+            if block and not display_plan(block):
+                lessons.append({"session": row["scope"], **{k: block[k] for k in
+                    ("recorded", "independent_events", "paper", "abc_outcomes") if k in block}})
+            if len(lessons) == 2:
+                break
+        snapshot["previous_results"] = lessons
         with self.journal.connection() as db:
             self.jobs.lock_plan(db,symbol,session)
             current = self.jobs.session_plan(db,symbol,session)
@@ -265,7 +304,7 @@ class ScenarioMonitor:
             self.jobs.enqueue(db,f"plan:{session}:{symbol}:v{revision}", "plan",symbol,session,now,snapshot,deadline)
             return self.jobs.session_plan(db,symbol,session)
 
-    def record(self, plan, read, now):
+    def record(self, plan, read, now, ctx=None):
         if display_plan(plan) or session_state(now)["status"] != "OPEN":
             return
         symbol, day = plan["symbol"], plan["session"]
@@ -282,6 +321,14 @@ class ScenarioMonitor:
                 candidate = None
             else:
                 candidate = gated
+                if plan.get("rank_contracts"):
+                    if ctx is None:
+                        reasons, candidate = ["A fresh contract comparison is required for this scenario."], None
+                    else:
+                        from decision_flow import finalize_contract
+                        candidate = finalize_contract(ctx, candidate, read, track=SHADOW)
+                        if candidate["status"] not in ENTRY_STATES:
+                            reasons, candidate = candidate.get("missing") or candidate.get("blocks") or ["No qualified contract for the revised scenario."], None
         captured = max(now, self.clock())
         if candidate and (session_state(captured)["status"] != "OPEN"
                           or captured - utc(plan["entry_bar"]) > timedelta(seconds=90)
@@ -297,9 +344,10 @@ class ScenarioMonitor:
                 seen = self.jobs.run(db, "SELECT 1 FROM qd25_observation WHERE id=?", ident).fetchone()
                 if not seen:
                     if self.journal._claim_entry_window(db, symbol, "Gemini paper comparison", captured, ENTRY_COOLDOWN):
-                        self.journal._insert(db, ident, symbol, "gemini_entry", day, captured, {"plan": candidate})
+                        from monitor_engine import strategy_record
+                        self.journal._insert(db, ident, symbol, "gemini_entry", day, captured, {"plan": strategy_record(candidate)})
                     else:
-                        reasons = ["A Gemini paper entry was recorded for this ticker in the last 10 minutes."]
+                        reasons = ["An ABC paper entry was recorded for this ticker in the last 10 minutes."]
             state = "WAIT" if reasons else "PAPER CANDIDATE"
             check = {"plan_id": (daily or {}).get("id"), "status": state, "reasons": reasons, "baseline": plan["status"],
                      "baseline_reasons": list(dict.fromkeys(plan["data_reasons"] + plan["blocks"] + plan["missing"])),
@@ -312,3 +360,76 @@ class ScenarioMonitor:
                 if json.loads(old)["status"] != "PAPER CANDIDATE":
                     self.jobs.run(db, "UPDATE qd25_observation SET origin=?,payload=? WHERE id=? AND payload=?",
                                   utc(now).isoformat(timespec="microseconds"), packed(check), key, old)
+
+
+def abc_outcomes(journal, symbol, session, scans):
+    """Count forward geometric outcomes per published active leg, separately from paper fills."""
+    with journal.connection() as db:
+        table = (db.execute("SELECT to_regclass('qd_gemini_job')").fetchone() if journal.dsn else
+                 db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='qd_gemini_job'").fetchone())
+        if not table or not table[0]:
+            return {"status": "No planning journal", "published_versions": 0}
+        rows = db.execute(journal.sql("SELECT created,updated,input,result,state FROM qd_gemini_job "
+                                      "WHERE symbol=? AND session=? AND kind='plan' ORDER BY created,id"),
+                          (symbol, str(session))).fetchall()
+    closes = {}
+    for row in scans:
+        if not live_record(row):
+            continue
+        payload = row["payload"]
+        sig, bar = payload["signal"], payload.get("ohlcv") or {}
+        at = time_or_none(sig.get("at"))
+        if (at and sig.get("symbol") == symbol and sig.get("session") == str(session)
+                and all(positive(bar.get(key)) for key in ("close", "high", "low"))):
+            closes.setdefault(sig.get("source"), {})[at] = bar
+    published = 0
+    totals = Counter()
+    for i, (created, updated, request, raw, state) in enumerate(rows):
+        if state != "ready" or not raw:
+            continue
+        data = json.loads(request)
+        if display_plan(data) or data.get("stage") == "Premarket":
+            continue
+        bars = closes.get(data.get("source"), {})
+        start = datetime.fromtimestamp(updated, timezone.utc)
+        # Only bars beginning after publication; stop at the first *requested* replacement.
+        first = start.replace(second=0, microsecond=0) + (MINUTE if start.second or start.microsecond else timedelta()) + MINUTE
+        end = rth_bounds(session)[1]
+        if i+1 < len(rows):
+            end = min(end, datetime.fromtimestamp(rows[i+1][0], timezone.utc))
+        published += 1
+        for name, leg in unpack_plan(json.loads(raw))[0].items():
+            if leg.get("setup") == "Wait":
+                totals["wait_legs"] += 1
+                continue
+            if leg.get("hold_minutes") not in (5, 10, 15):
+                totals["missing_horizon"] += 1
+                continue
+            side = 1 if name in ("A", "C support") else -1
+            direction = lambda x: x * side
+            triggered = None
+            outcome = "no_trigger"
+            at = first
+            while at <= end:
+                bar = bars.get(at)
+                if not bar:
+                    outcome = "coverage_gap"
+                    break
+                if triggered:
+                    hit = direction(bar["high" if side > 0 else "low"] - leg["target"]) >= 0
+                    lost = direction(bar["low" if side > 0 else "high"] - leg["invalidation"]) <= 0
+                    if hit or lost:
+                        outcome = "ambiguous" if hit and lost else "target_first" if hit else "invalidation_first"
+                        break
+                    if at - triggered >= leg["hold_minutes"] * MINUTE:
+                        outcome = "horizon_elapsed"
+                        break
+                elif direction(bar["close"] - leg["trigger"]) > 0:
+                    if direction(bar["close"] - leg["target"]) >= 0:
+                        outcome = "target_already_passed"
+                        break
+                    triggered, outcome = at, "window_truncated"
+                at += MINUTE
+            totals[outcome if first <= end else "window_truncated"] += 1
+    return {"status": "Recorded conditional price paths" if published and closes else "Insufficient coverage",
+            "published_versions": published, "leg_outcomes": dict(totals)}

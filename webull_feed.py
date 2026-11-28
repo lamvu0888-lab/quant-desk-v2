@@ -413,6 +413,7 @@ class WebullFeedStore:
             stamp = time_or_none(row.get("quote_time"))
             parsed[code] = {**contracts[code], "expiry_utc": expires_at.isoformat(),
                             "bid": numeric(row.get("bid")), "ask": numeric(row.get("ask")),
+                            "bid_size": numeric(row.get("bid_size")), "ask_size": numeric(row.get("ask_size")),
                             "iv": numeric(row.get("imp_vol")), "volume": numeric(row.get("volume")),
                             "open_interest": numeric(row.get("open_interest")),
                             **{field: numeric(row.get(field)) for field in ("delta", "gamma", "vega", "theta")},

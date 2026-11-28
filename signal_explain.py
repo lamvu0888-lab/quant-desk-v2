@@ -60,6 +60,23 @@ def discord_text(signal):
         quote = f("option_quote") or {}
         confirmation = (f"{quote['source']} {amount(quote['strike'])} {quote['right']} · "
                         f"{amount(quote['bid'])} bid / {amount(quote['ask'])} ask · Flow confirmed") if quote.get("ready") else "Price and flow confirmed"
+        recommendation = f("contract_recommendation") or {}
+        chosen = recommendation.get("selected")
+        if chosen and recommendation.get("status") == "qualified":
+            confirmation = (
+                f"{chosen['label']} · {chosen['source']} · bid/ask {amount(chosen['bid'])}/{amount(chosen['ask'])}\n"
+                f"Modeled target/stop premium {amount(chosen['target_premium'])}/{amount(chosen['stop_premium'])} · "
+                f"{recommendation['hold']}m · {chosen['quantity']} paper contract(s), debit up to ${chosen['cost']:,.2f}"
+            )
+            if recommendation.get("daily_capacity") is not None:
+                confirmation += f" · modeled daily loss capacity at scan ${recommendation['daily_capacity']:,.2f}"
+            elif recommendation.get("daily_capacity_verified") is False:
+                confirmation += " · paper buying size unverified"
+        if f("futures_cvd"):
+            from schwab_futures import proxy_caption
+            proxy = proxy_caption(f("futures_cvd"))
+            if proxy:
+                confirmation += f"\n{proxy}"
         if box := f("range_reversal"):
             edge_name = "Support bounce" if f("direction") == 1 else "Resistance rejection"
             provider = f"{f('source')} fallback" if f("price_fallback") else f("source")

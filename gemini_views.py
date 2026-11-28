@@ -20,7 +20,7 @@ def session_view(symbol, day, identity, _journal):
 
 
 def scenario_panel(ctx):
-    with st.expander("Gemini A/B/C paper plan", expanded=True):
+    with st.expander("A/B/C paper plan", expanded=True):
         if ctx.preview or ctx.journal is None:
             st.caption("Live scenarios appear here when Quant Desk can read the workers’ shared journal.")
             return
@@ -30,17 +30,20 @@ def scenario_panel(ctx):
             day = at.astimezone(ET).date() if at and session_state(at)["status"] == "PREMARKET" else ctx.session
             daily, scans, versions = session_view(ctx.ticker, str(day), identity, ctx.journal)
         except Exception:
-            st.caption("Gemini journal unavailable. Check the workers’ setup and the dashboard’s read access.")
+            st.caption("AI planning journal unavailable. Check the workers’ setup and the dashboard’s read access.")
             return
         if daily and daily["state"] == "ready":
             sample = daily["input"]
             st.caption(f"{sample['symbol']} · {sample['session']} · {sample['source']} snapshot "
                        f"{et_time(sample['as_of'])} · published {et_time(daily['at'])} · {daily['model']}")
             st.write(f"Version {sample.get('revision',1)} · {sample.get('stage','Daily')} · {sample.get('reason','')}")
+            context = daily.get("context") or {}
+            if context:
+                st.write(f"{context['bias']} · {context['regime']} · {context['risk_factor']}")
             rows = [{"Scenario": name, "Setup": leg["setup"], "Trigger": leg.get("trigger"),
                      "Invalidation": leg.get("invalidation"), "Target": leg.get("target"),
                      "5m premium": leg["flow"] if leg["setup"] != "Wait" else None,
-                     "Rationale": leg["reason"]} for name, leg in daily["legs"].items()]
+                     "Hold (min)": leg.get("hold_minutes"), "Rationale": leg["reason"]} for name, leg in daily["legs"].items()]
             st.dataframe(rows, hide_index=True, width="stretch")
             reviews = sample.get("prior_reviews", [])
             if reviews:
@@ -48,20 +51,20 @@ def scenario_panel(ctx):
                 st.dataframe([{"Previous experiment": r["change"], "Evidence": r["finding"],
                                "Measurement": r["measure"]} for r in reviews], hide_index=True, width="stretch")
         elif daily:
-            st.info(f"Session plan {daily['state']}. {daily['issue'] or 'Waiting for a validated Gemini response.'}")
+            st.info(f"Session plan {daily['state']}. {daily['issue'] or 'Waiting for a validated advisor response.'}")
         else:
             st.caption("No plan recorded for this ticker and session. The monitor needs fresh completed bars and price levels.")
         if scans:
             items = []
             for row in scans:
                 p = row["payload"]
-                items.append({"Time ET": et_time(row["origin"]), "Gemini paper": p["status"],
+                items.append({"Time ET": et_time(row["origin"]), "ABC paper": p["status"],
                               "Scenario": p.get("leg"), "Setup": p.get("setup"), "Score": p.get("score"),
                               "Paper checks": " ".join(p["reasons"]) or "Candidate sent to the paper simulator.",
                               "Original decision": p["baseline"], "Original checks": " ".join(p["baseline_reasons"]),
                               "Source": p["source"]})
-            st.caption("Recent decisions · latest scan per minute")
-            st.dataframe(items, hide_index=True, width="stretch")
+            with st.expander("Recent decisions and checks"):
+                st.dataframe(items, hide_index=True, width="stretch")
         if versions:
             with st.expander("Plan versions and session data"):
                 for ident,state,raw,result in versions:
@@ -76,12 +79,12 @@ def paper_comparison(trades, table, read_reviews, realized, today, shadow_halted
     day = st.selectbox("Comparison session (ET)", days)
     day_rows = [t for t in trades if t["session"] == day]
     if shadow_halted and day == str(today):
-        st.warning("Gemini paper book reached its daily loss stop.")
+        st.warning("ABC paper book reached its daily loss stop.")
     summary = []
     for label in (BASELINE, SHADOW):
         cohort = [t for t in day_rows if t.get("track", BASELINE) == label]
         closed = [t for t in cohort if t["state"] == "CLOSED"]
-        summary.append({"Paper strategy": label, "Filled": sum(bool(t.get("opened")) for t in cohort),
+        summary.append({"Paper strategy": "ABC paper" if label == SHADOW else label, "Filled": sum(bool(t.get("opened")) for t in cohort),
                         "Closed": len(closed), "Skipped": sum(t["state"] == "SKIPPED" for t in cohort),
                         "Unresolved": sum(t["state"] == "UNRESOLVED" for t in cohort),
                         "Net closed P/L ($)": round(sum(map(realized, closed)), 2) if closed else None,
@@ -94,7 +97,7 @@ def paper_comparison(trades, table, read_reviews, realized, today, shadow_halted
     try:
         reviews = read_reviews(day)
     except Exception:
-        st.caption("Gemini reviews unavailable. Check the paper worker’s Gemini setup and the dashboard’s journal access.")
+        st.caption("AI reviews unavailable. Check the paper worker’s advisor setup and the dashboard’s journal access.")
         return
     if not reviews:
         st.caption("Reviews appear after a paper position has fully closed with verified exit fills.")
@@ -105,7 +108,7 @@ def paper_comparison(trades, table, read_reviews, realized, today, shadow_halted
         trade = index.get(ident, {})
         answer = json.loads(result) if result else {}
         rows.append({"Exit ET": et_time(trade.get("closed")), "Ticker": trade.get("symbol"),
-                     "Paper strategy": trade.get("track", BASELINE), "Setup": trade.get("plan", {}).get("setup"),
+                     "Paper strategy": "ABC paper" if trade.get("track") == SHADOW else trade.get("track", BASELINE), "Setup": trade.get("plan", {}).get("setup"),
                      "Net P/L ($)": realized(trade) if trade else None, "Review": state, "Finding": answer.get("finding"),
                      "Proposed change": answer.get("change"), "Forward test": answer.get("experiment"),
                      "Measure": answer.get("measure"), "Model": model, "Issue": issue})

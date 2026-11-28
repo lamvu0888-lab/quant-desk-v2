@@ -47,8 +47,8 @@ def test_combined_expiry_observations_and_costs(normalize):
     arrival=now+timedelta(hours=1)
     times=timeline(now,spec.expires,60,arrival=arrival)
     p,r,g=scenario(spec,now,times,7000.,7010.,arrival,.154,.15,.04,0.,extended=True)
-    history=[dict(at=now-timedelta(minutes=3),premium=41.,iv=15.4),
-             dict(at=now,premium=42.,iv=15.4)]
+    history=[dict(at=now-timedelta(minutes=3),premium=41.,theta=-.2,iv=15.4),
+             dict(at=now,premium=42.,theta=-.19,iv=15.4)]
     fig=combined(spec,times,p,r,g,42.,1,.65,normalize,False,arrival,["vanna","charm"],
                  observed=history,spread=2.)
     modeled=[tr for tr in fig.data if tr.line.dash=="dash"]
@@ -119,7 +119,7 @@ def test_combined_mobile_labels_keep_close_markers_separate_and_units_visible():
     assert labels["Expiry"].xanchor=="right"
     assert fig.layout.legend.xref==fig.layout.legend.yref=="container"
     assert fig.layout.legend.entrywidthmode=="pixels" and fig.layout.legend.entrywidth==50
-    assert fig.layout.yaxis.tickprefix=="$" and fig.layout.yaxis4.ticksuffix=="%"
+    assert fig.layout.yaxis.tickprefix=="$" and fig.layout.yaxis4.tickprefix=="Θ"
     assert fig.layout.yaxis2.tickprefix=="Δ" and fig.layout.yaxis3.tickprefix=="Γ"
     assert len(fig.layout.xaxis.ticktext)==3 and all("<br>" not in t for t in fig.layout.xaxis.ticktext)
     intraday=go.Figure()

@@ -9,7 +9,7 @@ from v3_provenance import live_signal, simulated_context, simulated_feed
 from terminal_data import numeric, time_or_none, feed_has_delay
 from market_session import ET, rth_bounds
 
-VERSION = "3.0-shadow.2"
+VERSION = "3.0-shadow.3"
 HORIZONS = (3, 5, 10, 15)
 MINUTE = timedelta(minutes=1)
 THRESHOLDS = {"Aggressive": 55, "Balanced": 65, "Conservative": 75}

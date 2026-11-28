@@ -182,12 +182,15 @@ def checklist(sig, plan):
                          motion, "Watch for price and participation to strengthen in the same direction.", price_at))
 
     cross = sig.get("cross_market") or {}
+    from schwab_futures import proxy_caption
+    sampled = proxy_caption(sig.get("futures_cvd"))
     peer = cross.get("symbol")
     cross_status = alignment(cross.get("direction"), side) if peer else MISSING
     out.append(Indicator("Cross-market confirmation", cross_status,
                          f"{peer} {number(cross.get('change_pct'), 3, signed=True)}%" if peer else MISSING,
-                         f"{peer} moved {direction_text(cross.get('direction'))} over the aligned minute." if peer else
-                         "No synchronized peer price is available for this scan.",
+                         " ".join(filter(None, (
+                             f"{cross.get('source') or 'Futures'} {peer} moved {direction_text(cross.get('direction'))} over the aligned minute." if peer else
+                             "No synchronized peer price is available for this scan.", sampled))),
                          "Watch for agreement on the next aligned close." if peer else "Await an observed peer return with a matching close.",
                          time_label(cross.get("at"))))
 

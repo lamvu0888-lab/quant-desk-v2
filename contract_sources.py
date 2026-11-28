@@ -23,6 +23,7 @@ def _schwab_row(raw, symbol, expiry, right):
         "symbol": symbol, "contract": str(raw.get("symbol", "")).replace(" ", ""),
         "expiry": expiry, "type": right, "strike": positive(raw.get("strikePrice")),
         "multiplier": numeric(raw.get("multiplier")), "updated_at": at.isoformat() if at else None,
+        "bid_size": numeric(raw.get("bidSize")), "ask_size": numeric(raw.get("askSize")),
         "bid": positive(raw.get("bid")), "ask": positive(raw.get("ask")), "last": positive(raw.get("last")),
         "volume": numeric(raw.get("totalVolume")), "open_interest": numeric(raw.get("openInterest")),
         "iv": volatility_pct / 100 if volatility_pct is not None and volatility_pct <= 500 else None,
@@ -96,10 +97,17 @@ def contract_expirations(ctx):
     return live_feed(ctx.schwab_store.get("option_expirations", symbol=ctx.ticker, paused=ctx.paused))
 
 
-def usable_chain(feed, ctx, expiry, right):
+def reported_realtime(row, feed):
+    if not feed.snapshot:
+        return False
+    values = [numeric(v) for v in (row.get("delay_minutes"), feed.snapshot.meta.get("delay_minutes")) if v is not None]
+    return bool(values) and all(v == 0 for v in values)
+
+
+def usable_chain(feed, ctx, expiry, right, *, broker_only=False):
     rows = fresh_option_rows(feed, ctx.ticker, expiry, ctx.now, paused=ctx.paused, max_age=ctx.option_max_age)
     for row in rows:
-        if row.get("type") != right:
+        if row.get("type") != right or broker_only and not reported_realtime(row, feed):
             continue
         try:
             spec = contract_spec(row, ctx.ticker)
@@ -110,7 +118,7 @@ def usable_chain(feed, ctx, expiry, right):
     return False
 
 
-def contract_chain(ctx, expiry, right):
+def contract_chain(ctx, expiry, right, *, broker_only=False):
     expiry = str(expiry)
     if ctx.preview:
         return ctx.option_chain(expiry, right=right, near=False)
@@ -119,18 +127,21 @@ def contract_chain(ctx, expiry, right):
     if ctx.has_webull_options:
         feed, label = ctx.option_chain(expiry, provider="Webull", right=right, near=False)
         feed = live_feed(feed)
-        if usable_chain(feed, ctx, expiry, right):
+        if usable_chain(feed, ctx, expiry, right, broker_only=broker_only):
             return feed, label
         candidates.append((feed, label))
     if ctx.schwab_store and ctx.ticker in SYMBOLS:
         feed = live_feed(ctx.schwab_store.get("option_chain", symbol=ctx.ticker, expiry=expiry,
                                               right=right, paused=ctx.paused))
-        if usable_chain(feed, ctx, expiry, right):
+        if usable_chain(feed, ctx, expiry, right, broker_only=broker_only):
             return feed, "Schwab"
         candidates.append((feed, "Schwab"))
+    if broker_only:
+        return next(((f, name) for f, name in candidates if f.rows),
+                    candidates[0] if candidates else (Feed(error=FeedError("UNAVAILABLE", "Broker option quotes unavailable.")), "Broker"))
     feed, label = ctx.option_chain(expiry, provider="Tradytics", right=right, near=False)
     feed = live_feed(feed)
-    if usable_chain(feed, ctx, expiry, right):
+    if usable_chain(feed, ctx, expiry, right, broker_only=broker_only):
         return feed, label
     candidates.append((feed, label))
     # Preserve the selected provider's explanation when all live requests are unusable.

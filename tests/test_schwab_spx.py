@@ -264,7 +264,7 @@ def test_paper_worker_uses_alerts_original_price_provider(tmp_path, monkeypatch)
     journal.claim_delivery("test-id")
     journal.delivery_state("test-id", "sent")
     seen = []
-    def inspect(trade, ctx, *args):
+    def inspect(trade, ctx, *args, **risk):
         seen.append((trade["symbol"], ctx.chart_quote["source"], ctx.chart_quote["price"]))
     monkeypatch.setattr(paper_engine, "attempt_entry", inspect)
     paper_engine.PaperWorker(book, None, None, lambda: NOW, schwab=IndexFeeds(NOW)).poll()

@@ -60,7 +60,7 @@ def test_gaps_zero_totals_and_two_sided_markers():
     assert read_column(replace(ctx, paused=True), "gamma", ctx.expiry, ctx.exposure()).issue == "Paused"
 
 
-def test_dashboard_heatmap_and_price_markers(monkeypatch):
+def test_dashboard_heatmap_and_price_markers(monkeypatch, overview_spec):
     for name in ("TRADYTICS_API_KEY", "WEBULL_APP_KEY", "WEBULL_APP_SECRET", "DEFAULT_TICKER"):
         monkeypatch.delenv(name, raising=False)
     app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "terminal.py"), default_timeout=40).run()
@@ -68,7 +68,7 @@ def test_dashboard_heatmap_and_price_markers(monkeypatch):
         return json.loads(next(c.proto.spec for c in app.get("plotly_chart") if key in c.proto.id))
     def has_marker():
         return any("Amplifier" in a["text"] or "Brake" in a["text"]
-                   for a in chart("price_action_chart")["layout"]["annotations"])
+                   for a in overview_spec(app)["layout"]["annotations"])
     assert has_marker()
     app.toggle(key="price_gamma_markers").set_value(False).run()
     assert not has_marker()

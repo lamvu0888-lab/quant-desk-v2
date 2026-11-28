@@ -263,7 +263,7 @@ def test_paper_books_have_separate_loss_stops_and_reviews_include_original(tmp_p
             b.execute(db, "INSERT INTO qd_paper_trade VALUES (?,?,?,?,?,?)", item["id"], item["origin"],
                       item["session"], stamp(now), item["state"], json.dumps(item))
     received = {}
-    def attempt(item, ctx, webull, halted, get_now):
+    def attempt(item, ctx, webull, halted, get_now, **risk):
         received[item["track"]] = halted
         item.update(state="SKIPPED",reason="fixture")
     monkeypatch.setattr(paper_engine, "attempt_entry", attempt)
@@ -288,7 +288,7 @@ def test_rendered_paper_journal_handles_existing_and_new_schema(tmp_path, monkey
     monkeypatch.setenv("PAPER_HIDE_DEMO", "1")
     app = AppTest.from_file(Path(__file__).resolve().parents[1]/"paper_dashboard.py").run()
     assert not app.exception
-    assert any("Gemini reviews unavailable" in c.value for c in app.caption)
+    assert any("AI reviews unavailable" in c.value for c in app.caption)
     AdvisorQueue(j).start()
     app.run()
     assert not app.exception and any("verified exit fills" in c.value for c in app.caption)

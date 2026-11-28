@@ -1,0 +1,9 @@
+:root { color-scheme: dark; font: 13px system-ui,sans-serif; color: #e6eef8; background:#141f30 }
+* { box-sizing:border-box } body {margin:0} #viewer {width:100%;background:#141f30}
+#viewer:fullscreen {height:100vh;padding:8px}
+nav {display:flex; flex-wrap:wrap; gap:5px;align-items:center;padding:3px 1px 6px}
+button {cursor:pointer; border:1px solid #61748c; border-radius:6px; color:#e6eef8; background:#1b293b; min-height:34px;padding:4px 10px;font-size:12px}
+button:hover,button:focus-visible {border-color:#91e7cd}
+button[aria-pressed=true] {background:#174f43; color:#a6f7dc; border-color:#63cfb3}
+#notice {margin:0;padding:2px 6px;color:#ffd484} #chart {width:100%}
+@media(max-width:540px) {button{font-size:11px; min-height:38px; padding:4px 6px} nav {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}}

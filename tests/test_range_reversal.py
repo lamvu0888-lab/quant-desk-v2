@@ -137,12 +137,16 @@ def test_shared_gates_and_optional_context():
 
 
 @pytest.mark.parametrize("side", [1, -1])
-def test_worker_and_paper_journal_route(tmp_path, monkeypatch, side):
+@pytest.mark.parametrize("ranked", [False, True], ids=["single-expiry-rollback", "ranked-exact-series"])
+def test_worker_and_paper_journal_route(tmp_path, monkeypatch, side, ranked):
+    monkeypatch.setenv("QD_V3_SELECTION", str(ranked).lower())
     args = range_inputs(side)
     now, symbol, expiry = args["now"], "QQQ", args["expiry"]
     journal = Journal(tmp_path / "reversals.sqlite", dsn="")
     ledger = PaperLedger(journal)
     ledger.start(now - MINUTE)
+    with journal.connection() as db:
+        ledger.set_meta(db, "heartbeat", now.isoformat())
     option = [Feed()]
     clock = [now]
 
@@ -157,13 +161,48 @@ def test_worker_and_paper_journal_route(tmp_path, monkeypatch, side):
     webull = SimpleNamespace(settings=Settings(), prices=lambda _: {symbol: webull_prices(args["candles"], clock[0])},
                              options=lambda *a, **kw: option[0])
     worker = MonitorScan(store, webull, "Auto", journal)
+    if ranked:
+        # Isolate the worker integration from the ranking model. A verified
+        # candidate arrives on the next scan of the same completed entry bar.
+        from tests.test_ranked_paper_path import ranked as fixture_recommendation
+
+        def ranking(ctx, plan, read, **options):
+            decision = fixture_recommendation()
+            leg = decision["selected"]
+            candidate_day = (ctx.session + timedelta(days=3)).isoformat()
+            right = "call" if side > 0 else "put"
+            code = f"QQQ{candidate_day[2:].replace('-', '')}{right[0].upper()}00100000"
+            leg.update(symbol=symbol, contract=code, strike=100., expiry=candidate_day, type=right,
+                       label=f"{symbol} 100 {right.title()} · 3DTE", quote_at=ctx.now.isoformat())
+            decision.update(origin=ctx.now.isoformat(), expires_at=(ctx.now + timedelta(seconds=30)).isoformat(),
+                            symbol=symbol, direction=side, target=plan["tp1"], stop=plan["stop"], hold=plan["hold"])
+            if not option[0].snapshot:
+                decision.update(status="unavailable", selected=None, reason="Verified chain pending")
+            return decision
+        monkeypatch.setattr("contract_recommendation.recommend", ranking)
     monkeypatch.setattr("terminal_views.realized_regime", lambda _: args["regime"])
     monkeypatch.setattr("monitor_engine.model_summary", lambda *_: {
         "p_tp1": .55, "baseline_p_tp1": .51, "stress_p_tp1": .49, "ev_ci": (-.1,.2), "baseline_ev_ci": (-.1,.15)})
+    dry_monitor = MonitorScan(store, webull, "Auto", None)
+    if ranked:
+        alerts, (report,) = dry_monitor.run([symbol], now, 30, dry_run=True)
+        assert not alerts and report["contract_ranking"]["reason"] == "Verified chain pending"
+        assert report["contract_ranking"]["contract"] is None and report["status"] == "GET READY"
     first, _ = worker.run([symbol], now, 30)
     assert not any(p["status"] in ENTRY_STATES for _, p in first)
     clock[0] += MINUTE / 2
     option[0] = option_pair(symbol, expiry, clock[0])
+    if ranked:
+        alerts, (report,) = dry_monitor.run([symbol], clock[0], 30, dry_run=True)
+        diagnostic = report["contract_ranking"]
+        assert not alerts and report["status"] == "GET READY"
+        assert diagnostic["status"] == "developing" and diagnostic["source"] == "Schwab"
+        assert diagnostic["daily_capacity_verified"] is False and "provisional" in diagnostic["reason"]
+        assert diagnostic["contract"].startswith(symbol) and diagnostic["side"] == ("call" if side == 1 else "put")
+        assert diagnostic["expiry"] != report["monitored_expiry_diagnostics"]["expiration"] == expiry
+        assert diagnostic["dte"] == 3 and report["monitored_expiry_diagnostics"]["option_source"] == "Webull"
+        assert "paper fills are not evaluated" in report["assessment_scope"]
+        assert not journal.records(symbol, "candidate"), "A dry-run must never reserve a candidate"
     alerts, _ = worker.run([symbol], clock[0], 30)
     entries = [(i,p) for i,p in alerts if p["status"] in ENTRY_STATES]
     assert len(entries) == 1
@@ -188,6 +227,11 @@ def test_worker_and_paper_journal_route(tmp_path, monkeypatch, side):
         ledger.ingest(db)
         recorded = ledger.rows(db)
     assert len(recorded) == 1 and recorded[0]["plan"]["setup"] == RANGE_SETUP
+    if ranked:
+        pinned = recorded[0]["plan"]["contract_recommendation"]["selected"]
+        assert p["option_quote"]["contract"] == pinned["contract"]
+        assert pinned["label"] in message and pinned["expiry"] != expiry
+        assert p["contract_recommendation"]["daily_capacity_verified"] and "daily loss capacity at scan" in message
 
 
 def schwab_workspace():

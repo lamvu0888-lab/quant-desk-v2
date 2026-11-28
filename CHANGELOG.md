@@ -1,3 +1,13 @@
+# Quant Desk 3.0.0-rc3
+
+- Market Overview opens with a decision, a reason and a price chart that saves zoom and pan by ticker, interval and feed.
+- Trade Plan ranks broker-listed contracts against shared price paths, accounts for spreads, fees and permitted size, and pins the selected series through paper entry and position review.
+- Contract Intelligence shows synchronized premium, Delta, Gamma and Theta against time and underlying price. A timestamp-checked midpoint fit resolves inconsistent broker or demo IV.
+- OpenAI handles opted-in ABC plans, paper reviews and after-close research. A shared journal tracks usage, proposed research and prospective outcomes.
+- Schwab ES/MES sampled flow runs in shadow for SPX. AI Learning measures coverage and forward results for contract selection and experimental signals.
+
+See [RC3 research and operating notes](V3_INTEGRATED_RESEARCH.md) and the release ZIP's test transcripts.
+
 # Quant Desk 2.8.8
 
 - Added long support bounces and short resistance rejections to Trade Plan. The setup combines a prior sideways hour, a completed 3m rejection, later 1m follow-through, 1m/3m EMA 9/21 timing and synchronized options flow.

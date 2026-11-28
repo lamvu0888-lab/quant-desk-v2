@@ -7,8 +7,9 @@ from datetime import timedelta
 from data_utils import utc
 from dealer_hedging import hedge_change, hedge_scenarios, level_crossings
 from decision_engine import ENTRY_STATES
-from decision_flow import apply_model_gate, build_decision, get_hedge, model_summary
+from decision_flow import apply_model_gate, build_decision, finalize_contract, get_hedge, model_summary
 from desk_analytics import FIVE_MINUTES, MINUTE, candles_on
+from early_flow import EARLY
 from ema_trend import TREND_ALERT_AGE, ema_trend
 from market_session import ET, session_state
 from movement_detector import ENTRY_COOLDOWN, MIN_ENTRY_SCORE, early_price_move
@@ -36,7 +37,10 @@ def strategy_record(plan):
     excluded = {"v3_quote_samples"}
     if not enabled("RECORD"):
         excluded.update(("movement_v3","v3_contracts"))
-    return {k:v for k,v in plan.items() if k not in excluded}
+    summary = {k:v for k,v in plan.items() if k not in excluded}
+    if rec := summary.get("contract_recommendation"):
+        summary["contract_recommendation"] = {k:v for k,v in rec.items() if k not in ("alternatives","candidates","diagnostics")}
+    return summary
 
 
 def notification(plan, status=None):
@@ -85,8 +89,39 @@ def price_alert(journal, ctx, read):
     return (ident, payload) if journal.insert(ident, ctx.ticker, "move_watch", scope, ctx.now, payload) else None
 
 
+def check_entry_evidence(plan):
+    """Apply the same stateless price/flow/evidence requirements to worker and diagnostic reads."""
+    box = plan.get("range_reversal")
+    price_confirmed = box.get("follow_through", False) if box else plan["movement"]["price_confirmed"]
+    # Ranked builds run the exact-series quote check after the model check. A
+    # bad ATM quote must never exclude a valid, risk-qualified strike or expiry.
+    option_ready = plan.get("rank_contracts") or (plan.get("option_quote") or {}).get("ready")
+    if plan["status"] in ENTRY_STATES and (
+            plan["score"] < MIN_ENTRY_SCORE or not price_confirmed or not option_ready
+            or not plan["flow_confirmation"]["confirmed"] or plan["data_reasons"]):
+        plan["status"] = "GET READY"
+        for condition, reason in ((not price_confirmed, "Waiting for confirmed price structure."),
+                                  (not option_ready, "Waiting for an executable exact-expiry option quote."),
+                                  (plan["score"] < MIN_ENTRY_SCORE, f"Evidence below {MIN_ENTRY_SCORE}/100."),
+                                  (not plan["flow_confirmation"]["confirmed"], "Waiting for two aligned 5m premium closes.")):
+            if condition:
+                plan["missing"].append(reason)
+
+
+
+def dry_run_decision(ctx, read):
+    plan, _ = build_decision(ctx, read, defer_contract=True)
+    monitored_quote = plan.get("option_quote") or {}
+    if plan.get("rank_contracts"):
+        check_entry_evidence(plan)
+        if plan["status"] in ENTRY_STATES:
+            plan = apply_model_gate(plan, model_summary(read["candles"], plan, ctx.now))
+        plan = finalize_contract(ctx, plan, read)
+    return plan, monitored_quote
+
+
 def process_scan(journal, ctx, read, *, check_move=True):
-    plan, _ = build_decision(ctx, read, warm_options=False)
+    plan, _ = build_decision(ctx, read, warm_options=False, defer_contract=True)
     if display_plan(plan) or simulated_context(ctx, read):
         plan["demo"] = True
         return [], plan
@@ -129,6 +164,8 @@ def process_scan(journal, ctx, read, *, check_move=True):
             validation = performance(paper_records(comparable, before=now, hold=early["hold"], setup=early["setup"]))
             early = apply_model_gate(early, model_summary(read["candles"], early, now), validation)
             if early["status"] in ENTRY_STATES:
+                early = finalize_contract(ctx, early, read, track=EARLY)
+            if early["status"] in ENTRY_STATES:
                 ident = event_id("early-paper", scope, symbol, early["entry_bar"])
                 if not journal.record_early(ident, symbol, scope, now, strategy_record(early), ENTRY_COOLDOWN):
                     modes.update(status="GET READY", reasons=["Early paper setup already recorded or in cooldown."])
@@ -147,18 +184,7 @@ def process_scan(journal, ctx, read, *, check_move=True):
         plan["status"] = "WAIT"
         plan["missing"].insert(0, "A prior paper setup is still being tracked.")
     box = plan.get("range_reversal")
-    price_confirmed = box.get("follow_through", False) if box else plan["movement"]["price_confirmed"]
-    option_ready = (plan.get("option_quote") or {}).get("ready")
-    if plan["status"] in ENTRY_STATES and (
-            plan["score"] < MIN_ENTRY_SCORE or not price_confirmed or not option_ready
-            or not plan["flow_confirmation"]["confirmed"] or plan["data_reasons"]):
-        plan["status"] = "GET READY"
-        for condition, reason in ((not price_confirmed, "Waiting for confirmed price structure."),
-                                  (not option_ready, "Waiting for an executable exact-expiry option quote."),
-                                  (plan["score"] < MIN_ENTRY_SCORE, f"Evidence below {MIN_ENTRY_SCORE}/100."),
-                                  (not plan["flow_confirmation"]["confirmed"], "Waiting for two aligned 5m premium closes.")):
-            if condition:
-                plan["missing"].append(reason)
+    check_entry_evidence(plan)
     if plan["status"] in ENTRY_STATES:
         last = journal.records(symbol, "candidate", scope=scope, limit=1)
         prior_candidate = last[0]["payload"]["plan"] if last else {}
@@ -171,9 +197,14 @@ def process_scan(journal, ctx, read, *, check_move=True):
             matching = paper_records(prior_rows, before=now, hold=plan["hold"], setup=plan["setup"])
             validation = performance(matching)
             model = model_summary(read["candles"], plan, now)
-            candidate = {**plan, "origin": now.isoformat()}
             plan = apply_model_gate(plan, model, validation)
-            if model.get("p_tp1") is not None:
+            passed_model = plan["status"] in ENTRY_STATES
+            plan = finalize_contract(ctx, plan, read)
+            candidate = {**plan, "origin": now.isoformat()}
+            # A quote can arrive on the next scan of this same completed bar. Reserve
+            # its candidate ID only once the required series is actually eligible.
+            awaiting_contract = passed_model and plan.get("rank_contracts") and plan["status"] not in ENTRY_STATES
+            if model.get("p_tp1") is not None and not awaiting_contract:
                 candidate_id = event_id("candidate", scope, symbol, candidate["entry_bar"])
                 signal_bar = box["rejection_at"] if box else plan["bar"]
                 alert_id = event_id("entry", scope, symbol, signal_bar, plan["setup"])
@@ -187,6 +218,8 @@ def process_scan(journal, ctx, read, *, check_move=True):
                 elif inserted and is_entry:
                     plan["discord_suppression"] = "10-minute ticker/setup cooldown."
 
+    if "contract_recommendation" not in plan:
+        plan = finalize_contract(ctx, plan, read)
     if plan["price_context_ready"]:
         prior_hedge = journal.records(symbol, "hedge", scope=scope, limit=4)
         preceding = next((row for row in prior_hedge if utc(row["origin"]) <= utc(plan["bar"]) - FIVE_MINUTES

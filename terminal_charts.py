@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from datetime import timedelta
+from functools import lru_cache
 from math import sqrt
 
 import pandas as pd
@@ -13,7 +14,7 @@ from chart_studies import ANCHOR, BANDS, OPENING, PIVOTS, RSI, close_studies, he
 from desk_analytics import flow_read
 from data_utils import utc
 from ema_trend import ema_lines
-from market_session import ET
+from market_session import ET, calendar
 from terminal_data import et_time, interval_length, numeric, time_or_none
 from terminal_style import AMBER, BLUE, INK, MUTED, RED, TEAL, VIOLET, amount, compact, esc, style_chart
 
@@ -25,19 +26,40 @@ def quote_marker(quote, x):
                       hovertemplate="%{y:,.2f}<br>%{text}<extra>%{fullData.name}</extra>", showlegend=False)
 
 
+@lru_cache(maxsize=6)
+def _session_slots(minutes):
+    """Stable bar coordinates across rolling API windows, holidays and early closes."""
+    cal = calendar()
+    durations = (cal.closes - cal.opens).dt.total_seconds().to_numpy()
+    counts = ((durations + minutes * 60 - 1) // (minutes * 60)).astype(int) if minutes else [1] * len(durations)
+    start = 0
+    result = {}
+    for day, opened, count in zip(cal.sessions, cal.opens, counts):
+        result[day.date()] = start, opened.to_pydatetime()
+        start += int(count)
+    # A sliding library calendar must not shift a stored view after a restart.
+    anchor = result[pd.Timestamp("2020-01-02").date()][0]
+    return {day: (start - anchor, opened) for day, (start, opened) in result.items()}
+
+
 def price_figure(bars, ticker, timeframe, *, levels=None, overlays=True, orders=(), order_labels=False, quote=None,
                  show_ema=False, studies=(), oscillator="Off", levels_by_close=None, five_minute_ema=None, chart_type="Candles"):
-    rows = bars[-105:]
+    rows = bars[-780:]
     times = [utc(row["time_utc"]) for row in rows]
     labels = [stamp.strftime("%b %d") if timeframe == "1D" else stamp.astimezone(ET).strftime("%b %d · %H:%M") for stamp in times]
-    positions = list(range(len(rows)))
+    width = None if timeframe == "1D" else interval_length(timeframe)
+    slots = _session_slots(int(width.total_seconds()/60) if width else 0)
+    positions = []
+    for stamp in times:
+        day = stamp.astimezone(ET).date() if width else stamp.date()
+        start, opened = slots[day]
+        positions.append(start + int((stamp - opened) // width) if width else start)
     volume_present = any(row.get("volume") is not None for row in rows)
     pane = oscillator != "Off"
     heights = [1] + ([.23] if volume_present else []) + ([.32] if pane else [])
     fig = make_subplots(rows=len(heights), cols=1, shared_xaxes=True,
                         vertical_spacing=.055, row_heights=heights)
-    width = None if timeframe == "1D" else interval_length(timeframe)
-    price_rows = heikin_ashi(bars[-320:], width)[-len(rows):] if chart_type == "Heikin-Ashi" else rows
+    price_rows = heikin_ashi(bars[-(len(rows) + 210):], width)[-len(rows):] if chart_type == "Heikin-Ashi" else rows
     if chart_type == "Close line":
         fig.add_scatter(x=positions, y=[r["close"] for r in rows], name=ticker, mode="lines",
                         line=dict(color=BLUE), customdata=labels,
@@ -52,7 +74,7 @@ def price_figure(bars, ticker, timeframe, *, levels=None, overlays=True, orders=
         fig.add_trace(trace(x=positions, **fields, text=labels, increasing=up, decreasing=down,
                             name=f"{ticker} · Heikin-Ashi" if chart_type == "Heikin-Ashi" else ticker), row=1, col=1)
     if show_ema:
-        lines = ema_lines(bars[-210:], width)[-len(rows):]
+        lines = ema_lines(bars[-(len(rows) + 105):], width)[-len(rows):]
         for values, name, color in zip(zip(*lines), ("EMA 9", "EMA 21"), (BLUE, AMBER)):
             if any(value is not None for value in values):
                 fig.add_scatter(x=positions, y=values, name=name, line=dict(color=color, width=1.6),
@@ -65,7 +87,7 @@ def price_figure(bars, ticker, timeframe, *, levels=None, overlays=True, orders=
             if any(v is not None for v in vwaps):
                 fig.add_trace(go.Scatter(x=positions, y=vwaps, name=name, line=dict(color=VIOLET, width=1.4, dash=dash),
                                          customdata=labels, hovertemplate="%{customdata}<br>%{y:,.2f}<extra>%{fullData.name}</extra>"), row=1, col=1)
-    extra = close_studies(bars[-320:], width, BANDS in studies, oscillator) if BANDS in studies or pane else {}
+    extra = close_studies(bars[-(len(rows) + 210):], width, BANDS in studies, oscillator) if BANDS in studies or pane else {}
     if PIVOTS in studies:
         extra.update(swing_levels(bars, width))
     if levels_by_close and width:
@@ -105,8 +127,13 @@ def price_figure(bars, ticker, timeframe, *, levels=None, overlays=True, orders=
         for name, price, color in levels:
             if price is not None and low - pad <= price <= high + pad:
                 fig.add_hline(y=price, line_color=color, line_dash="dot", opacity=.7,
-                              annotation_text=name, annotation_font_color=color, annotation_font_size=10,
-                              annotation_position="top left", row=1, col=1)
+                              row=1, col=1)
+                label = str(name)
+                if f"{price:g}" not in label:
+                    label = f"{label} {price:,.2f}"
+                fig.add_annotation(x=.99, xref="x domain", xanchor="right", y=price, yref="y", text=esc(label),
+                                   name="price-level", font=dict(color=color,size=10), showarrow=False,
+                                   bgcolor="rgba(20,31,48,.92)", borderpad=1)
     if orders and timeframe != "1D":
         width = interval_length(timeframe)
         visible = []
@@ -114,22 +141,22 @@ def price_figure(bars, ticker, timeframe, *, levels=None, overlays=True, orders=
             i = bisect_right(times, order["stamp"]) - 1
             if i >= 0 and order["stamp"] < times[i] + width:
                 fraction = (order["stamp"] - times[i]) / width
-                visible.append((i + .8 * fraction - .4, order))
+                visible.append((positions[i] + .8 * fraction - .4, order))
         for trace in order_traces(visible, show_labels=order_labels, max_size=29):
             fig.add_trace(trace, row=1, col=1)
     show_quote = (timeframe != "1D" and quote and quote["at"] >= times[-1] + interval_length(timeframe)
                   and quote["at"].astimezone(ET).date() == times[-1].astimezone(ET).date())
     if show_quote:
-        fig.add_trace(quote_marker(quote, len(rows)), row=1, col=1)
+        fig.add_trace(quote_marker(quote, positions[-1]+1), row=1, col=1)
     last = quote["price"] if show_quote else rows[-1]["close"]
-    fig.add_annotation(x=len(rows) if show_quote else len(rows)-1, y=last, text=amount(last), showarrow=False,
-                       xanchor="left", xshift=10, bgcolor="#e4f4ed", borderpad=4,
-                       font=dict(color=TEAL, size=10), row=1, col=1)
-    ticks = positions[::max(1, len(rows)//6)]
-    fig.update_xaxes(rangeslider_visible=False, tickmode="array", tickvals=ticks,
-                     ticktext=[labels[i] for i in ticks], range=[-.8, len(rows)+4], showgrid=False)
+    fig.add_annotation(x=.004, xref="x domain", y=last, yref="y", text=amount(last), name="latest-price", showarrow=False,
+                       xanchor="left", bgcolor="#163545", borderpad=3, font=dict(color=TEAL, size=10))
+    initial = [positions[max(0,len(rows)-105)]-.8,positions[-1]+5]
+    ticks = list(range(max(0,len(rows)-105),len(rows),max(1,min(105,len(rows))//6)))
+    fig.update_xaxes(rangeslider_visible=False, tickmode="array", tickvals=[positions[i] for i in ticks],
+                     ticktext=[labels[i] for i in ticks], range=initial, showgrid=False)
     fig.update_yaxes(side="right", tickformat=",.2f", row=1, col=1)
-    fig.update_layout(bargap=.15)
+    fig.update_layout(bargap=.15, meta=dict(initial_x=initial, bars=positions, labels=labels))
     return style_chart(fig, 495 if pane else 395, hover="closest", revision=f"{ticker}:{timeframe}")
 
 

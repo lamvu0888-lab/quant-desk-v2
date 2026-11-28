@@ -121,7 +121,11 @@ def test_upgrade_preview_pages_expiry_and_exports(monkeypatch):
     app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "terminal.py"), default_timeout=30).run()
     assert not app.exception
     assert any("Volatility regime" in value.value and "Waiting for bars" not in value.value for value in app.markdown)
-    assert len(app.get("plotly_chart")) >= 4
+    assert app.get("component_instance") and not app.get("plotly_chart")
+    app.session_state["overview_market_detail"] = True
+    app.run()
+    app.segmented_control(key="overview_market_section").set_value("Dealer levels").run()
+    assert any("overview_0dte_gex_chart" in p.proto.id for p in app.get("plotly_chart"))
     app.selectbox(key="desk_expiry_mode").set_value("Listed expiration").run()
     assert len(app.selectbox(key="desk_listed_SPY").options) == 5
     app.selectbox(key="desk_listed_SPY").set_value(DemoStore("SPY").expiries[1]).run()
