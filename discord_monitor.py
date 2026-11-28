@@ -16,6 +16,7 @@ from decision_engine import ENTRY_STATES, RULES_VERSION
 from desk_analytics import FIVE_MINUTES
 from ema_trend import TREND_ALERT_AGE
 from gemini_strategy import ScenarioMonitor
+from gemini_advisor import plans_enabled
 from v3_provenance import display_plan
 from market_session import active_session, session_state
 from movement_detector import ENTRY_COOLDOWN
@@ -23,8 +24,8 @@ from terminal_views import Desk, read_workspace, route_price
 from tradytics_feed import TradyticsClient, FeedStore
 from monitor_storage import SharedStore
 from signal_explain import discord_text
-from decision_flow import build_decision, price_quote_issues
-from monitor_engine import price_alert, process_scan
+from decision_flow import price_quote_issues
+from monitor_engine import dry_run_decision, price_alert, process_scan
 from research_journal import Journal
 from research_snapshot import publish_snapshot
 from settings import Settings
@@ -168,6 +169,10 @@ class MonitorScan:
         if not (market_open or closeout or dry_run):
             return [], []
         day = active_session(now)
+        if market_open and self.schwab and "SPX" in symbols:
+            # Warm this batched, rate-limited read even when no new setup requires a full scan.
+            from schwab_futures import request_feed
+            request_feed(self.schwab)
         sources = {symbol: price_source(symbol, self.preference, self.webull, self.schwab) for symbol in symbols}
         snapshots = self.webull.prices([symbol for symbol, source in sources.items() if source == "Webull"]) if self.webull else {}
         alerts, diagnostics = [], []
@@ -204,7 +209,22 @@ class MonitorScan:
                     continue
                 read = read_workspace(ctx, include_flow=market_open, prices=prices, timeline=timeline)
                 if dry_run:
-                    plan, _ = build_decision(ctx, read)
+                    plan, monitored = dry_run_decision(ctx, read)
+                    ranking = plan.get("contract_recommendation") or {}
+                    selected = ranking.get("selected") or {}
+                    rank_diagnostic = None
+                    if ranking:
+                        rank_diagnostic = {
+                            "status": ranking["status"], "mode": ranking.get("mode"), "reason": ranking["reason"],
+                            "source": selected.get("source"), "contract": selected.get("contract"),
+                            "expiry": selected.get("expiry"), "dte": selected.get("dte"), "side": selected.get("type"),
+                            "strike": selected.get("strike"), "quote_at": selected.get("quote_at"),
+                            "evaluated_at": ranking.get("origin"), "expires_at": ranking.get("expires_at"),
+                            "daily_capacity_verified": ranking.get("daily_capacity_verified"),
+                            "capacity_issue": ranking.get("capacity_issue"),
+                        }
+                    state = plan["status"]
+                    assessment = f"Modeled {state.split()[-1].lower()} candidate" if state in ENTRY_STATES else state
                     chain = ctx.option_chain(ctx.expiry, provider="Webull")[0] if ctx.has_webull_options and ctx.expiry else None
                     diagnostics.append({"symbol": symbol, "price_source": ctx.price_provider, "expiration": ctx.expiry,
                                         "v3_state": (plan.get("movement_v3") or {}).get("state"),
@@ -213,18 +233,28 @@ class MonitorScan:
                                         "fallback": ctx.price_fallback,
                                         "quote_at": plan["quote_at"], "candle_at": minute_close.isoformat() if minute_close else None,
                                         "flow_at": flow_close.isoformat() if isinstance(flow_close, datetime) else None,
-                                        "flow_status": read["flow_state"], "status": plan["status"],
+                                        "flow_status": read["flow_state"], "status": assessment,
+                                        "assessment_scope": "Market snapshot only. Journal gates, alert delivery and paper fills are not evaluated.",
+                                        "contract_ranking": rank_diagnostic,
                                         "ema_trend": read["price_trend"], "setup": plan.get("setup"),
                                         "webull_candle_error": str(ctx.webull_price_feed("history").error or "") or None,
-                                        "webull_contracts": len(chain.rows) if chain is not None else None,
-                                        "webull_option_error": str(chain.error) if chain and chain.error else None,
-                                        "option_check": (plan.get("option_quote") or {}).get("status"),
+                                        "monitored_expiry_diagnostics": {
+                                            "expiration": ctx.expiry, "option_check": monitored.get("status"),
+                                            "option_source": monitored.get("source"),
+                                            "webull_contracts": len(chain.rows) if chain is not None else None,
+                                            "webull_option_error": str(chain.error) if chain and chain.error else None,
+                                        },
                                         "waiting": plan["missing"], "blocks": plan["blocks"]})
                     continue
                 candidates, plan = process_scan(self.journal, ctx, read, check_move=False)
                 alerts.extend(candidates)
+                try:
+                    from rank_research import record_rank_scan
+                    record_rank_scan(self.journal, ctx, plan)
+                except Exception as exc:
+                    print(f"Contract comparison recording unavailable ({type(exc).__name__}).", flush=True)
                 if self.scenarios and market_open and not display_plan(plan):
-                    self.scenarios.submit(plan, read, now)
+                    self.scenarios.submit(plan, read, now, ctx=ctx)
                 delay = min(interval, 5) if plan["status"] == "GET READY" else interval
                 self.scans[symbol] = state, now + timedelta(seconds=delay)
                 blocker = next(iter(plan["data_reasons"] or plan["blocks"] or plan["missing"]), None)
@@ -247,7 +277,11 @@ def alert_deadline(alert, now):
         return (time_or_none(alert.get("bar")) or now) + TREND_ALERT_AGE
     if alert["status"] in ("MOVE WATCH", "V3 WATCH"):
         return (time_or_none(alert.get("bar")) or now) + timedelta(seconds=75)
-    return now + timedelta(seconds=45 if alert["status"] in ENTRY_STATES else 180)
+    deadline = now + timedelta(seconds=45 if alert["status"] in ENTRY_STATES else 180)
+    if alert["status"] in ENTRY_STATES and (rec := alert.get("contract_recommendation")):
+        quote_deadline = time_or_none(rec.get("expires_at"))
+        return min(deadline, quote_deadline) if quote_deadline else now
+    return deadline
 
 
 def _send_pending(journal, shared, webhook, alert_id, alert, deadline):
@@ -292,11 +326,11 @@ def main():
     journal = None if args.dry_run else Journal(path=secret("MONITOR_JOURNAL_PATH"), dsn=secret("MONITOR_JOURNAL_DSN"))
     schwab = make_schwab_store(secret)
     scenarios = None
-    if not args.dry_run and secret("GEMINI_PAPER_PLANS").strip().lower() in {"1", "true", "yes"}:
+    if not args.dry_run and plans_enabled(secret):
         try:
             scenarios = ScenarioMonitor(journal,webull=webull,schwab=schwab)
         except Exception as exc:
-            print(f"Gemini paper plans unavailable ({type(exc).__name__}). Check shared journal permissions.", flush=True)
+            print(f"AI paper plans unavailable ({type(exc).__name__}). Check shared journal permissions.", flush=True)
     scanner = MonitorScan(store, webull, preference, journal, schwab, scenarios)
     print(f"Quant Desk {RULES_VERSION} worker · price source {preference} · Webull {webull.settings.endpoint if webull else 'unconfigured'}", flush=True)
     retry = {}

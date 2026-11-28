@@ -102,6 +102,13 @@ def daily(journal,now,*,webhook=None):
                     journal.insert(f"v3:events:{scope}:{s}",s,"v3_events",scope,now,events)
                     counts={k:sum(e["classification"]==k for e in events["events"]) for k in ("early","late","wrong_direction","missed")}
                     value[s]=dict(recorded=len(rows),unavailable=len(health),independent_events=counts,paper=paper.get(s,{}),pricing=pricing_errors(rows),episodes=event_summary(rows),profile=profile(labels),horizons=[summary(labels,h) for h in HORIZONS])
+                    from rank_research import end_of_day
+                    from gemini_strategy import abc_outcomes
+                    value[s]["contract_selection"] = end_of_day(journal,s,scope,now)
+                    value[s]["abc_outcomes"] = abc_outcomes(journal,s,scope,rows)
+                    if s == "SPX":
+                        hourly = next((item for item in value[s]["horizons"] if item["horizon"]==5), {})
+                        value[s]["futures_cvd"] = hourly.get("futures_cvd", {"status":"No matched futures observations"})
                     root=os.getenv("QD_V3_ARCHIVE_DIR")
                     if root:archive([*coverage[s,"v3_scan"],*coverage[s,"v3_health"]],root,s,d)
                 value["cross_market"]={a+"/"+b:lead_lag(tracks,a,b) for a,b in (("SPY","SPX"),("QQQ","SPY"),("SPX","SPY"))}
@@ -133,7 +140,11 @@ def daily(journal,now,*,webhook=None):
                     value={"status":"No proposal to evaluate"}
                 else:
                     symbols=SYMBOLS if proposal["ticker"]=="ALL" else [proposal["ticker"]]
-                    value={s:replay_proposal(matured(training_records(journal,s,scope)),proposal) for s in symbols}
+                    if proposal["parameter"] == "contract_rank_profile":
+                        from rank_research import replay_rank_proposal
+                        value = {s:replay_rank_proposal(journal,s,scope,proposal) for s in symbols}
+                    else:
+                        value={s:replay_proposal(matured(training_records(journal,s,scope)),proposal) for s in symbols}
             journal.insert("v3:"+stage+":"+scope,"DESK","v3_"+stage,scope,now,value)
             finish_stage(journal,d,stage,lease)
 

@@ -275,7 +275,8 @@ def test_all_workspace_pages_and_v25_probability_run(monkeypatch):
         monkeypatch.delenv(env, raising=False)
     app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "terminal.py"), default_timeout=30).run()
     assert not app.exception
-    assert any("ENTRY COMMAND CENTER" in m.value for m in app.markdown)
+    assert any('class="qd-command"' in m.value and "Volatility regime" in m.value for m in app.markdown)
+    assert app.button(key="overview_open_plan") and app.button(key="overview_open_movement")
     assert app.button(key="discord_test_button").disabled
     from terminal import PRIMARY_PAGES
     for value in PAGES_LABEL:

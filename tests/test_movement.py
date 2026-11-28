@@ -160,6 +160,7 @@ def test_movement_navigation_and_spx_selection(monkeypatch):
     app.button(key="watch_SPX").click().run()
     assert app.session_state["desk_ticker"] == "SPX" and not app.exception
     app.button(key="movement_open_trade").click().run()
-    assert any("Option quote check" in row.value for row in app.markdown)
+    assert not app.exception and app.session_state["desk_page"] == "Trade Plan"
+    assert any(row.value == "Option contract" for row in app.subheader)
     assert all("Strategy Lab" not in option and "History" not in option for option in app.selectbox(key="desk_page").options)
     assert not app.exception

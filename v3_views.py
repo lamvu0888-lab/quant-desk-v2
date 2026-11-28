@@ -9,7 +9,7 @@ from market_session import ET, calendar, rth_bounds
 from option_quotes import option_rows, quote_status
 from terminal_data import positive
 from terminal_style import style_chart
-from v3_options import YEAR, calibrated_iv, contract_spec, scenario, timeline
+from v3_options import YEAR, contract_spec, greeks, scenario, timeline
 from v3_provenance import display_only
 
 
@@ -82,6 +82,22 @@ def learning(ctx):
         metadata = (f'{config["version"]} · {config["mode"]}' if config.get("version") and config.get("mode")
                     else "Unavailable for this archived report")
         st.caption(f"Recorded detector configuration · {metadata}")
+    if view:
+        latest = next((r["payload"].get(ctx.ticker,{}) for r in reports if r["scope"]==view["session"]), {})
+        results = latest.get("contract_selection") or {}
+        if results:
+            with st.expander("Did the selected contract outperform its alternatives?"):
+                paired = results.get("paired_origins",0)
+                advantage = results.get("median_selected_minus_median_alternative_usd")
+                st.write(f"{paired} paired snapshots · {results.get('incomplete',0)} with incomplete quote coverage.")
+                if paired and advantage is not None:
+                    st.metric("Median advantage per contract", f"${advantage:+,.2f}")
+                    st.caption("Compared with the median eligible alternative at the same decision and planned exit time, using recorded quotes, fees and exit slippage.")
+                else:
+                    st.caption("Waiting for timestamp-matched entry and exit quotes for the entire eligible set.")
+                training = results.get("learning",{})
+                if training:
+                    st.caption(f"Ranking validation · {training.get('sessions',0)} sessions · {training.get('independent_origins',0)} nonoverlapping opportunities.")
     with st.expander("Independent price events"):
         for row in ctx.journal.records(ctx.ticker,"v3_events",limit=3):
             st.write(row["scope"])
@@ -187,10 +203,63 @@ def _display_values(values, scale):
     return (values - low) * (100 / (high - low))
 
 
+def _marker_labels(fig, shape_list, grouped_annotations, fraction):
+    lane_ends = []
+    for stamp, labels in sorted(grouped_annotations.items()):
+        shape_list.append(dict(type="line", x0=stamp, x1=stamp, y0=0, y1=1, yref="paper",
+                               line=dict(dash="dot", width=1, color="#92a9c2")))
+        label = " / ".join(labels)
+        position = fraction(stamp)
+        # Reserve label room even in the narrowest supported plot. Anchor edge
+        # labels inward and move overlapping time labels to a separate line.
+        width = (7 + 6 * len(label)) / 200
+        anchor = "left" if position < width / 2 else "right" if position > 1 - width / 2 else "center"
+        left = position - (width if anchor == "right" else width / 2 if anchor == "center" else 0.)
+        lane = next((i for i, right in enumerate(lane_ends) if left >= right), len(lane_ends))
+        if lane == len(lane_ends):
+            lane_ends.append(0.)
+        lane_ends[lane] = left + width
+        fig.add_annotation(x=stamp, xanchor=anchor, y=1, yanchor="bottom", yref="paper",
+                           text=label, showarrow=False, yshift=3 + 15 * lane,
+                           font=dict(size=10, color="#eaf2ff"))
+
+    return len(lane_ends)
+
+
+def _scenario_layout(fig, keys, data, normalize, shape_list, lanes, revision):
+    style_chart(fig, 460, hover="x unified")
+    fig.update_layout(
+        shapes=shape_list, dragmode="zoom", uirevision=revision,
+        margin=dict(t=34 + lanes*15, b=43 + 23*((len(keys)+1)//2), l=5, r=5),
+        legend=dict(xref="container", x=.5, xanchor="center", yref="container", y=0, yanchor="bottom",
+                    entrywidth=50, entrywidthmode="pixels", tracegroupgap=0, font=dict(size=10)),
+        hoverlabel=dict(namelength=-1),
+    )
+    fig.update_yaxes(title_text="Relative scale 0–100" if normalize else None,
+                     title_font_size=10, tickfont_size=10, automargin=True)
+    if not normalize:
+        # Short, color-matched unit labels keep four numeric scales legible on a
+        # phone. The legend, full series name and exact native value stay in hover.
+        fig.update_yaxes(tickprefix="$", nticks=4, tickformat=".4~g",
+                         tickfont=dict(color=PRICE_COLORS["premium"]))
+        for n, key in enumerate(keys[1:], 2):
+            values = np.asarray(data[key], dtype=float)
+            valid = values[np.isfinite(values)]
+            span = np.ptp(valid) if valid.size else 0.
+            digits = int(np.clip(1 - np.floor(np.log10(span)), 2, 5)) if span > 0 else 3
+            fig.update_layout(**{f"yaxis{n}": dict(
+                overlaying="y",side="right" if n % 2 == 0 else "left",anchor="free",
+                autoshift=True, showgrid=False, zeroline=False, nticks=4,
+                showticklabels=n<=4, tickfont=dict(size=9, color=PRICE_COLORS[key]),
+                tickprefix={"delta":"Δ","gamma":"Γ","theta":"Θ"}.get(key,""), ticksuffix="%" if key=="iv" else "",
+                tickformat=f".{digits}~f" if span>=.0001 else ".3~g", automargin=True,
+            )})
+
+
 def combined(spec, times, prices, remaining, stats, entry, qty, cost, normalize, session_only,
              arrival, extra, *, observed=None, preview=False, spread=0.):
     """A single absolute time axis. Observed and scenario traces never join."""
-    keys = ["premium", "delta", "gamma", "iv", *extra]
+    keys = list(dict.fromkeys(["premium", "delta", "gamma", "theta", *extra]))
     data = {**stats, "underlying": prices}
     fig = go.Figure()
     samples = [point for point in (observed or []) if point["at"] <= times[0]]
@@ -232,24 +301,7 @@ def combined(spec, times, prices, remaining, stats, entry, qty, cost, normalize,
         return elapsed
 
     duration = max(1., visible_seconds(times[-1]))
-    lane_ends = []
-    for stamp, labels in sorted(grouped_annotations.items()):
-        shape_list.append(dict(type="line", x0=stamp, x1=stamp, y0=0, y1=1, yref="paper",
-                               line=dict(dash="dot", width=1, color="#92a9c2")))
-        label = " / ".join(labels)
-        position = visible_seconds(stamp) / duration
-        # Reserve label room even in the narrowest supported plot. Anchor edge
-        # labels inward and move overlapping time labels to a separate line.
-        width = (7 + 6 * len(label)) / 200
-        anchor = "left" if position < width / 2 else "right" if position > 1 - width / 2 else "center"
-        left = position - (width if anchor == "right" else width / 2 if anchor == "center" else 0.)
-        lane = next((i for i, right in enumerate(lane_ends) if left >= right), len(lane_ends))
-        if lane == len(lane_ends):
-            lane_ends.append(0.)
-        lane_ends[lane] = left + width
-        fig.add_annotation(x=stamp, xanchor=anchor, y=1, yanchor="bottom", yref="paper",
-                           text=label, showarrow=False, yshift=3 + 15 * lane,
-                           font=dict(size=10, color="#eaf2ff"))
+    lanes = _marker_labels(fig, shape_list, grouped_annotations, lambda stamp: visible_seconds(stamp) / duration)
 
     for index, key in enumerate(keys):
         projected = np.asarray(data[key], dtype=float)
@@ -260,12 +312,12 @@ def combined(spec, times, prices, remaining, stats, entry, qty, cost, normalize,
         label = AXIS_LABELS[key]
         hover = "%{customdata[0]}<br>" + label + " %{customdata[1]:.4g}"
         if key == "premium":
-            hover += "<br>Theoretical P&L $%{customdata[2]:.2f}<br>Underlying $%{customdata[4]:.2f}<br>Remaining %{customdata[3]:.2f} h"
+            hover += "<br>Theoretical P&L $%{customdata[2]:.2f}<br>Underlying $%{customdata[4]:.2f}<br>Remaining %{customdata[3]:.2f} h<br>Scenario IV %{customdata[5]:.2f}%"
         fig.add_scatter(
             x=times, y=_display_values(projected, scale), yaxis=axis,
             name=label, mode="lines", legendgroup=key, connectgaps=False,
             line=dict(dash="dash", color=PRICE_COLORS[key], width=2),
-            customdata=list(zip(timestamps, projected, pnl, remaining * YEAR / 3600, prices)),
+            customdata=list(zip(timestamps, projected, pnl, remaining * YEAR / 3600, prices, stats["iv"])),
             hovertemplate=hover + "<extra>Scenario</extra>",
         )
         if np.any(np.isfinite(actual)):
@@ -278,33 +330,7 @@ def combined(spec, times, prices, remaining, stats, entry, qty, cost, normalize,
                 customdata=[(t.astimezone(ET).strftime("%b %d, %Y %H:%M %Z"), v) for t,v in zip(hist_t,actual)],
                 hovertemplate="%{customdata[0]}<br>" + label + " %{customdata[1]:.4g}<extra>" + qualifier + "</extra>",
             )
-    style_chart(fig, 460, hover="x unified")
-    fig.update_layout(
-        shapes=shape_list, dragmode="zoom",
-        margin=dict(t=34 + len(lane_ends)*15, b=43 + 23*((len(keys)+1)//2), l=5, r=5),
-        legend=dict(xref="container", x=.5, xanchor="center", yref="container", y=0, yanchor="bottom",
-                    entrywidth=50, entrywidthmode="pixels", tracegroupgap=0, font=dict(size=10)),
-        hoverlabel=dict(namelength=-1),
-    )
-    fig.update_yaxes(title_text="Relative scale 0–100" if normalize else None,
-                     title_font_size=10, tickfont_size=10, automargin=True)
-    if not normalize:
-        # Short, color-matched unit labels keep four numeric scales legible on a
-        # phone. The legend, full series name and exact native value stay in hover.
-        fig.update_yaxes(tickprefix="$", nticks=4, tickformat=".4~g",
-                         tickfont=dict(color=PRICE_COLORS["premium"]))
-        for n, key in enumerate(keys[1:], 2):
-            values = np.asarray(data[key], dtype=float)
-            valid = values[np.isfinite(values)]
-            span = np.ptp(valid) if valid.size else 0.
-            digits = int(np.clip(1 - np.floor(np.log10(span)), 2, 5)) if span > 0 else 3
-            fig.update_layout(**{f"yaxis{n}": dict(
-                overlaying="y",side="right" if n % 2 == 0 else "left",anchor="free",
-                autoshift=True, showgrid=False, zeroline=False, nticks=4,
-                showticklabels=n<=4, tickfont=dict(size=9, color=PRICE_COLORS[key]),
-                tickprefix={"delta":"Δ","gamma":"Γ"}.get(key,""), ticksuffix="%" if key=="iv" else "",
-                tickformat=f".{digits}~f" if span>=.0001 else ".3~g", automargin=True,
-            )})
+    _scenario_layout(fig, keys, data, normalize, shape_list, lanes, f"time:{spec.code}:{normalize}:{session_only}")
     _plot_time_axis(fig, start, times[-1])
     fig.update_xaxes(rangebreaks=[dict(values=[a], dvalue=(b-a).total_seconds()*1000)
                                   for a,b in gaps] if session_only else [],
@@ -328,10 +354,9 @@ def comparison_label(ticker, spec, now, peers=()):
 
 
 def compare_contracts(ctx, dates, exp, side, primary_spec, primary_times, primary_stats,
-                      spot, target, arrival, shift, rate, div, fee, custom, *, iv_basis="midpoint",
-                      primary_entry=None, primary_spread=None, qty=1):
+                      spot, target, arrival, shift, rate, div, fee, custom, *, primary_entry=None, primary_spread=None, qty=1,
+                      grid=None, evaluation=None, primary_eval_iv=None):
     from contract_sources import contract_chain
-    from iv_decision import iv_value
 
     if not st.toggle("Compare another strike or expiration", key="v3_compare"):
         return
@@ -363,11 +388,9 @@ def compare_contracts(ctx, dates, exp, side, primary_spec, primary_times, primar
         key=f"v3_other_{primary_spec.code}_{other_day}",
     )
     other, row = entries[selected]
-    fitted = iv_value(row.get("iv")) if iv_basis == "provider" else None
-    iv_source = "provider IV"
-    if fitted is None:
-        fitted = calibrated_iv(other, spot, ctx.now, (row["bid"]+row["ask"])/2, rate, div)
-        iv_source = "midpoint-implied IV"
+    from contract_calibration import calibrate_quote
+    calibration=calibrate_quote(other,row,spot,ctx.chart_quote["at"],ctx.now,rate,div,ctx.option_max_age)
+    fitted,iv_source=calibration.iv,calibration.basis
     if fitted is None or fitted+shift <= 0:
         st.info("The comparison contract has no usable IV for this scenario.")
         return
@@ -406,6 +429,20 @@ def compare_contracts(ctx, dates, exp, side, primary_spec, primary_times, primar
     chart.update_yaxes(title=AXIS_LABELS[field])
     _plot_time_axis(chart, ctx.now, max(primary_spec.expires, other.expires))
     st.plotly_chart(chart, width="stretch", theme=None)
+    if grid is not None and evaluation and primary_eval_iv is not None and evaluation <= min(primary_spec.expires,other.expires):
+        compare=go.Figure()
+        iv_shift=0 if evaluation==ctx.now else shift
+        for contract,sigma in ((primary_spec,primary_eval_iv),(other,fitted+iv_shift)):
+            values=greeks(contract,grid,(contract.expires-evaluation).total_seconds()/YEAR,sigma,rate,div)[field]
+            compare.add_scatter(x=grid,y=values,name=comparison_label(ctx.ticker,contract,ctx.now,peers),
+                                mode="lines",line=dict(dash="dash"))
+        style_chart(compare,300,hover="x unified")
+        compare.update_xaxes(title="Underlying price ($)")
+        compare.update_yaxes(title=AXIS_LABELS[field])
+        st.plotly_chart(compare,width="stretch",theme=None,key="opc_compare_sweep")
+        st.caption(f"Both contracts evaluated at {evaluation.astimezone(ET):%b %d, %Y %H:%M %Z}.")
+    elif evaluation and evaluation>min(primary_spec.expires,other.expires):
+        st.caption("One contract expires before the common valuation time. Only the time comparison is available.")
     if summaries:
         st.write("  \n".join(summaries))
     st.caption(f"{source} · comparison starts from {iv_source} ({fitted:.1%}). Both contracts use the same underlying path and IV-point change.")

@@ -79,11 +79,19 @@ def normalize_history(body, now, *, daily=False):
 
 class SchwabMarketData:
     configured = True  # constructed only with an app key and secret
+    supports_futures_proxy = True
 
     def __init__(self, tokens):
         self.tokens = tokens
+        from schwab_futures import SampledFutures
+        self._futures = SampledFutures()
         self._history = []
         self._full_read = 0
+
+    @staticmethod
+    def refresh_delay(seconds):
+        # FeedStore also serves Tradytics, whose client can apply extra quota throttling.
+        return seconds
 
     def _get(self, endpoint, params):
         token = self.tokens.access_token()
@@ -115,6 +123,11 @@ class SchwabMarketData:
         return body
 
     def get(self, name, *, session=None, symbol=None, expiry=None, right=None):
+        if name == "futures_proxy":
+            raw = self._get("/quotes", {"symbols": "/ES,/MES", "fields": "quote,reference"})
+            received = datetime.now(UTC)
+            observed = self._futures.observe(raw, received)
+            return Snapshot(observed, {"source": "Schwab", "delay_minutes": 0 if observed else None}, received)
         if name in ("option_expirations", "option_chain"):
             from contract_sources import read_schwab_contracts
             return read_schwab_contracts(self,name,symbol,expiry,right)
@@ -161,6 +174,8 @@ class SchwabMarketData:
 
 
 def cadence(name, snapshot):
+    if name == "futures_proxy":
+        return 3 if session_state(snapshot.received_at)["status"] == "OPEN" else 60
     if name in ("daily", "option_expirations") or snapshot.meta.get("session"):
         return 300
     state = session_state(snapshot.received_at)

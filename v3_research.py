@@ -77,7 +77,11 @@ def summary(examples,horizon=5):
         output[label]=dict(warning_origins=positives,correct=len(good),missed_or_wrong=events-len(good),
                            precision=len(good)/positives if positives else None,recall=len(good)/events if events else None,
                            median_seconds_to_touch=float(np.median([r["arrival_seconds"] for r in good])) if good else None)
-    return dict(horizon=horizon,origins=len(cases),outcomes=dict(counts),comparison=output)
+    result = dict(horizon=horizon,origins=len(cases),outcomes=dict(counts),comparison=output)
+    if any(r.get("symbol") == "SPX" for r in cases):
+        from schwab_futures import comparison as futures_comparison
+        result["futures_cvd"] = futures_comparison(cases)
+    return result
 
 
 def matrix(rows, features):

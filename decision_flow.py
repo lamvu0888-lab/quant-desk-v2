@@ -7,6 +7,7 @@ from adaptive_exits import propose as propose_exits
 from data_utils import DataError, field, utc
 from dealer_hedging import UNITS, hedge_scenarios, hedge_snapshot, level_crossings
 from futures_proxy import price_confirmation, recent_pressure
+from schwab_futures import fetch_context as schwab_futures_context
 from v3_provenance import simulated_context, simulated_feed
 from early_flow import confirmation
 from decision_engine import ENTRY_STATES, make_trade_plan
@@ -94,7 +95,7 @@ def read_iv(ctx, vol, regime, spot, expiry, webull_chain=None):
 from v3_movement import enabled as v3_enabled, signal as movement_signal, prior_state, resolve_state
 
 
-def build_decision(ctx, read, *, warm_options=True):
+def build_decision(ctx, read, *, warm_options=True, defer_contract=False):
     quote = ctx.quote()
     spot = positive(quote.get("price"))
     stamp = time_or_none(field(quote, "price_at", "time"))
@@ -132,6 +133,14 @@ def build_decision(ctx, read, *, warm_options=True):
         value = cvd_context(read["candles"], ctx.session, minute_close, f"{ctx.ticker} estimated share CVD")
         if value["delta"] is not None:
             cvd_proxy = {**value, "symbol": ctx.ticker, "quality": "estimated"}
+    future_proxy = schwab_futures_context(ctx, minute_close)
+    if future_proxy:
+        leg = future_proxy["legs"][future_proxy["primary"]]
+        change = leg.get("change_pct")
+        if change is not None:
+            cross_market = {"symbol":leg["contract"], "at":leg["time"], "change_pct":change,
+                            "direction":int(change > 0) - int(change < 0), "source":"Schwab",
+                            "method":"sampled futures return", "shadow":True}
     dealer_scenario = None
 
     def assemble(levels):
@@ -193,6 +202,7 @@ def build_decision(ctx, read, *, warm_options=True):
         if iv["atm_sample"]:
             plan = assemble(levels)
     plan["symbol"] = ctx.ticker
+    plan["rank_contracts"] = bool(ctx.ticker in ("SPY", "SPX", "QQQ") and v3_enabled("SELECTION", True))
     if box:
         plan["price_fallback"] = bool(ctx.price_fallback)
     plan["underlying_cost_bps"] = 1.0
@@ -230,7 +240,7 @@ def build_decision(ctx, read, *, warm_options=True):
                                max_age=ctx.option_max_age, paused=ctx.paused)
     if review is not None:
         plan["option_quote"] = review
-        if plan["status"] in ENTRY_STATES and not review["ready"]:
+        if plan["status"] in ENTRY_STATES and not review["ready"] and not (defer_contract and plan["rank_contracts"]):
             plan["status"] = "GET READY"
             plan["missing"].append(f"Awaiting a current exact-expiry option quote. {review['source']} status · {review['status']}.")
     plan["cvd"] = cvd_context(read["candles"], ctx.session, time_or_none(plan["entry_bar"]),
@@ -281,7 +291,16 @@ def build_decision(ctx, read, *, warm_options=True):
             sig["preview"] = True
     if movement_issue:
         plan["v3_input_issue"] = "Movement research received an invalid observation."
+    if future_proxy:
+        plan["futures_cvd"] = future_proxy
     if sig:
+        if ctx.ticker == "SPX":
+            sig["futures_cvd"] = future_proxy
+            legs = (future_proxy or {}).get("legs", {})
+            sig["features"].update(proxy_es=legs.get("ES", {}).get("imbalance"),
+                                   proxy_mes=legs.get("MES", {}).get("imbalance"),
+                                   proxy_composite=(future_proxy or {}).get("composite"),
+                                   proxy_webull=sig["features"].get("footprint_pressure"))
         plan["movement_v3"] = sig
         try:
             if v3_enabled("RECORD") and ctx.expiry and research_feed.snapshot and not quote_issues:
@@ -289,13 +308,47 @@ def build_decision(ctx, read, *, warm_options=True):
                 rows = fresh_option_rows(research_feed,ctx.ticker,ctx.expiry,ctx.now,max_age=ctx.option_max_age,paused=ctx.paused)
                 fields = ("contract","strike","type","expiry","updated_at","bid","ask","iv","delta","gamma","theta","vega")
                 plan["v3_quote_samples"] = [{k:r.get(k) for k in fields} for r in rows[:100]]
-            if (v3_enabled("SELECTION",True) and sig["side"] and sig["price"] and ctx.expiry and research_feed.snapshot
+            if (not defer_contract and v3_enabled("SELECTION",True) and sig["side"] and sig["price"] and ctx.expiry and research_feed.snapshot
                     and not quote_issues and (v3_enabled("RECORD") or "IGNITION" in sig["state"])):
                 from v3_contract_track import comparison
                 plan["v3_contracts"] = comparison(ctx, research_feed, sig, plan)
         except (ValueError, TypeError, ArithmeticError, KeyError):
             plan["v3_input_issue"] = "Movement or contract research received an invalid observation."
     return plan, iv
+
+
+def finalize_contract(ctx, plan, read, *, mode=None, track=None):
+    """An exact verified contract is required before an underlying setup can authorize a paper entry."""
+    if not plan.get("rank_contracts"):
+        return plan
+    from contract_recommendation import recommend
+
+    from paper_engine import BASELINE, ranking_capacity
+    track = track or BASELINE
+    capacity, issue = (None, "Preview scenario") if ctx.preview else ranking_capacity(
+        getattr(ctx, "journal", None), ctx.now, track)
+    ranking = recommend(ctx, plan, read, mode=mode, remaining_loss=capacity)
+    ranking.update(daily_capacity_verified=capacity is not None, daily_capacity=capacity,
+                   capacity_track=track, capacity_issue=issue)
+    if capacity == 0 and ranking.get("status") in ("qualified", "developing"):
+        ranking.update(status="unavailable", selected=None, reason=issue)
+    elif ranking.get("status") == "qualified" and capacity is None:
+        ranking.update(status="developing", reason=f"{issue}. Position size is provisional.")
+    elif capacity == 0 and issue and ranking.get("reason") == "No verified remaining daily paper loss capacity.":
+        ranking["reason"] = issue
+    plan = {**plan, "contract_recommendation": ranking}
+    selected = ranking.get("selected")
+    if selected:
+        plan["option_quote"] = {
+            "expiry": selected["expiry"], "right": selected["type"], "status": "Fresh quote",
+            **{key: selected.get(key) for key in ("contract", "source", "strike", "bid", "ask", "iv",
+                                                  "delta", "gamma", "quote_at")},
+            "ready": True,
+        }
+    if plan["status"] in ENTRY_STATES and (not selected or ranking["status"] != "qualified"):
+        plan["status"] = "GET READY"
+        plan["missing"] = [ranking["reason"], *plan.get("missing", [])]
+    return plan
 
 
 def model_summary(candles, plan, asof, *, n=1000, include_stress=True, strategies=("Immediate",)):

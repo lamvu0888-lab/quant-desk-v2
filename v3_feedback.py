@@ -1,19 +1,16 @@
 """Bounded post-close research feedback. External processing is explicit opt-in."""
 import json
 import math
+from openai_intelligence import IntelligenceError, policy, reserve, structured
 import os
 from uuid import uuid4
 
-import requests
 
 from v3_movement import enabled, THRESHOLDS, active_mode
+from rank_profiles import PROFILE_GUIDE, TILTS
 
-MODEL="gpt-5-mini"
-INPUT_RATE=.25/1_000_000
-OUTPUT_RATE=2/1_000_000
-MAX_OUTPUT=2500
-BOUNDS={"ignition_threshold":(50,85),"persistence_minutes":(1,5),"cooldown_minutes":(1,15)}
-CURRENT={"ignition_threshold":65,"persistence_minutes":3,"cooldown_minutes":3}
+BOUNDS={"ignition_threshold":(50,85),"persistence_minutes":(1,5),"cooldown_minutes":(1,15),"contract_rank_profile":(0,len(TILTS)-1)}
+CURRENT={"ignition_threshold":65,"persistence_minutes":3,"cooldown_minutes":3,"contract_rank_profile":0}
 FIELDS=("summary","weakness","evidence","ticker","regime","uncertainty","downside","required_test","promotion","rollback","recommendation")
 
 
@@ -25,6 +22,7 @@ def schema():
     props={key:{"type":"string"} for key in FIELDS}
     props["regime"]={"type":"string","enum":["ALL","Expanding","Compressing","Normal","Unknown"]}
     props.update(parameter={"type":"string","enum":list(BOUNDS)},current={"type":"number"},proposed={"type":"number"})
+    props["proposed"]["description"] = f"Integer in the selected parameter bounds. contract_rank_profile IDs: {PROFILE_GUIDE}."
     return {"type":"object","properties":props,"required":list(props),"additionalProperties":False}
 
 
@@ -43,21 +41,6 @@ def validate(data):
     return data
 
 
-def reserve(journal,day,amount):
-    ident="openai:"+str(day)
-    with journal.connection() as db:
-        if journal.dsn: db.execute("SELECT pg_advisory_xact_lock(73851402)")
-        else: db.execute("BEGIN IMMEDIATE")
-        db.execute("CREATE TABLE IF NOT EXISTS qdv3_usage (id TEXT PRIMARY KEY,day TEXT NOT NULL,amount REAL NOT NULL,status TEXT NOT NULL)")
-        sql=journal.sql
-        for prefix,key,default in ((str(day),"DAILY",5.),(str(day)[:7],"MONTHLY",150.)):
-            limit=float(os.getenv("QD_V3_OPENAI_"+key+"_USD",default))
-            spent=db.execute(sql("SELECT COALESCE(SUM(amount),0) FROM qdv3_usage WHERE day LIKE ?"),(prefix+"%",)).fetchone()[0]
-            if not math.isfinite(limit) or limit<=0 or spent+amount>limit:return False
-        return db.execute(sql("INSERT INTO qdv3_usage VALUES(?,?,?,?) ON CONFLICT(id) DO NOTHING"),
-                          (ident,str(day),amount,"reserved")).rowcount==1
-
-
 def budget_status(journal,day):
     with journal.connection() as db:
         table = (db.execute("SELECT to_regclass('qdv3_usage')").fetchone() if journal.dsn else
@@ -67,39 +50,95 @@ def budget_status(journal,day):
         for label,prefix in (("Session",str(day)),("Month",str(day)[:7])):
             rows=db.execute(journal.sql("SELECT status,SUM(amount) FROM qdv3_usage WHERE day LIKE ? GROUP BY status"),(prefix+"%",)).fetchall()
             amounts=dict(rows)
-            output.append({"OpenAI usage":label,"Reserved USD":amounts.get("reserved",0),"Reconciled USD":amounts.get("reconciled",0)})
+            output.append({"OpenAI usage":label,"Reserved USD":amounts.get("reserved",0) + amounts.get("http_error",0),"Reconciled USD":amounts.get("reconciled",0)})
         return output
 
 
-def feedback(journal,day,report,*,transport=requests.post):
+# Maximum bytes per aggregate section in a large session report. Each symbol retains
+# room for all categories even when another symbol has many option-expiry cohorts.
+REPORT_LIMITS = {"recorded":64, "unavailable":64, "independent_events":280, "episodes":500,
+                 "paper":460, "abc_outcomes":480, "futures_cvd":800, "horizons":1200,
+                 "pricing":950, "contract_selection":1400, "profile":460, "heldout":340,
+                 "model_metrics":400}
+
+
+def wire_size(value):
+    return len(json.dumps(value, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode())
+
+
+def sample_count(group):
+    if isinstance(group, dict):
+        for key in ("n", "matched", "observed_contracts", "origins", "calls", "closed", "holdout_n"):
+            if type(group.get(key)) is int:
+                return group[key]
+    return 0
+
+
+def bounded_section(value, limit):
+    if wire_size(value) <= limit:
+        return value
+    if not isinstance(value, (dict, list)):
+        return {"omitted": "Text exceeds section budget."}
+    mapping = isinstance(value, dict)
+    items = list(value.items()) if mapping else list(enumerate(value))
+    # Preserve totals first; choose the largest observed cohorts with a stable tie break.
+    items.sort(key=lambda item:(isinstance(item[1], (list, dict)), -sample_count(item[1]), str(item[0])))
+    summary = {} if mapping else []
+    def described():
+        return {"selection": "Totals then largest available samples", "shown": len(summary),
+                "total": len(items), "values": summary}
+    for key, item in items:
+        # Compact large nested groups individually, preserving room for peers.
+        item_limit = max(96, (limit - 100) // min(3, max(1,len(items))))
+        if wire_size(item) > item_limit and isinstance(item,(list,dict)) and item_limit < limit:
+            item = bounded_section(item, item_limit)
+        if mapping:
+            summary[key] = item
+        else:
+            summary.append(item)
+        if wire_size(described()) > limit:
+            if mapping:
+                del summary[key]
+            else:
+                summary.pop()
+    return described()
+
+
+def research_aggregate(day, report):
+    symbols = {s:{k:v for k,v in block.items() if k in REPORT_LIMITS}
+               for s,block in report.items() if s in ("SPY","SPX","QQQ")}
+    data = {"session":str(day),"symbols":symbols,"current":parameters()}
+    if wire_size(data) > 24000:
+        data["symbols"] = {s:{k:bounded_section(v, REPORT_LIMITS[k]) for k,v in block.items()}
+                           for s,block in symbols.items()}
+        data["coverage"] = "Excess detail summarized under per-category byte budgets. Full aggregates remain in the journal."
+    return data
+
+
+def feedback(journal,day,report,*,transport=None,lookup=None,now=None):
     if not (enabled("OPENAI") and enabled("EXTERNAL_AGGREGATES") and os.getenv("OPENAI_API_KEY")):
         return {"status":"Disabled or external aggregate permission missing"}
     # Only round-trip our own aggregate fields; never serialize rows, trade text, environment or credentials.
-    aggregate={"session":str(day),"symbols":{s:{k:v for k,v in block.items() if k in ("recorded","unavailable","independent_events","model_metrics","heldout","horizons","pricing","episodes","paper","profile")}
-               for s,block in report.items() if s in ("SPY","SPX","QQQ")},"current":parameters()}
-    if not any(x.get("recorded") for x in aggregate["symbols"].values()):return {"status":"No observations"}
-    content=json.dumps(aggregate,allow_nan=False)
-    if len(content)>24000: return {"status":"Report too large"}
-    prompt="Review only these aggregate counts. Recommend one bounded research experiment. Never change risk, execution or production. Return the required fields. "+content
-    cost=(len(prompt.encode())+len(json.dumps(schema()).encode())+1024)*INPUT_RATE+MAX_OUTPUT*OUTPUT_RATE
-    if not reserve(journal,day,cost):return {"status":"Already reserved or budget unavailable"}
     try:
-        response=transport("https://api.openai.com/v1/responses",headers={"Authorization":"Bearer "+os.environ["OPENAI_API_KEY"]},
-                           json={"model":MODEL,"store":False,"input":prompt,"max_output_tokens":MAX_OUTPUT,"reasoning":{"effort":"minimal"},
-                                 "text":{"format":{"type":"json_schema","name":"research_review","strict":True,"schema":schema()}}},
-                           timeout=45)
-        response.raise_for_status()
-        obj=response.json()
-        usage=obj["usage"]
-        actual=int(usage["input_tokens"])*INPUT_RATE+int(usage["output_tokens"])*OUTPUT_RATE
-        if actual<0: raise ValueError("Bad usage")
-        with journal.connection() as db:
-            db.execute(journal.sql("UPDATE qdv3_usage SET amount=?,status='reconciled' WHERE id=?"),(actual,"openai:"+str(day)))
-        if obj.get("status")!="completed":return {"status":"Incomplete response","cost_usd":actual}
-        text="".join(p["text"] for item in obj["output"] for p in item.get("content",[]) if p.get("type")=="output_text")
-        return {"status":"Pending offline evaluation","proposal":validate(json.loads(text)),"cost_usd":actual}
-    except (ValueError,KeyError,TypeError,requests.RequestException):
-        return {"status":"Rejected or unconfirmed response; consult usage ledger"}
+        aggregate = research_aggregate(day, report)
+    except (TypeError,ValueError,OverflowError):
+        return {"status":"Aggregate contains invalid observations"}
+    if not any(x.get("recorded") for x in aggregate["symbols"].values()):return {"status":"No observations"}
+    prompt = ("Review these aggregate counts and distinguish observed outcomes from forecasts. "
+              f"For contract_rank_profile, the only valid experiments are {PROFILE_GUIDE}. "
+              "Propose a profile only with matched-outcome evidence. Frozen quotes, Greeks and IV fits are required for their respective profiles. "
+              "A missing measurement is unscorable. A fully measured filter declining every candidate represents a zero-dollar no-trade. "
+              "Propose one bounded offline experiment. Do not change risk limits or production.")
+    try:
+        model, effort = policy(os.getenv, "research")
+        answer, actual = structured(journal, os.environ["OPENAI_API_KEY"], model, effort,
+                                    "research_review", prompt, aggregate, schema(), "openai:"+str(day),
+                                    post=transport, lookup=lookup, now=now)
+        return {"status":"Pending offline evaluation", "proposal":validate(answer), "cost_usd":actual, "model":model}
+    except IntelligenceError as exc:
+        return {"status":str(exc)}
+    except (ValueError, KeyError, TypeError):
+        return {"status":"Rejected invalid research proposal"}
 
 
 def claim_stage(journal,day,stage,now):

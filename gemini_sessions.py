@@ -89,3 +89,15 @@ def revision_reason(daily, bars, market, now, previous_market):
         if any(side*(v-leg["trigger"])>0 for v in earlier) and all(
                 side*(v-leg["invalidation"])<0 for _,v in recent[-2:]):
             return f"{name} crossed its trigger and then closed beyond invalidation twice."
+
+
+def review_window(now, opened, closed):
+    """Use local session proportions so scheduled checkpoints also fit half days."""
+    width = closed - opened
+    if now >= closed or now < opened:
+        return None
+    if now >= opened + width * .75:
+        return "Afternoon"
+    if now >= opened + width * .5:
+        return "Midday"
+    return None

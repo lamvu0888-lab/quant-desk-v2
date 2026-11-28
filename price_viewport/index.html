@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="viewport.css"><title>Price and large orders chart</title></head>
+<body>
+<main id="viewer">
+<nav aria-label="Price chart controls">
+<button data-action="in" aria-label="Zoom in">Zoom in</button>
+<button data-action="out" aria-label="Zoom out">Zoom out</button>
+<button data-action="reset" aria-label="Reset zoom">Reset zoom</button>
+<button data-action="follow" aria-pressed="true">Follow latest</button>
+<button data-action="legend" aria-pressed="false">Legend</button>
+<button data-action="full" aria-pressed="false">Fullscreen</button>
+</nav><p id="notice" role="status" hidden></p><div id="chart" aria-label="Price chart"></div></main>
+<script src="plotly.min.js"></script><script src="viewport.js"></script>
+</body></html>

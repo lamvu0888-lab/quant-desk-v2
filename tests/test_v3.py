@@ -227,16 +227,17 @@ def test_summary_delivery_and_feedback_without_network(monkeypatch,tmp_path):
     monkeypatch.setenv("OPENAI_API_KEY","offline-fixture")
     proposal=dict.fromkeys(FIELDS,"test")
     proposal.update(ticker="SPY",regime="ALL",parameter="ignition_threshold",current=65,proposed=60)
-    body={"usage":{"input_tokens":100,"output_tokens":50},"status":"completed",
+    body={"usage":{"input_tokens":100,"output_tokens":50,"input_tokens_details":{"cached_tokens":0,"cache_write_tokens":0}},"status":"completed",
           "output":[{"content":[{"type":"output_text","text":json.dumps(proposal)}]}]}
     def transport(url,**request):
         assert not request["json"]["store"]
         assert "raw-secret-test" not in request["json"]["input"]
-        return SimpleNamespace(raise_for_status=lambda:None,json=lambda:body)
+        return SimpleNamespace(status_code=200,json=lambda:body)
     report["SPY"]["raw"]="raw-secret-test"
-    result=feedback(journal,DAY,report,transport=transport)
-    assert result["proposal"]==proposal and result["cost_usd"]==pytest.approx(.000125)
-    assert "budget" in feedback(journal,DAY,report,transport=transport)["status"]
+    lookup=lambda *a,**kw: SimpleNamespace(status_code=200,json=lambda:{"id":"gpt-6.2-astra","object":"model"})
+    result=feedback(journal,DAY,report,transport=transport,lookup=lookup,now=CLOSE)
+    assert result["proposal"]==proposal and result["cost_usd"]==pytest.approx(.0028)
+    assert feedback(journal,DAY,report,transport=lambda *a,**kw: pytest.fail("duplicate inference"),lookup=lookup,now=CLOSE) == result
     monkeypatch.setenv("QD_V3_OPENAI_MONTHLY_USD",".0001")
     assert not reserve(journal,date(2026,11,30),.01)
 

@@ -27,7 +27,7 @@ from option_quotes import age_text, quote_age
 from webull_feed import INDEX_SYMBOLS, WebullFeedStore, price_source
 
 UTC = timezone.utc
-VERSION = "3.0.0-rc2"
+VERSION = "3.0.0-rc3"
 WEBULL_CHART_PAGES = {"Overview", "Movement Detector"}
 PAGES_LABEL = {
     "Contracts": ("Options Contract Intelligence", "Compare contracts, target timing and premium scenarios.", "◇"),
@@ -392,7 +392,7 @@ def main():
     if config_error and not preview:
         st.warning(config_error)
     if not preview and not key and price_provider == "Tradytics":
-        st.info("Set TRADYTICS_API_KEY in the local .env file. Use Preview to explore every chart while you set up the feeds.")
+        st.info("Connect a market-data provider in your host settings, or select Preview for synthetic data.")
     webull = None
     if not preview and webull_configured:
         try:

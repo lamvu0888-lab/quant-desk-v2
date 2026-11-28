@@ -12,12 +12,12 @@ import time
 from dotenv import dotenv_values
 
 from adaptive_exits import performance_by_profile
-from gemini_advisor import AdvisorQueue, BASELINE, GeminiClient, MODEL
+from gemini_advisor import AdvisorQueue, BASELINE, configured_advisor
 from gemini_views import paper_comparison
 from early_flow import EARLY, STANDARD
 from entry_comparison import paired_entries, summarize
 from market_session import ET, active_session, rth_bounds, session_state
-from paper_engine import PaperLedger, PaperWorker, clock, option_pnl, realized, stamp, unrealized
+from paper_engine import HEARTBEAT_MAX_AGE, PaperLedger, PaperWorker, clock, option_pnl, realized, stamp, unrealized
 from paper_review import day_report
 from research_journal import Journal
 from settings import Settings
@@ -41,23 +41,22 @@ def run_worker(once=False):
     if not all((key, app_key, secret)) or settings.endpoint != "api.webull.com":
         raise SystemExit("Set Tradytics and production Webull market-data keys. No brokerage orders are used.")
     journal = Journal(path=config("MONITOR_JOURNAL_PATH"), dsn=config("MONITOR_JOURNAL_DSN"))
-    gemini_key = config("GEMINI_API_KEY")
-    advisor = AdvisorQueue(journal) if gemini_key else None
-    client = None
-    if advisor:
-        try:
+    advisor = client = None
+    try:
+        client = configured_advisor(journal, config)
+        if client:
+            advisor = AdvisorQueue(journal)
             advisor.start()
-            client = GeminiClient(gemini_key, config("GEMINI_MODEL", MODEL))
-        except Exception as exc:
-            print(f"Gemini setup unavailable ({type(exc).__name__}). Check the model and journal permissions.", flush=True)
-            advisor = None
+    except Exception as exc:
+        print(f"AI advisor setup unavailable ({type(exc).__name__}). Check the model and journal permissions.", flush=True)
+        advisor = client = None
     ledger = PaperLedger(journal, advisor)
     webull = WebullFeedStore(settings, app_key, secret, config("WEBULL_REGION", "us"))
     tradytics = FeedStore(TradyticsClient(key, config("TRADYTICS_AUTH_MODE", "query")))
     schwab = make_schwab_store(config)
     worker = PaperWorker(ledger, webull, tradytics, schwab=schwab)
     last_review = None
-    reviews = ThreadPoolExecutor(max_workers=1, thread_name_prefix="gemini-paper") if advisor else None
+    reviews = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ai-paper") if advisor else None
     pending = None
 
     def process_advice():
@@ -93,7 +92,7 @@ def run_worker(once=False):
                         try:
                             pending.result()
                         except Exception as exc:
-                            print(f"Gemini queue unavailable ({type(exc).__name__}).", flush=True)
+                            print(f"AI queue unavailable ({type(exc).__name__}).", flush=True)
                     pending = reviews.submit(process_advice)
                 if once:
                     return
@@ -217,7 +216,7 @@ def dashboard():
             except Exception:
                 st.warning("Waiting for the paper worker and shared journal. Check the setup guide.")
                 return
-            if not heartbeat or (now - heartbeat).total_seconds() > 60:
+            if not heartbeat or (now - heartbeat).total_seconds() > HEARTBEAT_MAX_AGE:
                 st.warning("The paper worker has not reported in the last minute.")
         if halted:
             st.warning("Daily paper loss stop reached. New entries are paused.")
@@ -251,16 +250,22 @@ def dashboard():
                                    "Realized $": realized(t), "Unrealized $": unrealized(t, now),
                                    "Details": t["reason"]} for t in rows])
             if compare:
-                frame.insert(0, "Paper strategy", [t.get("track", BASELINE) for t in rows])
+                frame.insert(0, "Paper strategy", ["ABC paper" if t.get("track") == "Gemini paper" else t.get("track", BASELINE) for t in rows])
             if frame.empty:
                 st.caption("No records yet.")
             else:
                 st.dataframe(frame, hide_index=True, width="stretch")
             return frame
 
-        positions, history, learning, gemini = st.tabs(["Open positions", "Trade history", "Daily learning", "Gemini paper comparison"])
+        positions, history, learning, gemini = st.tabs(["Open positions", "Trade history", "Daily learning", "ABC paper comparison"])
         with positions:
             table(opened)
+            managed = [t for t in opened if t["plan"].get("contract_recommendation")]
+            if managed:
+                with st.expander("Open contract repricing"):
+                    from contract_plan_view import position_panel
+                    for trade in managed:
+                        position_panel(trade, now)
         with history:
             ticker = st.selectbox("Ticker", ["All"] + sorted({t["symbol"] for t in trades}))
             results = [t for t in reversed(trades) if ticker in ("All", t["symbol"])]
@@ -278,7 +283,7 @@ def dashboard():
                 st.download_button("Download exit fills", frame.to_csv(index=False), "paper-exits.csv")
         with gemini:
             if is_demo:
-                st.caption("Live Gemini plans and reviews appear in journal mode.")
+                st.caption("Live ABC plans and reviews appear in journal mode.")
             else:
                 paper_comparison([t for t in all_trades if t.get("track") != EARLY], table, read_reviews, realized, active_session(now), shadow_halted)
         if not is_demo and st.toggle("Compare Early 3m and Standard 5m", key="show_entry_modes"):

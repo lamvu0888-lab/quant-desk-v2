@@ -21,6 +21,7 @@ from desk_analytics import (FIVE_MINUTES, MINUTE, candles_on, flow_read, mark_or
                             realized_regime, replay_setups, session_window, setup_read, share_cvd, signed_moves)
 from dealer_heatmap import heatmap_view, level_name, nearby_levels, read_column, spot_reference
 from ema_trend import ema_trend
+from price_viewport import render_price_chart
 from market_session import ET, active_session, rth_bounds, session_state
 from movement_detector import early_price_move
 from movement_ui import nav_button
@@ -490,12 +491,11 @@ def nearest_chart_levels(levels, rows, show_all):
 def price_panel(ctx, read):
     with st.container(border=True):
         panel_header("Price & large orders", "price", "overview_price", "Completed candles · New York time")
-        left, right = st.columns([3, 1], vertical_alignment="center")
-        timeframe = left.segmented_control("Candle timeframe", ["1m", "3m", "5m", "15m", "1h", "1D"], default="5m",
+        timeframe = st.segmented_control("Candle timeframe", ["1m", "3m", "5m", "15m", "1h", "1D"], default="5m",
                                            key="overview_timeframe", label_visibility="collapsed") or "5m"
         daily = timeframe == "1D"
-        overlays = right.toggle("Levels & VWAP", value=True, key="overview_overlays", disabled=daily)
         with st.expander("Price chart filters"):
+            overlays = st.toggle("Levels & VWAP", value=True, key="overview_overlays", disabled=daily)
             a, b, c = st.columns(3)
             show_orders = a.toggle("Large order markers", value=True, key="price_show_orders", disabled=daily)
             premium = b.number_input("Minimum premium ($)", min_value=25_000, max_value=100_000_000,
@@ -541,12 +541,6 @@ def price_panel(ctx, read):
                     label = f"{chart_levels.pop(same)[0]} · {label}"
                 chart_levels.append((label, strike, TEAL if net > 0 else VIOLET))
         levels_by_close = intraday_levels(candles, ctx.session, ctx.now) if OPENING in studies or ANCHOR in studies else {}
-        if not daily:
-            if ctx.paused or feed.error or feed_has_delay(feed):
-                st.caption("Timeframe trends unavailable · price feed paused, delayed or reporting an error.")
-            else:
-                trends = trend_strip(candles, ctx.session, ctx.now)
-                st.markdown("**EMA trend**  " + "  ·  ".join(f"{m}m **{v}**" for m, v in trends))
         fig = (price_figure(rows, ctx.ticker, timeframe, levels=chart_levels, studies=studies,
                             oscillator=oscillator, levels_by_close=levels_by_close, chart_type=chart_type,
                             five_minute_ema=completed_five_minute_ema(candles, ctx.session, ctx.now) if MTF in studies else None,
@@ -554,34 +548,43 @@ def price_panel(ctx, read):
                             quote=ctx.chart_quote if not daily else None, show_ema=show_ema) if rows else None)
         if not daily:
             chart_quote_caption(ctx)
-        render_chart(fig, "price_action_chart", feed, "Waiting for completed candles in this timeframe.")
-        if chart_type == "Heikin-Ashi":
-            st.caption("Heikin-Ashi candles show smoothed prices. Studies and trade checks use the underlying’s observed prices.")
-        if ANCHOR in studies:
-            if ctx.ticker in INDICES or not levels_by_close or next(reversed(levels_by_close.values()))[2] is None:
-                st.caption("Anchored VWAP unavailable at the latest minute · requires continuous regular-session share volume.")
-            else:
-                st.caption("Anchored VWAP estimate · volume-weighted typical minute prices since the highest-volume minute observed so far.")
-        if OPENING in studies and not any(v[0] is not None for v in levels_by_close.values()):
-            st.caption("Opening range needs all 15 completed one-minute bars from the regular-session open.")
-        if show_gamma and not daily and not ctx.expiry_waiting:
-            st.caption(f"Gamma markers · {ctx.scope} · latest usable exposure snapshot. Brake may slow a move; "
-                       "amplifier may extend it in either direction. See Dealer Positioning → Heat map for all levels.")
-        if ctx.price_provider == "Schwab" and daily:
-            last = time_or_none(rows[-1]["time_utc"]).date() if rows else "—"
-            st.caption(f"Schwab $SPX · latest completed daily candle {last}")
-        elif using_webull or ctx.price_provider == "Schwab":
-            close = read["minute_close"]
-            st.caption(f"{ctx.price_provider} · latest completed minute {et_time(close)} · {age_text(quote_age(close, ctx.now))} old.")
+        if fig is None:
+            empty(feed, "Waiting for completed candles in this timeframe.")
         else:
-            feed_stamp("bars", feed, ctx)
-        if show_orders and not daily:
-            st.caption(f"Orders · session {ctx.session} · {ctx.scope} · {compact(premium, currency=True)}+ · {len(marks)} matched prints")
-            if not marks:
-                st.info("No large option prints match this chart and filter. Check the session, select All DTE, or lower Minimum premium in Price chart filters. The options feed may also be empty before the open.")
-            feed_stamp("flow", prints_feed, ctx)
-        if rows:
-            with st.expander("Download candles"):
+            render_price_chart(fig, ctx.ticker, timeframe, preview=ctx.preview, provider=ctx.price_provider)
+        with st.expander("Chart sources, studies and candle download"):
+            if not daily:
+                if ctx.paused or feed.error or feed_has_delay(feed):
+                    st.caption("Timeframe trends unavailable · price feed paused, delayed or reporting an error.")
+                else:
+                    trends = trend_strip(candles, ctx.session, ctx.now)
+                    st.markdown("**EMA trend**  " + "  ·  ".join(f"{m}m **{v}**" for m, v in trends))
+            if chart_type == "Heikin-Ashi":
+                st.caption("Heikin-Ashi candles show smoothed prices. Studies and trade checks use the underlying’s observed prices.")
+            if ANCHOR in studies:
+                if ctx.ticker in INDICES or not levels_by_close or next(reversed(levels_by_close.values()))[2] is None:
+                    st.caption("Anchored VWAP unavailable at the latest minute · requires continuous regular-session share volume.")
+                else:
+                    st.caption("Anchored VWAP estimate · volume-weighted typical minute prices since the highest-volume minute observed so far.")
+            if OPENING in studies and not any(v[0] is not None for v in levels_by_close.values()):
+                st.caption("Opening range needs all 15 completed one-minute bars from the regular-session open.")
+            if show_gamma and not daily and not ctx.expiry_waiting:
+                st.caption(f"Gamma markers · {ctx.scope} · latest usable exposure snapshot. Brake may slow a move; "
+                           "amplifier may extend it in either direction. See Dealer Positioning → Heat map for all levels.")
+            if ctx.price_provider == "Schwab" and daily:
+                last = time_or_none(rows[-1]["time_utc"]).date() if rows else "—"
+                st.caption(f"Schwab $SPX · latest completed daily candle {last}")
+            elif using_webull or ctx.price_provider == "Schwab":
+                close = read["minute_close"]
+                st.caption(f"{ctx.price_provider} · latest completed minute {et_time(close)} · {age_text(quote_age(close, ctx.now))} old.")
+            else:
+                feed_stamp("bars", feed, ctx)
+            if show_orders and not daily:
+                st.caption(f"Orders · session {ctx.session} · {ctx.scope} · {compact(premium, currency=True)}+ · {len(marks)} matched prints")
+                if not marks:
+                    st.info("No large option prints match this chart and filter. Check the session, select All DTE, or lower Minimum premium in Price chart filters. The options feed may also be empty before the open.")
+                feed_stamp("flow", prints_feed, ctx)
+            if rows:
                 csv_export(rows, ctx.title(f"{timeframe}_candles.csv"), "export_price_candles")
         return prints, prints_feed
 
@@ -642,10 +645,26 @@ def cvd_panel(ctx, candles, feed):
         panel_header("Cumulative volume delta", "cvd", "overview_cvd", "Estimated share volume · resets each regular session")
         source, name = ctx.price_provider, ctx.ticker
         if ctx.ticker in INDICES:
-            choices = ["Off", "SPY", "ES", "MES"] if ctx.ticker == "SPX" else ["Off", "SPY"]
+            choices = (["Schwab ES/MES", "Off", "SPY", "ES", "MES"] if ctx.ticker == "SPX" and ctx.schwab_store and not ctx.preview
+                       else ["Off", "SPY", "ES", "MES"] if ctx.ticker == "SPX" else ["Off", "SPY"])
             proxy = st.selectbox("Volume comparison", choices, key=f"cvd_proxy_{ctx.ticker}")
             if proxy == "Off":
                 st.caption(f"{ctx.ticker} has no traded share volume. Choose a separate comparison above.")
+                return
+            if proxy == "Schwab ES/MES":
+                from schwab_futures import fetch_context, proxy_caption
+                target = ctx.now.replace(second=0, microsecond=0)
+                sampled = fetch_context(ctx, target)
+                if not sampled:
+                    st.caption("Waiting for a complete regular-session minute with fresh, real-time ES or MES trades and usable coverage.")
+                    return
+                st.write(proxy_caption(sampled))
+                for name, leg in sampled["legs"].items():
+                    st.caption(f"{leg['contract']} · last minute {leg['velocity']:+,.0f} signed contracts · "
+                               f"{leg['samples']} classified samples · {leg['coverage']:.0%} coverage · {et_time(leg['time'])}")
+                if sampled["composite"] is not None:
+                    st.caption(f"Normalized ES/MES CVD {sampled['composite_cvd']:+.2f} over {sampled['paired_minutes']} paired minutes. "
+                               f"Latest pressure {sampled['composite']:+.2f} on a −1 to +1 scale.")
                 return
             if proxy in ("ES", "MES"):
                 if not ctx.webull_store:
@@ -686,30 +705,54 @@ def overview(ctx):
     gamma, vol = read["gamma"], read["vol"]
     spot, change = positive(quote.get("price")), numeric(quote.get("change_pct"))
     net = net_sum(flow.rows, "net_premium_usd")
-    left, right = st.columns([2.55, 1], gap="medium")
-    with left:
-        prints, prints_feed = price_panel(ctx, read)
-    with right:
-        with st.container(border=True):
-            panel_header("Dealer levels", "levels", "overview_levels", ctx.scope)
+    status = decision["status"]
+    watch = decision.get("movement_v3") or {}
+    reasons = decision["blocks"] or decision.get("data_reasons") or decision["missing"] or decision["evidence"]
+    reason = reasons[0] if reasons else (watch.get("reason") or "Waiting for a qualified setup.")
+    movement = str(watch.get("state") or "Unavailable").replace("_", " ").title()
+    setup = decision.get("setup") or "No active setup"
+    stance = "long" if status == "ENTER LONG" else "short" if status == "ENTER SHORT" else ""
+    st.markdown(
+        f'<section class="qd-command"><div class="qd-command-head"><div>'
+        f'<h2>{esc(setup)}</h2><p>{esc(reason)}</p></div>'
+        f'<strong class="qd-status {stance}">{esc(status)}</strong></div>'
+        f'<div class="qd-timeframes"><span>Movement <b>{esc(movement)}</b></span>'
+        f'<span>Volatility regime <b>{esc(regime["label"])}</b></span></div></section>',
+        unsafe_allow_html=True)
+    with st.container(horizontal=True, gap="small"):
+        nav_button("Open Trade Plan", "Trade Plan", "overview_open_plan")
+        nav_button("Open Movement Intelligence", "Movement Detector", "overview_open_movement")
+    prints, prints_feed = price_panel(ctx, read)
+    show_session_changes(ctx, read, prints, prints_feed)
+    with st.expander("Entry evidence and risk details", key="overview_entry_detail", on_change="rerun") as detail:
+        if detail.open:
+            command_panel(ctx, decision, iv, read["candles"], key="overview")
+    with st.expander("Market internals", key="overview_market_detail", on_change="rerun") as detail:
+        if not detail.open:
+            return
+        section = st.segmented_control("Market internals view", ["Session", "Dealer levels", "Flow", "Volume delta"],
+                                       default="Session", key="overview_market_section") or "Session"
+        if section == "Session":
+            kpis([metric("Underlying", amount(spot), f"{signed_pct(change)} · {ctx.price_provider}", change),
+                  metric("5m EMA 9/21", {1: "Up", -1: "Down", 0: "Neutral"}[decision["direction"]], "Completed price trend"),
+                  metric("Net GEX", compact(gamma.get("total"), currency=True, signed=True), "$ per 1% move", gamma.get("total")),
+                  metric("Options net flow", compact(net, currency=True, signed=True), "Completed intervals", net),
+                  metric("IV rank", ratio_pct(vol.obj.get("iv_rank")), f"30D ATM IV {ratio_pct(vol.obj.get('atm_iv_30d'))}")])
+        elif section == "Dealer levels":
             level_list(gamma, spot)
             feed_stamp("exposure", read["gamma_feed"], ctx)
-        with st.container(border=True):
+            overview_gamma(ctx, read, spot)
+        elif section == "Flow":
             panel_header("Session net flow", "net_flow", "overview_flow", "Cumulative directional premium")
-            render_chart(flow_figure(flow.rows, compact=True), "overview_flow_spark", flow,
-                         "No completed options-flow interval has arrived for the selected session and DTE yet.")
+            render_chart(flow_figure(flow.rows, compact=True), "overview_flow_spark", flow)
+            panel_header("Cumulative flow & momentum", "net_flow", "overview_momentum", ctx.scope)
+            render_chart(flow_desk_figure(flow.rows, "5m"), "overview_flow_chart", flow)
             feed_stamp("timeline", flow, ctx)
-    command_panel(ctx, decision, iv, read["candles"], key="overview")
-    nav_button("Open Movement Intelligence", "Movement Detector", "overview_open_movement")
-    panel_header("Market pulse", "overview", "overview_kpis", ctx.scope)
-    kpis([
-        metric("Underlying", amount(spot), f"{signed_pct(change)} · {ctx.price_provider}", change),
-        metric("Volatility regime", regime["label"], "Completed 5m candles"),
-        metric("5m EMA 9/21", {1: "Up", -1: "Down", 0: "Neutral"}[decision["direction"]], "Completed price trend"),
-        metric("Net GEX", compact(gamma.get("total"), currency=True, signed=True), "$ per 1% move", gamma.get("total")),
-        metric("Options net flow", compact(net, currency=True, signed=True), "Completed intervals", net),
-        metric("IV rank", ratio_pct(vol.obj.get("iv_rank")), f"30D ATM IV {ratio_pct(vol.obj.get('atm_iv_30d'))}"),
-    ])
+        else:
+            cvd_panel(ctx, read["candles"], read["bars"])
+
+
+def overview_gamma(ctx, read, spot):
     # Independently request 0DTE; fall forward only when the current expiry
     # has no usable, fresh gamma data. Do not alter the workspace DTE setting.
     with st.container(border=True):
@@ -747,12 +790,6 @@ def overview(ctx):
             feed_stamp("exposure", zero_feed, ctx)
         else:
             st.info("No fresh gamma exposure found for 0DTE or the next seven calendar days.")
-    show_session_changes(ctx, read, prints, prints_feed)
-    with st.container(border=True):
-        panel_header("Cumulative flow & momentum", "net_flow", "overview_momentum", ctx.scope)
-        render_chart(flow_desk_figure(flow.rows, "5m"), "overview_flow_chart", flow)
-        feed_stamp("timeline", flow, ctx)
-    cvd_panel(ctx, read["candles"], read["bars"])
 
 
 def tape_table(rows, threshold=None):
@@ -1384,23 +1421,29 @@ def movement_page(ctx):
 
 
 def trade_plan(ctx):
+    from contract_plan_view import contract_panel, pinned_positions, position_panel, rank_mode
     read = read_workspace(ctx)
-    decision, iv = dashboard_decision(ctx, read)
-    if v3_enabled("PLAN",True) and decision.get("movement_v3"):
+    positions = pinned_positions(ctx)
+    mode = rank_mode() if not positions and v3_enabled("SELECTION", True) and ctx.ticker in ("SPY", "SPX", "QQQ") else None
+    decision, iv = dashboard_decision(ctx, read, mode=mode, contracts=not positions)
+    if positions:
+        st.subheader("Manage open paper position")
+        for position in positions:
+            position_panel(position, ctx.now)
+        with st.expander("Current underlying setup"):
+            shown = command_panel(ctx, decision, iv, read["candles"], key="trade")
+    else:
+        shown = command_panel(ctx, decision, iv, read["candles"], key="trade", track=True,
+                              bar_ok=read["bars_usable"])
+        if shown.get("contract_recommendation") and not shown.get("outcome"):
+            contract_panel(ctx, shown)
+        elif not decision.get("rank_contracts"):
+            option_entry_panel(ctx, decision)
+    if v3_enabled("PLAN", True) and decision.get("movement_v3"):
         sig = decision["movement_v3"]
-        st.info(f"Movement timing · {sig['state']} · {sig['action']}")
-        comparison = decision.get("v3_contracts")
-        if comparison:
-            choice = comparison["choice"] or "No suitable contract"
-            st.caption(f"Shadow contract comparison · {choice} · target {comparison['target']:,.2f}.")
-            with st.expander("Compare contract scenarios"):
-                st.caption(comparison["reason"])
-                st.dataframe(comparison["alternatives"], hide_index=True)
+        st.caption(f"Movement timing · {sig['state']} · {sig['action']}")
     if decision.get("v3_input_issue"):
         st.caption(decision["v3_input_issue"])
-    shown = command_panel(ctx, decision, iv, read["candles"], key="trade", track=True,
-                          bar_ok=read["bars_usable"])
-    option_entry_panel(ctx, decision)
     nav_button("Open Movement Intelligence", "Movement Detector", "trade_open_movement")
     journal_panel(ctx, shown)
     st.download_button("Download current trade plan (JSON)", json.dumps(shown, indent=2, allow_nan=False),

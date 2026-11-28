@@ -60,13 +60,12 @@ def test_rsi_bands_macd_and_gap_warmup():
     assert gapped["RSI"][20:34] == [None]*14
 
 
-def test_chart_workspace_normal_routes(monkeypatch):
+def test_chart_workspace_normal_routes(monkeypatch, overview_spec):
     for name in ("WEBULL_APP_KEY", "WEBULL_APP_SECRET", "TRADYTICS_API_KEY", "DEFAULT_TICKER"):
         monkeypatch.delenv(name, raising=False)
     app = AppTest.from_file(str(Path(__file__).resolve().parents[1]/"terminal.py"), default_timeout=35).run()
     def traces():
-        chart = next(x.proto for x in app.get("plotly_chart") if "price_action_chart" in x.proto.id)
-        return {t["name"]: t for t in json.loads(chart.spec)["data"]}
+        return {t["name"]: t for t in overview_spec(app)["data"]}
     app.button(key="desk_map").click().run()
     assert app.session_state["desk_page"] == "Positioning"
     assert app.segmented_control(key="positioning_view").value == "Heat map"
