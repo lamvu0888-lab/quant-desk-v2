@@ -200,8 +200,6 @@ def test_overview_price_chart_owns_ema_overlays(monkeypatch, overview_spec):
     assert all(not trace["name"].startswith("EMA ") for trace in chart_spec()["data"])
     app.button(key="watch_SPX").click().run()
     assert "Volume" not in {trace["name"] for trace in chart_spec()["data"]}
-    app.session_state["overview_market_detail"] = True
-    app.run()
-    app.segmented_control(key="overview_market_section").set_value("Volume delta").run()
-    assert {"SPY", "ES", "MES"} <= set(app.selectbox(key="cvd_proxy_SPX").options)
+    assert app.selectbox(key="cvd_proxy_SPX").value == "ES · Charles Schwab"
+    assert {"SPY", "ES · Webull", "MES · Webull"} <= set(app.selectbox(key="cvd_proxy_SPX").options)
     assert not app.exception

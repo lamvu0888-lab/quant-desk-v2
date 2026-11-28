@@ -642,29 +642,30 @@ def show_session_changes(ctx, read, prints, prints_feed):
 
 def cvd_panel(ctx, candles, feed):
     with st.container(border=True):
-        panel_header("Cumulative volume delta", "cvd", "overview_cvd", "Estimated share volume · resets each regular session")
+        panel_header("Cumulative volume delta", "cvd", "overview_cvd", "Session volume delta")
         source, name = ctx.price_provider, ctx.ticker
         if ctx.ticker in INDICES:
-            choices = (["Schwab ES/MES", "Off", "SPY", "ES", "MES"] if ctx.ticker == "SPX" and ctx.schwab_store and not ctx.preview
-                       else ["Off", "SPY", "ES", "MES"] if ctx.ticker == "SPX" else ["Off", "SPY"])
-            proxy = st.selectbox("Volume comparison", choices, key=f"cvd_proxy_{ctx.ticker}")
+            schwab_es = "ES · Charles Schwab"
+            choices = [schwab_es, "SPY", "ES", "MES", "Off"] if ctx.ticker == "SPX" else ["Off", "SPY"]
+            proxy = st.selectbox("Volume comparison", choices, key=f"cvd_proxy_{ctx.ticker}",
+                                 format_func=lambda value: f"{value} · Webull" if value in ("ES", "MES") else value)
             if proxy == "Off":
                 st.caption(f"{ctx.ticker} has no traded share volume. Choose a separate comparison above.")
                 return
-            if proxy == "Schwab ES/MES":
-                from schwab_futures import fetch_context, proxy_caption
-                target = ctx.now.replace(second=0, microsecond=0)
-                sampled = fetch_context(ctx, target)
-                if not sampled:
-                    st.caption("Waiting for a complete regular-session minute with fresh, real-time ES or MES trades and usable coverage.")
+            if proxy == schwab_es:
+                if ctx.preview or not ctx.schwab_store:
+                    st.caption("Schwab ES volume delta requires a configured live Schwab feed.")
                     return
-                st.write(proxy_caption(sampled))
-                for name, leg in sampled["legs"].items():
-                    st.caption(f"{leg['contract']} · last minute {leg['velocity']:+,.0f} signed contracts · "
-                               f"{leg['samples']} classified samples · {leg['coverage']:.0%} coverage · {et_time(leg['time'])}")
-                if sampled["composite"] is not None:
-                    st.caption(f"Normalized ES/MES CVD {sampled['composite_cvd']:+.2f} over {sampled['paired_minutes']} paired minutes. "
-                               f"Latest pressure {sampled['composite']:+.2f} on a −1 to +1 scale.")
+                from schwab_futures import fetch_context
+                target = ctx.now.replace(second=0, microsecond=0)
+                sampled = fetch_context(ctx, target, include_history=True)
+                es = (sampled or {}).get("legs", {}).get("ES")
+                if not es:
+                    st.caption("Waiting for a completed ES minute with fresh Schwab trades and usable coverage.")
+                    return
+                plot(cvd_figure(es["history"], unit="sampled contracts"), "overview_schwab_es_cvd")
+                st.caption(f"Schwab {es['contract']} · Estimated CVD from sampled trades · "
+                           f"{es['coverage']:.0%} classified volume in measured intervals · {et_time(es['time'])}")
                 return
             if proxy in ("ES", "MES"):
                 if not ctx.webull_store:
@@ -723,33 +724,30 @@ def overview(ctx):
         nav_button("Open Trade Plan", "Trade Plan", "overview_open_plan")
         nav_button("Open Movement Intelligence", "Movement Detector", "overview_open_movement")
     prints, prints_feed = price_panel(ctx, read)
+    with st.container(border=True):
+        st.subheader("Dealer levels")
+        level_list(gamma, spot)
+        feed_stamp("exposure", read["gamma_feed"], ctx)
+    with st.container(border=True):
+        panel_header("Session net flow", "net_flow", "overview_flow", "Cumulative directional premium")
+        render_chart(flow_figure(flow.rows, compact=True), "overview_flow_spark", flow)
+        feed_stamp("timeline", flow, ctx)
+    cvd_panel(ctx, read["candles"], read["bars"])
+
     show_session_changes(ctx, read, prints, prints_feed)
     with st.expander("Entry evidence and risk details", key="overview_entry_detail", on_change="rerun") as detail:
         if detail.open:
             command_panel(ctx, decision, iv, read["candles"], key="overview")
     with st.expander("Market internals", key="overview_market_detail", on_change="rerun") as detail:
-        if not detail.open:
-            return
-        section = st.segmented_control("Market internals view", ["Session", "Dealer levels", "Flow", "Volume delta"],
-                                       default="Session", key="overview_market_section") or "Session"
-        if section == "Session":
+        if detail.open:
             kpis([metric("Underlying", amount(spot), f"{signed_pct(change)} · {ctx.price_provider}", change),
                   metric("5m EMA 9/21", {1: "Up", -1: "Down", 0: "Neutral"}[decision["direction"]], "Completed price trend"),
                   metric("Net GEX", compact(gamma.get("total"), currency=True, signed=True), "$ per 1% move", gamma.get("total")),
                   metric("Options net flow", compact(net, currency=True, signed=True), "Completed intervals", net),
                   metric("IV rank", ratio_pct(vol.obj.get("iv_rank")), f"30D ATM IV {ratio_pct(vol.obj.get('atm_iv_30d'))}")])
-        elif section == "Dealer levels":
-            level_list(gamma, spot)
-            feed_stamp("exposure", read["gamma_feed"], ctx)
             overview_gamma(ctx, read, spot)
-        elif section == "Flow":
-            panel_header("Session net flow", "net_flow", "overview_flow", "Cumulative directional premium")
-            render_chart(flow_figure(flow.rows, compact=True), "overview_flow_spark", flow)
             panel_header("Cumulative flow & momentum", "net_flow", "overview_momentum", ctx.scope)
             render_chart(flow_desk_figure(flow.rows, "5m"), "overview_flow_chart", flow)
-            feed_stamp("timeline", flow, ctx)
-        else:
-            cvd_panel(ctx, read["candles"], read["bars"])
 
 
 def overview_gamma(ctx, read, spot):
