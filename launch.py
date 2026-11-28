@@ -44,11 +44,9 @@ def main():
         return subprocess.call([str(python), str(ROOT/'schwab_setup.py'), schwab_command], cwd=ROOT)
     classic='--classic' in sys.argv
     script='dashboard.py' if classic else 'terminal.py'
-    theme=['--theme.base','light','--theme.backgroundColor','#F7F9FB','--theme.secondaryBackgroundColor','#FFFFFF',
-           '--theme.textColor','#172B3A'] if classic else []
     print('Quant Desk · http://localhost:8501 · press Ctrl+C to stop.',flush=True)
     return subprocess.call([str(python),'-m','streamlit','run',str(ROOT/script),
-        '--server.address','127.0.0.1','--server.port','8501','--browser.gatherUsageStats','false',*theme],cwd=ROOT)
+        '--server.address','127.0.0.1','--server.port','8501','--browser.gatherUsageStats','false'],cwd=ROOT)
 
 
 if __name__=='__main__':

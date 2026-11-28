@@ -255,4 +255,4 @@ class DemoStore:
                              "realized_vol_20d": .148 + .019*math.cos(i/6), "dark_notional_usd": (2.5 + math.sin(i/2))*1e9})
         if isinstance(data, list) and params.get("limit"):
             data = data[:params["limit"]]
-        return Feed(Snapshot(data, {"date": params.get("date", str(self.day)), "as_of": DEMO_AT.isoformat()}, DEMO_AT))
+        return Feed(Snapshot(data, {"synthetic": True, "date": params.get("date", str(self.day)), "as_of": DEMO_AT.isoformat()}, DEMO_AT))

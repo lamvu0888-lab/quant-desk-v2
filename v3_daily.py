@@ -1,12 +1,13 @@
 """Post-close research pipeline driven by the existing monitor worker. Can also run locally."""
+from v3_provenance import live_record, display_plan
 from datetime import datetime, timezone
 import os
 from market_session import active_session, calendar, rth_bounds
 from v3_challenger import delayed_online, lead_lag, profile, replay_proposal, threshold_search
 import json
 from v3_feedback import claim_stage, finish_stage, feedback
-from v3_movement import enabled, HORIZONS
-from v3_research import SYMBOLS, archive, benchmark, matured, summary, pricing_errors, event_summary, market_events, training_records
+from v3_movement import enabled, HORIZONS, VERSION, active_mode
+from v3_research import SYMBOLS, archive, benchmark, matured, summary, pricing_errors, event_summary, market_events, training_records, same_model
 
 
 def paper_results(journal,scope):
@@ -23,7 +24,7 @@ def paper_results(journal,scope):
     for (raw,) in rows:
         trade=json.loads(raw)
         symbol=trade.get("symbol")
-        if symbol not in SYMBOLS:continue
+        if symbol not in SYMBOLS or display_plan(trade) or display_plan(trade.get("plan")):continue
         group=stats.setdefault(symbol,{}).setdefault(trade.get("track","baseline"),{"closed":0,"skipped":0,"net":0.})
         if trade.get("state")=="CLOSED":
             group["closed"]+=1
@@ -74,27 +75,35 @@ def daily(journal,now,*,webhook=None):
         elapsed=(now-rth_bounds(d)[1]).total_seconds()/60
         if elapsed<15:continue
         scope=str(d)
+        mode = active_mode()
         for stage,delay in (("report",15),("training",30),("feedback",45),("replay",60),("discord",65)):
             if elapsed<delay or not enabled("ML") and stage=="training" or not enabled("OPENAI") and stage in ("feedback","replay"):continue
             if stage=="discord" and (not enabled("DISCORD_REPORT") or not webhook):continue
             if stage in ("feedback","discord") and d!=day:continue
             if journal.records("DESK","v3_"+stage,scope=scope,limit=1):continue
-            if not any(journal.records(s,kind,scope=scope,limit=1) for s in SYMBOLS for kind in ("v3_scan","v3_health")):continue
+            if stage == "report":
+                coverage = {(s,kind): [r for r in journal.records(s,kind,scope=scope,limit=6000) if live_record(r)]
+                            for s in SYMBOLS for kind in ("v3_scan","v3_health")}
+                if not any(coverage.values()):break
+            else:
+                reports = journal.records("DESK","v3_report",scope=scope,limit=1)
+                if not reports or reports[0]["payload"].get("research_config") != {"version":VERSION, "mode":mode}:
+                    continue
             lease=claim_stage(journal,d,stage,now)
             if not lease:continue
             if stage=="report":
-                value={}
-                tracks={s:journal.records(s,"v3_scan",scope=scope,limit=6000) for s in SYMBOLS}
+                value={"research_config":{"version":VERSION, "mode":mode}}
+                tracks={s:[r for r in coverage[s,"v3_scan"] if same_model(r,VERSION,mode)] for s in SYMBOLS}
                 paper=paper_results(journal,scope)
                 for s,rows in tracks.items():
                     labels=matured(rows)
-                    health=journal.records(s,"v3_health",scope=scope,limit=6000)
+                    health=[r for r in coverage[s,"v3_health"] if same_model(r,VERSION,mode)]
                     events=market_events(rows,health)
                     journal.insert(f"v3:events:{scope}:{s}",s,"v3_events",scope,now,events)
                     counts={k:sum(e["classification"]==k for e in events["events"]) for k in ("early","late","wrong_direction","missed")}
                     value[s]=dict(recorded=len(rows),unavailable=len(health),independent_events=counts,paper=paper.get(s,{}),pricing=pricing_errors(rows),episodes=event_summary(rows),profile=profile(labels),horizons=[summary(labels,h) for h in HORIZONS])
                     root=os.getenv("QD_V3_ARCHIVE_DIR")
-                    if root:archive([*rows,*health],root,s,d)
+                    if root:archive([*coverage[s,"v3_scan"],*coverage[s,"v3_health"]],root,s,d)
                 value["cross_market"]={a+"/"+b:lead_lag(tracks,a,b) for a,b in (("SPY","SPX"),("QQQ","SPY"),("SPX","SPY"))}
             elif stage=="training":
                 value={}

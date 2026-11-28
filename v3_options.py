@@ -12,7 +12,7 @@ from terminal_data import valid_date
 from option_payoff import price_option
 
 YEAR = 365.25 * 86400
-UNITS = {"premium":"$/share","delta":"Δ per $","gamma":"Δ per $²","iv":"%",
+UNITS = {"premium":"$/share","delta":"Δ per $","gamma":"Δ per underlying $","iv":"%",
          "theta":"$/calendar day","vega":"$/IV point","rho":"$/rate point","vanna":"Δ/IV point",
          "vomma":"$/IV point²","speed":"gamma/$","charm":"Δ/day","color":"gamma/day"}
 
@@ -58,30 +58,65 @@ def contract_spec(row, symbol):
     return Spec(code,strike,right,True,last,closed,"Physical · closing-price payoff reference")
 
 
-def value(spec, spot, years, iv, rate=.04, dividend=0., steps=72):
-    s,t,v = np.broadcast_arrays(np.asarray(spot,float),np.asarray(years,float),np.asarray(iv,float))
-    if (not all(np.all(np.isfinite(a)) for a in (s,t,v)) or np.any(s<=0) or np.any(t<0) or np.any(v<=0)
-            or not np.isfinite([rate,dividend]).all() or not 4<=steps<=512):
+def _price(spec, spot, years, iv, rate, dividend, steps, *, spatial=False):
+    s, t, v = np.broadcast_arrays(np.asarray(spot, float), np.asarray(years, float), np.asarray(iv, float))
+    if (not all(np.all(np.isfinite(a)) for a in (s, t, v)) or np.any(s <= 0) or np.any(t < 0) or np.any(v <= 0)
+            or not np.isfinite([rate, dividend]).all() or not 4 <= steps <= 512):
         raise ValueError("Invalid scenario inputs")
-    if not spec.american:
-        return price_option(s,spec.strike,t,v,spec.right,rate,dividend)
-    # CRR backward induction across all scenario points, including early exercise at every node.
-    n = steps
-    dt = np.maximum(t,1e-14)/n
-    up = np.exp(v*np.sqrt(dt))
-    down = 1/up
-    prob = np.expm1((rate-dividend)*dt+np.log(up))/np.expm1(2*np.log(up))
-    if np.any((prob<0)|(prob>1)):
+    call = spec.right == "call"
+    # Under continuous carry these cases have no early-exercise premium.
+    never_exercise_early = (call and dividend <= 0 <= rate) or (not call and rate <= 0 <= dividend)
+    if not spec.american or never_exercise_early:
+        mark = price_option(s, spec.strike, t, v, spec.right, rate, dividend)
+        if not spatial:
+            return mark
+        safe_t = np.maximum(t, 1e-12)
+        sigma = np.maximum(v, .0001)
+        vol_time = sigma * np.sqrt(safe_t)
+        d1 = (np.log(s / spec.strike) + (rate - dividend + .5 * sigma**2) * safe_t) / vol_time
+        discounted = np.exp(-dividend * safe_t)
+        delta = discounted * (ndtr(d1) if call else -ndtr(-d1))
+        gamma = discounted * np.exp(-.5 * d1**2) / (np.sqrt(2 * np.pi) * s * vol_time)
+        return mark, delta, gamma
+
+    # CRR lattice, with a European continuation over the final step to smooth the payoff kink.
+    # The exercise decision is retained at every earlier node (binomial Black-Scholes method).
+    dt = np.maximum(t, 1e-14) / steps
+    log_up = v * np.sqrt(dt)
+    up = np.exp(log_up)[..., None]
+    prob = np.expm1((rate - dividend) * dt + log_up) / np.expm1(2 * log_up)
+    if np.any((prob < 0) | (prob > 1)):
         raise ValueError("CRR grid unstable at this carry and IV")
-    disc = np.exp(-rate*dt)[...,None]
-    sign = 1 if spec.right=="call" else -1
-    node = s[...,None] * up[...,None]**(2*np.arange(n+1)-n)
-    values = np.maximum(sign*(node-spec.strike),0)
-    p=prob[...,None]
-    for _ in range(n):
-        node = node[...,:-1]*up[...,None]
-        values = np.maximum(sign*(node-spec.strike),disc*((1-p)*values[...,:-1]+p*values[...,1:]))
-    return np.where(t>0,values[...,0],np.maximum(sign*(s-spec.strike),0))
+    discount = np.exp(-rate * dt)[..., None]
+    p = prob[..., None]
+    sign = 1 if call else -1
+    nodes = s[..., None] * np.exp(log_up[..., None] * (2 * np.arange(steps) - (steps - 1)))
+    payoff = sign * (nodes - spec.strike)
+    last_step = price_option(nodes, spec.strike, dt[..., None], v[..., None], spec.right, rate, dividend)
+    values = np.maximum(payoff, last_step)
+    for level in range(steps - 2, -1, -1):
+        nodes = nodes[..., :-1] * up
+        continuation = discount * ((1 - p) * values[..., :-1] + p * values[..., 1:])
+        payoff = sign * (nodes - spec.strike)
+        values = np.maximum(payoff, continuation)
+        if spatial and level == 2:
+            # Slopes live between adjacent nodes. Their separation is half the outside-node price span.
+            slopes = np.diff(values, axis=-1) / np.diff(nodes, axis=-1)
+            gamma = (slopes[..., 1] - slopes[..., 0]) / ((nodes[..., 2] - nodes[..., 0]) / 2)
+        elif spatial and level == 1:
+            delta = (values[..., 1] - values[..., 0]) / (nodes[..., 1] - nodes[..., 0])
+    intrinsic = np.maximum(sign * (s - spec.strike), 0)
+    mark = np.where(t > 0, np.maximum(intrinsic, continuation[..., 0]), intrinsic)
+    if not spatial:
+        return mark
+    # In the immediate-exercise region today's value is locally intrinsic. The derivatives at expiry
+    # (and especially the strike kink) are masked by greeks() for all chart series.
+    exercise_now = (intrinsic > 0) & (intrinsic > continuation[..., 0])
+    return mark, np.where(exercise_now, sign, delta), np.where(exercise_now, 0., gamma)
+
+
+def value(spec, spot, years, iv, rate=.04, dividend=0., steps=72):
+    return _price(spec, spot, years, iv, rate, dividend, steps)
 
 
 def calibrated_iv(spec, spot, now, mid, rate, dividend):
@@ -96,28 +131,23 @@ def calibrated_iv(spec, spot, now, mid, rate, dividend):
 
 def greeks(spec,s,t,v,r=.04,q=0.,extended=False):
     s,t,v=np.broadcast_arrays(np.asarray(s,float),np.asarray(t,float),np.asarray(v,float))
-    base=value(spec,s,t,v,r,q)
-    # Use a bump comparable to the lattice spacing for American derivatives.
-    h=np.maximum(s*.0001, s*v*np.sqrt(t/72) if spec.american else .0001)
-    h=np.minimum(h,s*.1)
+    def spatial(spot, time, vol):
+        return _price(spec, spot, time, vol, r, q, 72, spatial=True)
+
+    base, delta, gamma = spatial(s, t, v)
+    h = np.minimum(np.maximum(s * .0001, s * v * np.sqrt(t / 72)), s * .1)
     dv=np.minimum(.005,v/4)
     dt=np.minimum(t/2,1/(365.25*24))
-    def spatial(spot,time,vol):
-        p=value(spec,spot,time,vol,r,q)
-        up=value(spec,spot+h,time,vol,r,q)
-        down=value(spec,spot-h,time,vol,r,q)
-        return (up-down)/(2*h),(up-2*p+down)/h**2
-    delta,gamma=spatial(s,t,v)
     vp,vm=value(spec,s,t,v+dv,r,q),value(spec,s,t,v-dv,r,q)
     tomorrow=value(spec,s,t-dt,v,r,q)
     days=np.where(dt>0,dt*365.25,1.)
     result=dict(premium=base,iv=v*100,delta=delta,gamma=gamma,vega=(vp-vm)/(2*dv)*.01,theta=(tomorrow-base)/days)
     if extended:
-        dp,_=spatial(s,t,v+dv)
-        dm,_=spatial(s,t,v-dv)
-        td,tg=spatial(s,t-dt,v)
-        _,gu=spatial(s+h,t,v)
-        _,gd=spatial(s-h,t,v)
+        _,dp,_=spatial(s,t,v+dv)
+        _,dm,_=spatial(s,t,v-dv)
+        _,td,tg=spatial(s,t-dt,v)
+        _,_,gu=spatial(s+h,t,v)
+        _,_,gd=spatial(s-h,t,v)
         result.update(rho=(value(spec,s,t,v,r+.001,q)-value(spec,s,t,v,r-.001,q))*5,
                       vanna=(dp-dm)/(2*dv)*.01,vomma=(vp-2*base+vm)/dv**2*.0001,
                       speed=(gu-gd)/(2*h),charm=(td-delta)/days,color=(tg-gamma)/days)
@@ -135,7 +165,7 @@ def timeline(now, expiry, minutes=0, *, arrival=None):
     return sorted(set(times+[expiry]+([arrival] if arrival and now<arrival<expiry else [])))
 
 
-def scenario(spec, now, times, spot, target, arrival, iv, target_iv, rate, dividend, custom=None):
+def scenario(spec, now, times, spot, target, arrival, iv, target_iv, rate, dividend, custom=None, *, extended=False):
     if arrival<=now or any(x<now or x>spec.expires for x in times):
         raise ValueError("Scenario time outside contract lifetime")
     seconds=np.array([(t-now).total_seconds() for t in times])
@@ -146,7 +176,7 @@ def scenario(spec, now, times, spot, target, arrival, iv, target_iv, rate, divid
     fraction=np.minimum(seconds/(arrival-now).total_seconds(),1)
     vols=iv+(target_iv-iv)*fraction
     remaining=np.array([(spec.expires-at).total_seconds()/YEAR for at in times])
-    return prices,remaining,greeks(spec,prices,remaining,vols,rate,dividend)
+    return prices,remaining,greeks(spec,prices,remaining,vols,rate,dividend,extended=extended)
 
 
 def research_rank(rows,spot,target,arrival,now,rate,dividend,budget,cost,symbol):

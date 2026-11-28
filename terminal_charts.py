@@ -76,7 +76,7 @@ def price_figure(bars, ticker, timeframe, *, levels=None, overlays=True, orders=
                 extra[label] = [v[index] for v in sampled]
     if five_minute_ema and width:
         extra["Completed 5m EMA 21"] = [five_minute_ema.get(stamp + width) for stamp in times]
-    colors = {"Swing support": TEAL, "Swing resistance": RED, "Completed 5m EMA 21": "#a15c20", "Opening high": TEAL, "Opening low": RED, "Anchored VWAP estimate": AMBER,
+    colors = {"Swing support": TEAL, "Swing resistance": RED, "Completed 5m EMA 21": "#eda064", "Opening high": TEAL, "Opening low": RED, "Anchored VWAP estimate": AMBER,
               "Upper band": BLUE, "Lower band": BLUE, "RSI": VIOLET, "MACD": BLUE, "Signal": AMBER}
     for name, values in extra.items():
         values = values[-len(rows):]
@@ -386,7 +386,7 @@ def exposure_figure(rows, by, unit, spot=None, flip=None, *, split=False, compac
                 fig.add_annotation(x=0.01, y=0.98, xref="paper", yref="paper",
                                    text="Largest bars clipped for readability; hover for exact values",
                                    showarrow=False, xanchor="left", yanchor="top",
-                                   font=dict(size=10, color=MUTED), bgcolor="rgba(255,255,255,.88)")
+                                   font=dict(size=10, color=MUTED), bgcolor="rgba(27,43,61,.94)")
     fig.update_xaxes(title=None if compact else field.title(), nticks=6 if compact or focus_radius_pct else 10)
     fig.update_yaxes(tickformat="~s", title=None if compact else unit)
     styled = style_chart(fig, 176 if compact else 374, legend=split)

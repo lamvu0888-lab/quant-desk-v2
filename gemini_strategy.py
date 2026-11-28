@@ -10,6 +10,7 @@ from decision_flow import apply_model_gate, model_summary
 from desk_analytics import FIVE_MINUTES, MINUTE, candles_on
 from gemini_sessions import session_context, revision_reason, summarize
 from gemini_advisor import FLOW_CHOICES, AdvisorQueue, evidence, packed
+from v3_provenance import display_plan
 from market_session import ET, calendar, rth_bounds, session_state
 from movement_detector import ENTRY_COOLDOWN, MIN_ENTRY_SCORE
 from research_journal import plan_scope
@@ -63,7 +64,7 @@ def combined_geometry(plan, leg, side):
 
 def assess(plan, read, daily, now):
     """Return a prospective paper plan and the exact reasons an entry was withheld."""
-    if plan.get("demo") or session_state(now)["status"] != "OPEN":
+    if display_plan(plan) or session_state(now)["status"] != "OPEN":
         return None, ["A live regular-session scan is required."]
     if not daily or daily["state"] != "ready":
         detail = (daily or {}).get("issue") or (daily or {}).get("state") or "waiting for fresh anchor levels"
@@ -151,6 +152,8 @@ class ScenarioMonitor:
         self.pending = {}
 
     def submit(self, plan, read, now):
+        if display_plan(plan):
+            return
         # Coalesce slow scans per ticker instead of delaying regular alerts or replaying a backlog.
         for symbol, task in list(self.pending.items()):
             if task.done():
@@ -263,7 +266,7 @@ class ScenarioMonitor:
             return self.jobs.session_plan(db,symbol,session)
 
     def record(self, plan, read, now):
-        if plan.get("demo") or session_state(now)["status"] != "OPEN":
+        if display_plan(plan) or session_state(now)["status"] != "OPEN":
             return
         symbol, day = plan["symbol"], plan["session"]
         daily = self.daily(plan, read, now)

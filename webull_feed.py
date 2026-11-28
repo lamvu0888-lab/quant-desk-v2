@@ -241,7 +241,7 @@ class WebullFeedStore:
                     and not start.second and not start.microsecond and start + MINUTE <= now
                     and buy is not None and sell is not None and min(buy, sell) >= 0):
                 points.append({"time": (start + MINUTE).isoformat(), "delta": buy - sell})
-        return {ticker: Snapshot({"points": points}, {"delay_minutes": 0}, now)}
+        return {ticker: Snapshot({"points": points}, {"delay_minutes": 0, "sandbox": self.settings.endpoint == "api.sandbox.webull.com"}, now)}
 
     def futures_activity(self, root, now, day, *, paused=False):
         key = (root, str(day))
@@ -277,7 +277,8 @@ class WebullFeedStore:
                 raise
             points = activity(bars, None, contract, now, day)
         return {key: Snapshot({"contract": contract, "points": points},
-                              {"symbol": contract, "delay_minutes": reported_delay(bars, contract)}, datetime.now(UTC))}
+                              {"symbol": contract, "delay_minutes": reported_delay(bars, contract),
+                               "sandbox": self.settings.endpoint == "api.sandbox.webull.com"}, datetime.now(UTC))}
 
     def _read_prices(self, kind, category, previous):
         client = self._client()

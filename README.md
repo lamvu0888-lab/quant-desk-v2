@@ -1,12 +1,14 @@
-# Quant Desk 2.8.8
+# Quant Desk 3.0.0-rc2
 
-- **Range reversals** watch for a confirmed bounce at support or rejection at resistance after a sideways hour. Trade Plan and Movement Detector show the range, midpoint, evidence and reasons to wait. Confirmed entries use the existing Discord worker. [Read the entry rules](learn_workflows.md#range-reversals)
+- **Range reversals** watch for a confirmed bounce at support or rejection at resistance after a sideways hour. Trade Plan shows the range, midpoint, evidence and reasons to wait. Confirmed entries use the existing Discord worker. [Read the entry rules](learn_workflows.md#range-reversals)
 - **EMA 9/21 trend alerts** use two consecutive completed 3-minute closes. They run on current price candles and include a pullback cue in Discord. Trade Plan uses EMA 9/21 for 5-minute bias and 3-minute and 1-minute timing, along with its flow and risk checks.
 - **Auto** tries an authorized Schwab feed first for cash SPX, then Webull and Tradytics. SPY and QQQ keep the Webull and Tradytics route. Data Health shows the selected provider and timestamps. [Connect a Schwab app](SCHWAB_SPX_SETUP.md)
 - **Price & large orders** shows blue EMA 9 and gold EMA 21. Use **Price chart filters** to toggle them. For SPX, **Cumulative volume delta → Volume comparison** offers SPY, ES or MES. The ES/MES view shows contract volume and adds footprint CVD when Webull returns zero-delay buy and sell totals.
 
-- Overview and Movement Detector show a gold quote marker with a source timestamp. On supported Webull symbols the regular-session dashboard targets a two-second quote poll by default. An existing `QUOTE_REFRESH_SECONDS` setting overrides the default. The shared budget and provider cooldowns still apply.
-- Movement Detector uses a dropdown for the IV expansion threshold and includes reading guidance below each chart.
+- Market Overview shows a gold quote marker with a source timestamp. The Movement Intelligence header shows the selected quote, clock and source. On supported Webull symbols the regular-session dashboard targets a two-second quote poll by default. An existing `QUOTE_REFRESH_SECONDS` setting overrides the default. The shared budget and provider cooldowns still apply.
+- **Movement Intelligence** combines the V3 lifecycle, seven evidence checks, price levels and the current Trade Plan decision. Open the chart below the checks to compare completed candles and recorded movement states.
+- **Options Contract Intelligence** combines a listed contract and a target time with an ask-based pricing scenario. Inspect the assumptions and any missing inputs before interpreting a modeled return.
+- [Install and review V3](V3_GUIDE.md) · [Validation and limitations](V3_ACCEPTANCE.md)
 
 Quant Desk can use Schwab for SPX, Webull for index, stock, ETF and option quotes, and Tradytics for prices, options flow and modeled dealer exposure. Open any covered ticker in the command bar. The quick buttons open SPY, SPX and QQQ. The dashboard and Discord worker run in analysis and paper mode.
 
@@ -27,38 +29,35 @@ On Mac or Linux, run `bash start_dashboard.sh`. Python 3.11+ is required. The da
 
 ## Update your existing Streamlit app
 
-Use the PowerShell steps in the [deployment guide](V2_5_DEPLOYMENT.md) from your already-extracted folder. The Streamlit entry point is `terminal.py`. Render runs `python discord_monitor.py --interval 30` as a background worker.
+Use the V3 review branch and PowerShell steps in the [installation guide](V3_GUIDE.md). The Streamlit entry point is `terminal.py`. Render runs `python discord_monitor.py --interval 30` as a background worker.
 
 ## Workspace
 
-| Page | What you can do |
+| Workspace | What to look for |
 | --- | --- |
-| Overview | Start with the Entry Command Center. See the current status, 1m/3m/5m alignment, nearby levels, price and large-order markers, 0DTE GEX, cumulative flow, momentum and estimated share CVD. |
-| Movement Detector | Read nine ordered checks from market state through data quality and open the current Trade Plan. |
-| Flow & Bubbles | Filter the executed options tape by dollars, call or put, trade side, kind, session and expiry. Compare premium bubbles, flow momentum and contract-volume delta. |
-| Money Map | Compare market leaders, sectors or a watchlist. Tile size represents absolute net options premium. |
-| Dealer Positioning | Review price, IV and time hedge scenarios, sensitive strikes, past price response, exposure profiles and the optional Webull comparison. |
-| IV Decision Center | Compare exact-expiry ATM IV, realized volatility, the 30-day benchmark, skew, and matching expected-move room. Advanced Analysis contains the detailed charts. |
-| Dark Pool | See reported off-exchange stock prints and price bins by notional. Choose a lookback and minimum print size. |
-| Trade Plan | Review the trigger, stop, targets, contract bid and ask, quote age, evidence and Discord alerts. |
-| Signals | Filter Tradytics patterns for a ticker, inspect the chosen contract and marks, and view provider-wide pattern performance. |
-| Monte Carlo | Compare four entry methods with fill odds, target/stop odds and net modeled P&L. Open Validation for paper outcomes or replay. Price forecast contains the earlier range models. |
-| Scanner | Rank stocks or ETFs by provider premium, volume, IV or dark-pool activity. |
-| TradingView | Generate a Pine indicator or JSON snapshot of GEX strikes, gamma levels, dark-pool levels and support or resistance. |
-| Learn | Read chart-by-chart explanations and worked examples, or open the day trade, swing trade and LEAPS workflows. |
-| Data Health | Compare provider quote timestamps and inspect the latest candle, flow interval and SPXW quote coverage. |
+| Market Overview | Current direction, entry timing, nearby levels, price, options flow and CVD. |
+| Movement Intelligence | Movement lifecycle, supporting and conflicting evidence, triggers, invalidation and synchronized charts. |
+| Trade Plan | Entry qualification, blockers, targets, protection, active setups and alert journal. |
+| Options Contract Intelligence | Choose a listed strike and expiration, set a target and compare premiums and Greeks under the same scenario. |
+| Dealer Positioning | Review modeled exposure by strike and expiration, scenarios and sensitive levels. |
+| Monte Carlo | Explore fill, target and stop odds, price paths and modeled P&L. |
+| AI Learning | Compare recorded V2 and V3 detection, outcome coverage and research candidates. |
+| Data Health | Check provider status, timestamps, entitlements and delays. |
+| Learn | Read chart guides and day-trade, swing-trade and LEAPS workflows. |
+
+**Research tools** in the sidebar opens Flow & Bubbles, Money Map, IV Decision Center, Dark Pool, Signals, Scanner, TradingView and the dealer heat map. The existing Paper Trading Dashboard continues to use its own Streamlit entry point.
 
 Click **?** beside a title for a quick explanation. Click outside or press Esc to close it. **Learn** has examples. Preview downloads carry a demo label.
 
 ## Exact DTE
 
-The sidebar offers **All DTE**, **Nearest listed**, **0 DTE**, **Listed expiration** and **Enter exact DTE**. Nearest listed uses 0 DTE when listed and otherwise uses the next listed date. It is the default for a new browser session with both feeds configured. DTE means calendar days from the displayed session. Historical flow and tape use the selected session as their date reference.
+Options Contract Intelligence selects from its own list of available expirations. On the other workspaces the sidebar offers **All DTE**, **Nearest listed**, **0 DTE**, **Listed expiration** and **Enter exact DTE**. Nearest listed uses 0 DTE when listed and otherwise uses the next listed date. It is the default for a new browser session with both feeds configured. DTE means calendar days from the displayed session. Historical flow and tape use the selected session as their date reference.
 
 The tape, option chain and exposure model query the exact date. Tradytics uses a maximum DTE filter for the aggregate timeline. The maximum DTE total already covers one expiration when the current listing verifies it as the first date. For other exact values above zero, Quant Desk subtracts adjacent DTE totals for matching completed intervals. The chart skips intervals that cannot be matched. Market-wide leader and sector tiles, scanner rankings, and daily exposure history use the provider's all-DTE datasets.
 
 ## TradingView levels
 
-1. Choose a ticker and expiry. Open **TradingView** in the sidebar.
+1. Choose a ticker and expiry. Open **Research tools → TradingView** in the sidebar.
 2. Select your layers and click **Generate level snapshot**.
 3. Copy the code into **Pine Editor** on the same ticker in TradingView, then save it and choose **Add to chart**.
 
@@ -68,7 +67,7 @@ The lines extend forward from the export time. Generate a new snapshot after lev
 
 The price regime measures recent five-minute price swings. It can read Compressing, Normal or Expanding. The Entry Command Center checks the five-minute EMA 9/21 trend and signed options flow, then uses completed one- and three-minute candles for timing. A pullback looks for a test of the EMA area followed by a close back through EMA 9 in the trend direction. Trend setups need two agreeing completed 5m price checks. Range reversals use a completed 3m edge rejection and later 1m follow-through. Both need two aligned 5m premium intervals and sufficient room to the target. The itemized 100-point rule score requires **at least MIN_ENTRY_SCORE points (default 60)** for an entry; it is not a win probability and does not override required data, flow, option-quote, risk or scenario checks. Ten points are available for synchronized ES/MES observed footprint direction on SPX; otherwise they are unearned. For non-index stocks/ETFs, estimated share CVD earns at most five points. Nearby modeled dealer walls and an expiry-matched expected-move boundary each earn up to five points when there is room. For reversals, the modeled gamma, vanna and charm response to a further edge test can contribute five points. Expanding volatility combined with negative modeled GEX blocks a reversal. The Monte Carlo page reports scenario probabilities separately.
 
-SPX has no native share CVD. Movement Detector uses Webull ES footprint buy-minus-sell contracts for an optional ten-minute proxy, with MES as backup, when the selected contract and ten matching completed minutes report explicit zero delay. The futures feed is asynchronous and refreshed about once per minute to respect API budgets. If footprint access is unavailable or stale, it shows unavailable and awards no CVD points; SPY's estimated share CVD can still be inspected as a separate comparison. Futures prices never substitute for SPX prices. Futures CME market data and Order Flow Non-display permissions are separately required by Webull OpenAPI; desktop subscriptions are independent.
+SPX has no native share CVD. The underlying evidence engine uses Webull ES footprint buy-minus-sell contracts for an optional ten-minute proxy, with MES as backup, when the selected contract and ten matching completed minutes report explicit zero delay. The futures feed is asynchronous and refreshed about once per minute to respect API budgets. If footprint access is unavailable or stale, it shows unavailable and awards no CVD points; SPY's estimated share CVD can still be inspected as a separate comparison. Futures prices never substitute for SPX prices. Futures CME market data and Order Flow Non-display permissions are separately required by Webull OpenAPI; desktop subscriptions are independent.
 
 Open **Trade Plan → Evidence and entry conditions** for the evidence and the reason a setup is waiting. **Monte Carlo → Validation** includes paper outcomes and setup replay. Strategy Lab and History & Replay are hidden from the workspace navigation.
 
@@ -90,7 +89,7 @@ Quotes typically refresh at Tradytics about every 30 seconds. The workspace requ
 
 Set **Feed controls → Price and candle source → Auto**. For SPX with Schwab configured, the dashboard and worker look for a usable cash index quote and completed candles from the same provider, checking Schwab first, then Webull and Tradytics. Webull remains the first choice for supported stocks and ETFs. The worker uses `MONITOR_PRICE_SOURCE=Auto`. Select a specific provider to inspect its data. Webull uses its official SDK batch bars method and checks market timestamps. For SPX, its 1-minute response must explicitly report zero delay. Data Health shows any rejected request. [Webull market data permissions](https://developer.webull.com/apis/docs/market-data-api/overview/) and [stock snapshots reference](https://developer.webull.com/apis/docs/reference/snapshot/).
 
-Choose an exact expiry to see Webull bid, ask, spread, quote age and Greeks. The Webull view samples up to 20 near-spot contracts and requests PM-settled SPXW contracts for SPX. **Trade Plan** checks the nearest contract in the setup direction. If Webull has no usable quote for a qualifying setup, Tradytics can confirm an exact-expiry quote with the same freshness and liquidity checks. **IV Decision Center** uses a same-strike call and put to estimate exact-expiry ATM IV when both quotes are fresh. **Movement Detector** compares 1, 3 or 5 minute IV changes only within the same provider, expiry and strike pair. The Tradytics surface supplies the 30-day benchmark and rank.
+Choose an exact expiry to see Webull bid, ask, spread, quote age and Greeks. The Webull view samples up to 20 near-spot contracts and requests PM-settled SPXW contracts for SPX. **Trade Plan** checks the nearest contract in the setup direction. If Webull has no usable quote for a qualifying setup, Tradytics can confirm an exact-expiry quote with the same freshness and liquidity checks. **IV Decision Center** uses a same-strike call and put to estimate exact-expiry ATM IV when both quotes are fresh. The Tradytics surface supplies the 30-day benchmark and rank.
 
 **Dealer Positioning → Compare sources** displays a bounded Webull model when enough fresh calls and puts span spot. The Tradytics model and Webull sample keep their own scope and units. Use **Data Health** to compare quote ages and test your account's SPXW access.
 

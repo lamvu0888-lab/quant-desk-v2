@@ -16,6 +16,7 @@ from decision_engine import ENTRY_STATES, RULES_VERSION
 from desk_analytics import FIVE_MINUTES
 from ema_trend import TREND_ALERT_AGE
 from gemini_strategy import ScenarioMonitor
+from v3_provenance import display_plan
 from market_session import active_session, session_state
 from movement_detector import ENTRY_COOLDOWN
 from terminal_views import Desk, read_workspace, route_price
@@ -93,7 +94,7 @@ def data_warning(state, critical):
 
 
 def deliver(journal, shared, webhook, alert_id, alert, *, deadline=None):
-    if alert["status"] == "DATA QUALITY":
+    if display_plan(alert) or alert["status"] == "DATA QUALITY":
         return
     entry_id = alert.get("entry_alert_id")
     if alert["status"] == "EXIT" and entry_id and not journal.was_delivered(entry_id):
@@ -174,7 +175,7 @@ class MonitorScan:
             try:
                 dte = monitor_dte(self.store, symbol, day, now)
                 ctx = Desk(symbol, now, self.store, False, False, dte, True, sources[symbol],
-                           webull_store=self.webull, webull_prices=snapshots.get(symbol), schwab_store=self.schwab)
+                           journal=self.journal, webull_store=self.webull, webull_prices=snapshots.get(symbol), schwab_store=self.schwab)
                 ctx, prices = route_price(ctx, self.preference)
                 provisional_move = None
                 if market_open and not dry_run:
@@ -206,6 +207,9 @@ class MonitorScan:
                     plan, _ = build_decision(ctx, read)
                     chain = ctx.option_chain(ctx.expiry, provider="Webull")[0] if ctx.has_webull_options and ctx.expiry else None
                     diagnostics.append({"symbol": symbol, "price_source": ctx.price_provider, "expiration": ctx.expiry,
+                                        "v3_state": (plan.get("movement_v3") or {}).get("state"),
+                                        "v3_version": (plan.get("movement_v3") or {}).get("version"),
+                                        "v3_mode": (plan.get("movement_v3") or {}).get("mode"),
                                         "fallback": ctx.price_fallback,
                                         "quote_at": plan["quote_at"], "candle_at": minute_close.isoformat() if minute_close else None,
                                         "flow_at": flow_close.isoformat() if isinstance(flow_close, datetime) else None,
@@ -219,7 +223,7 @@ class MonitorScan:
                     continue
                 candidates, plan = process_scan(self.journal, ctx, read, check_move=False)
                 alerts.extend(candidates)
-                if self.scenarios and market_open:
+                if self.scenarios and market_open and not display_plan(plan):
                     self.scenarios.submit(plan, read, now)
                 delay = min(interval, 5) if plan["status"] == "GET READY" else interval
                 self.scans[symbol] = state, now + timedelta(seconds=delay)
@@ -241,7 +245,7 @@ class MonitorScan:
 def alert_deadline(alert, now):
     if alert["status"] == "EMA TREND":
         return (time_or_none(alert.get("bar")) or now) + TREND_ALERT_AGE
-    if alert["status"] == "MOVE WATCH":
+    if alert["status"] in ("MOVE WATCH", "V3 WATCH"):
         return (time_or_none(alert.get("bar")) or now) + timedelta(seconds=75)
     return now + timedelta(seconds=45 if alert["status"] in ENTRY_STATES else 180)
 

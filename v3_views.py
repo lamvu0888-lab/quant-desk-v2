@@ -1,6 +1,5 @@
 """Movement, research and contract workspaces. Read-only in Streamlit."""
-from datetime import datetime, timedelta, timezone
-import json
+from datetime import timedelta
 
 import numpy as np
 import plotly.graph_objects as go
@@ -8,51 +7,88 @@ import streamlit as st
 
 from market_session import ET, calendar, rth_bounds
 from option_quotes import option_rows, quote_status
-from terminal_data import first_listed_dte, listed_dtes, positive
+from terminal_data import positive
 from terminal_style import style_chart
-from v3_movement import enabled
-from v3_options import (UNITS, YEAR, block_simulation, calibrated_iv, contract_spec, greeks, research_rank, scenario, timeline, value, skew_scenario)
+from v3_options import YEAR, calibrated_iv, contract_spec, scenario, timeline
+from v3_provenance import display_only
 
 
-def movement_panel(ctx,plan):
-    sig=plan.get("movement_v3")
-    if not sig:return
-    st.subheader("Movement Intelligence V3")
-    st.markdown(f"**{sig['state']}** · {sig['action']}")
-    st.caption(f"{sig['source']} · {sig['at'] or 'Waiting for a close'} · {sig['mode']} · Experimental evidence scores")
-    if sig["scores"]:
-        st.bar_chart(sig["scores"],horizontal=True)
-        st.caption(sig["reason"])
-    if ctx.journal and not ctx.preview:
-        recent=ctx.journal.records(ctx.ticker,"v3_scan",scope=str(ctx.session),limit=180)
-        rows=[x["payload"]["signal"] for x in reversed(recent) if x["payload"]["signal"].get("price")]
-        if rows:
-            fig=go.Figure(go.Scatter(x=[s["at"] for s in rows],y=[s["price"] for s in rows],name="Recorded close"))
-            changes=[s for i,s in enumerate(rows) if i==0 or rows[i-1]["state"]!=s["state"]]
-            fig.add_scatter(x=[s["at"] for s in changes],y=[s["price"] for s in changes],mode="markers",text=[s["state"] for s in changes],name="State change")
-            st.plotly_chart(style_chart(fig,270),width="stretch")
-            with st.expander("Movement score history"):
-                history=go.Figure()
-                for key in ("readiness","bullish","bearish","ignition","continuation","exhaustion","data_confidence"):
-                    history.add_scatter(x=[s["at"] for s in rows],y=[s["scores"].get(key) for s in rows],name=key.replace("_"," ").title())
-                history.update_yaxes(range=[0,100])
-                st.plotly_chart(style_chart(history,300),width="stretch")
-    with st.expander("Contributors, barrier horizons and missing data"):
-        st.json({k:sig.get(k) for k in ("features","quality","invalidation","forecasts","probability","version")})
+def movement_panel(ctx, plan, read=None):
+    from movement_command import render
+    render(ctx, plan, read)
+
+
+
+def detector_comparison(reports, ticker, horizon):
+    """Headline uses the most recent session, including a session with no eligible observations."""
+    relevant = [r for r in reports if ticker in r.get("payload", {})
+                and not any(display_only(item) for item in (r, r["payload"], r["payload"][ticker]))]
+    if not relevant:
+        return None
+    report = max(relevant, key=lambda r: r["scope"])
+    ticker_report = report["payload"][ticker]
+    horizon_data = next((h for h in ticker_report.get("horizons", ()) if h.get("horizon") == horizon), {})
+    counts = horizon_data.get("outcomes", {})
+    comparable = sum(counts.get(k, 0) for k in ("up", "down", "neither"))
+    directional = counts.get("up", 0) + counts.get("down", 0)
+    rows = []
+    comparisons = horizon_data.get("comparison", {})
+    for key, label in (("v3_ignition", "V3 ignition or expansion"), ("baseline_move_watch", "V2 movement watch")):
+        metrics = comparisons.get(key)
+        if metrics:
+            rows.append({"name":label, "signals":metrics["warning_origins"], "correct":metrics["correct"],
+                         "precision":metrics.get("precision"), "recall":metrics.get("recall"),
+                         "lead":metrics.get("median_seconds_to_touch")})
+    return {"session":report["scope"], "config":report["payload"].get("research_config") or {},
+            "scans":ticker_report.get("recorded", 0),
+            "comparable":comparable, "directional":directional, "ambiguous":counts.get("ambiguous", 0), "rows":rows}
 
 
 def learning(ctx):
-    st.subheader("Daily research")
-    if not ctx.journal or ctx.preview:
-        st.info("Open Live with the worker’s shared journal to see recorded research.")
+    st.subheader("Movement comparison")
+    if ctx.preview:
+        st.info("Preview uses synthetic observations. Open Live to see the worker’s recorded performance.")
         return
+    if not ctx.journal:
+        st.info("Connect the worker’s shared journal to see recorded performance.")
+        return
+    reports = ctx.journal.records("DESK", "v3_report", limit=5)
+    horizon = st.selectbox("Movement horizon", (3, 5, 10, 15), index=1, format_func=lambda n:f"{n} minutes",
+                           key="movement_comparison_horizon")
+    view = detector_comparison(reports, ctx.ticker, horizon)
+    if view is None:
+        st.info(f"Waiting for the first completed {ctx.ticker} research report.")
+    elif not view["comparable"] or not view["rows"]:
+        st.info(f"{ctx.ticker} · {view['session']} ET · No comparable {horizon}-minute outcomes yet.")
+        st.caption(f"{view['scans']:,} scans recorded. Both methods need a complete future price window.")
+    else:
+        st.caption(f"{ctx.ticker} · {view['session']} ET · {view['comparable']:,} evaluated scans · "
+                   f"{view['directional']:,} reached a price barrier · {view['ambiguous']:,} ambiguous scans excluded.")
+        for column, row in zip(st.columns(2), view["rows"]):
+            column.markdown(f"**{row['name']}**")
+            if row["signals"]:
+                hit = f"{row['precision']:.0%}" if row["precision"] is not None else "Unavailable"
+                column.metric("Warnings in the correct direction", hit)
+                column.caption(f"{row['correct']:,} correct out of {row['signals']:,} warning scans.")
+            else:
+                column.write("No directional warnings")
+            if row["recall"] is not None:
+                column.caption(f"Detected {row['recall']:.0%} of directional outcomes.")
+            if row["lead"] is not None:
+                column.caption(f"Median time from a correct scan to the price barrier: {row['lead']/60:.1f} min.")
+        st.caption("Both methods use the same price window. Adjacent scans can describe the same move. Trade fills and P&L are tracked separately.")
+    if view:
+        config = view["config"]
+        metadata = (f'{config["version"]} · {config["mode"]}' if config.get("version") and config.get("mode")
+                    else "Unavailable for this archived report")
+        st.caption(f"Recorded detector configuration · {metadata}")
     with st.expander("Independent price events"):
         for row in ctx.journal.records(ctx.ticker,"v3_events",limit=3):
             st.write(row["scope"])
             st.dataframe(row["payload"].get("events",[]),hide_index=True)
     for stage,label in (("report","Session coverage and outcomes"),("training","Challenger validation"),("feedback","OpenAI research proposals"),("replay","Proposal replay"),("discord","Daily summary delivery")):
-        recent=ctx.journal.records("DESK","v3_"+stage,limit=5)
-        with st.expander(label,expanded=stage=="report"):
+        recent = reports if stage=="report" else ctx.journal.records("DESK","v3_"+stage,limit=5)
+        with st.expander(label):
             if not recent:st.caption("No completed run in this journal.")
             for row in recent:
                 st.write(row["scope"])
@@ -60,7 +96,7 @@ def learning(ctx):
     from v3_feedback import budget_status
     usage=budget_status(ctx.journal,ctx.now.astimezone(ET).date())
     if usage:st.dataframe(usage,hide_index=True)
-    st.caption("Post-close schedule · +15 min outcomes · +30 min training · +45 min aggregate feedback. Production promotion disabled.")
+    st.caption("After close · outcomes +15 min · training +30 min · aggregate feedback +45 min. Production promotion disabled.")
 
 
 def intervals(now,end):
@@ -75,244 +111,301 @@ def intervals(now,end):
     return gaps
 
 
-def combined(spec,times,prices,remaining,stats,entry,qty,cost,normalize,session_only,arrival,extra):
-    fig=go.Figure()
-    colors={"premium":"#16a079","delta":"#317fd4","gamma":"#d97d18","iv":"#9860c7","theta":"#c54450","vega":"#279bad","underlying":"#708594"}
-    keys=["premium","delta","gamma","iv",*extra]
-    data={**stats,"underlying":prices}
-    pnl=(stats["premium"]-entry)*spec.multiplier*qty-2*cost*qty
-    cd=[[at.astimezone(ET).strftime("%Y-%m-%d %H:%M %Z"),*v] for at,v in zip(times,zip(prices,stats["premium"],stats["delta"],stats["gamma"],stats["iv"],stats["theta"],stats["vega"],remaining*YEAR/3600,pnl))]
-    template=("%{customdata[0]}<br>Underlying $%{customdata[1]:.2f} · premium $%{customdata[2]:.2f}"
-              "<br>Δ %{customdata[3]:.3f} · Γ %{customdata[4]:.5f} · IV %{customdata[5]:.2f}%"
-              "<br>Θ/day %{customdata[6]:.3f} · Vega/point %{customdata[7]:.3f}"
-              "<br>Remaining %{customdata[8]:.2f} h · modeled P&L $%{customdata[9]:.2f}<extra></extra>")
-    for i,k in enumerate(keys):
-        raw=data[k];axis="y" if i==0 or normalize else "y"+str(i+1)
-        vals=raw
-        if normalize:
-            finite=raw[np.isfinite(raw)]
-            vals=(raw-np.min(finite))/(np.ptp(finite) or 1)*100 if len(finite) else raw
-        fig.add_scatter(x=times,y=vals,yaxis=axis,name=k.title(),line=dict(dash="dash",color=colors[k]),
-                        customdata=cd,hovertemplate=template if i==0 else "%{fullData.name}<extra></extra>")
-    style_chart(fig,470,hover="x unified")
-    if not normalize:
-        for i,k in enumerate(keys[1:],2):
-            fig.update_layout(**{"yaxis"+str(i):dict(overlaying="y",side="right",anchor="free",autoshift=True,
-                                                     showgrid=False,title=dict(text=k.title(),font=dict(color=colors[k])))})
-    fig.update_yaxes(title_text="Relative scale 0–100" if normalize else "Premium ($)",selector=dict(anchor="x"))
-    gaps=intervals(times[0],times[-1]);breaks=[]
-    for a,b in gaps:
+PRICE_COLORS = {
+    "premium": "#42e6a5", "delta": "#73b5ff", "gamma": "#ffb451",
+    "iv": "#d6a3ff", "underlying": "#d5e1ef", "theta": "#ff858e",
+    "vega": "#63e4ee", "vanna": "#efb8e1", "charm": "#eff49a",
+}
+AXIS_LABELS = {
+    "premium": "Premium ($)", "delta": "Delta", "gamma": "Gamma", "iv": "IV (%)",
+    "underlying": "Underlying ($)", "theta": "Theta ($/day)", "vega": "Vega ($/IV pt)",
+    "vanna": "Vanna (Δ/IV pt)", "charm": "Charm (Δ/day)",
+}
+
+
+def chart_history(ctx, spec, row, feed):
+    """Keep genuine, already-observed samples of this exact contract on the time axis."""
+    from terminal_data import numeric, time_or_none
+    from v3_provenance import live_record, simulated_feed
+
+    points = {}
+
+    def add(sample, available_at):
+        if str(sample.get("contract", "")).replace(" ", "").upper() != spec.code:
+            return
+        at = time_or_none(sample.get("updated_at"))
+        if not at or at > available_at or at > spec.last_trade:
+            return
+        bid, ask = positive(sample.get("bid")), positive(sample.get("ask"))
+        if bid is None or ask is None or ask < bid:
+            return
+        point = {k: numeric(sample.get(k)) for k in ("delta", "gamma", "theta", "vega")}
+        iv = positive(sample.get("iv"))
+        point.update(at=at, premium=(bid + ask) / 2, iv=100 * iv if iv else None)
+        points[at] = point
+
+    if not ctx.preview and ctx.journal:
+        rows = ctx.journal.records(ctx.ticker, "v3_scan", scope=str(ctx.session), limit=450)
+        for record in reversed(rows):
+            payload = record["payload"]
+            origin = time_or_none(record.get("origin"))
+            sig = payload.get("signal", {})
+            if not live_record(record) or not origin or origin > ctx.now:
+                continue
+            if sig.get("symbol") != ctx.ticker or sig.get("session") != str(ctx.session):
+                continue
+            for sample in payload.get("quote_samples", ()):
+                add(sample, origin)
+    if (ctx.preview or not simulated_feed(feed)) and quote_status(
+        row, feed, ctx.now, paused=ctx.paused, max_age=ctx.option_max_age
+    ) == "Fresh quote":
+        add(row, ctx.now)
+    return [points[at] for at in sorted(points)]
+
+
+def _plot_time_axis(fig, start, end):
+    same_day = start.astimezone(ET).date() == end.astimezone(ET).date()
+    divisions = 3 if same_day else 2
+    ticks = [start + (end - start) * i / divisions for i in range(divisions + 1)]
+    label_format = "%H:%M" if same_day else "%b %d" if end - start >= timedelta(days=3) else "%b %d<br>%H:%M"
+    fig.update_xaxes(
+        type="date", range=[start, end], tickvals=ticks,
+        ticktext=[t.astimezone(ET).strftime(label_format) for t in ticks],
+        tickangle=0, tickfont_size=10,
+        title_text="Eastern time", title_standoff=4, title_font_size=10,
+        showspikes=True, spikemode="across",
+        spikesnap="cursor", spikethickness=1, spikecolor="#b0bdcc",
+    )
+
+
+def _display_values(values, scale):
+    if scale is None:
+        return values
+    low, high = scale
+    if low == high:
+        return np.where(np.isfinite(values), 50., np.nan)
+    return (values - low) * (100 / (high - low))
+
+
+def combined(spec, times, prices, remaining, stats, entry, qty, cost, normalize, session_only,
+             arrival, extra, *, observed=None, preview=False, spread=0.):
+    """A single absolute time axis. Observed and scenario traces never join."""
+    keys = ["premium", "delta", "gamma", "iv", *extra]
+    data = {**stats, "underlying": prices}
+    fig = go.Figure()
+    samples = [point for point in (observed or []) if point["at"] <= times[0]]
+    hist_t = []
+    hist = {key: [] for key in keys}
+    for point in samples:
+        # A visible discontinuity signals a missing observation interval.
+        if hist_t and point["at"] - hist_t[-1] > timedelta(minutes=2):
+            hist_t.append(hist_t[-1] + timedelta(minutes=1))
+            for series in hist.values():
+                series.append(np.nan)
+        hist_t.append(point["at"])
+        for key in keys:
+            item = point.get(key)
+            hist[key].append(np.nan if item is None else item)
+
+    start = min([times[0], *hist_t])
+    gaps = intervals(start, times[-1])
+    shape_list = [] if session_only else [
+        dict(type="rect", x0=a, x1=b, y0=0, y1=1, yref="paper", layer="below",
+             line_width=0, fillcolor="rgba(151,171,194,.10)") for a, b in gaps
+    ]
+    timestamps = [t.astimezone(ET).strftime("%b %d, %Y %H:%M %Z") for t in times]
+    # After an AM-settled contract stops trading there is no executable exit bid.
+    exit_concession = np.array([spread / 2 if at <= spec.last_trade and at < spec.expires else 0. for at in times])
+    exit_values = np.maximum(0, data["premium"] - exit_concession)
+    pnl = (exit_values - entry) * qty * spec.multiplier - 2 * cost * qty
+    grouped_annotations = {}
+    markers = [(times[0], "Now"), (arrival, "Target"), (spec.expires, "Expiry")]
+    if spec.last_trade < spec.expires:
+        markers.append((spec.last_trade, "Last trade"))
+    for stamp, label in markers:
+        if start <= stamp <= times[-1]:
+            grouped_annotations.setdefault(stamp, []).append(label)
+    def visible_seconds(stamp):
+        elapsed = (stamp - start).total_seconds()
         if session_only:
-            breaks.append(dict(values=[a],dvalue=(b-a).total_seconds()*1000))
-        else:
-            fig.add_vrect(x0=a,x1=b,line_width=0,fillcolor="gray",opacity=.10,layer="below")
-    for t,label in ((times[0],"Now"),(arrival,"Target"),(times[-1],"Expiry")):
-        fig.add_shape(type="line",x0=t,x1=t,y0=0,y1=1,yref="paper",line=dict(dash="dot",width=1))
-        fig.add_annotation(x=t,y=1,yref="paper",text=label,showarrow=False,yshift=9)
-    ticks=np.linspace(0,len(times)-1,min(6,len(times)),dtype=int)
-    fig.update_xaxes(type="date",range=[times[0],times[-1]],rangebreaks=breaks,rangeslider_visible=True,
-                     tickvals=[times[i] for i in ticks],ticktext=[times[i].astimezone(ET).strftime("%b %d<br>%H:%M") for i in ticks],
-                     title_text="Eastern time · conditional scenario",showspikes=True,spikemode="across")
+            elapsed -= sum((min(stamp, b) - a).total_seconds() for a,b in gaps if a < stamp)
+        return elapsed
+
+    duration = max(1., visible_seconds(times[-1]))
+    lane_ends = []
+    for stamp, labels in sorted(grouped_annotations.items()):
+        shape_list.append(dict(type="line", x0=stamp, x1=stamp, y0=0, y1=1, yref="paper",
+                               line=dict(dash="dot", width=1, color="#92a9c2")))
+        label = " / ".join(labels)
+        position = visible_seconds(stamp) / duration
+        # Reserve label room even in the narrowest supported plot. Anchor edge
+        # labels inward and move overlapping time labels to a separate line.
+        width = (7 + 6 * len(label)) / 200
+        anchor = "left" if position < width / 2 else "right" if position > 1 - width / 2 else "center"
+        left = position - (width if anchor == "right" else width / 2 if anchor == "center" else 0.)
+        lane = next((i for i, right in enumerate(lane_ends) if left >= right), len(lane_ends))
+        if lane == len(lane_ends):
+            lane_ends.append(0.)
+        lane_ends[lane] = left + width
+        fig.add_annotation(x=stamp, xanchor=anchor, y=1, yanchor="bottom", yref="paper",
+                           text=label, showarrow=False, yshift=3 + 15 * lane,
+                           font=dict(size=10, color="#eaf2ff"))
+
+    for index, key in enumerate(keys):
+        projected = np.asarray(data[key], dtype=float)
+        actual = np.asarray(hist[key], dtype=float)
+        finite = np.concatenate((projected[np.isfinite(projected)], actual[np.isfinite(actual)]))
+        scale = (float(finite.min()), float(finite.max())) if normalize and finite.size else None
+        axis = "y" if normalize or index == 0 else f"y{index+1}"
+        label = AXIS_LABELS[key]
+        hover = "%{customdata[0]}<br>" + label + " %{customdata[1]:.4g}"
+        if key == "premium":
+            hover += "<br>Theoretical P&L $%{customdata[2]:.2f}<br>Underlying $%{customdata[4]:.2f}<br>Remaining %{customdata[3]:.2f} h"
+        fig.add_scatter(
+            x=times, y=_display_values(projected, scale), yaxis=axis,
+            name=label, mode="lines", legendgroup=key, connectgaps=False,
+            line=dict(dash="dash", color=PRICE_COLORS[key], width=2),
+            customdata=list(zip(timestamps, projected, pnl, remaining * YEAR / 3600, prices)),
+            hovertemplate=hover + "<extra>Scenario</extra>",
+        )
+        if np.any(np.isfinite(actual)):
+            qualifier = "Demo quote" if preview else "Observed quote"
+            fig.add_scatter(
+                x=hist_t, y=_display_values(actual, scale), yaxis=axis,
+                name=qualifier + " · " + label, mode="lines+markers",
+                legendgroup=key, showlegend=False, connectgaps=False,
+                line=dict(dash="solid",color=PRICE_COLORS[key], width=2), marker_size=4,
+                customdata=[(t.astimezone(ET).strftime("%b %d, %Y %H:%M %Z"), v) for t,v in zip(hist_t,actual)],
+                hovertemplate="%{customdata[0]}<br>" + label + " %{customdata[1]:.4g}<extra>" + qualifier + "</extra>",
+            )
+    style_chart(fig, 460, hover="x unified")
+    fig.update_layout(
+        shapes=shape_list, dragmode="zoom",
+        margin=dict(t=34 + len(lane_ends)*15, b=43 + 23*((len(keys)+1)//2), l=5, r=5),
+        legend=dict(xref="container", x=.5, xanchor="center", yref="container", y=0, yanchor="bottom",
+                    entrywidth=50, entrywidthmode="pixels", tracegroupgap=0, font=dict(size=10)),
+        hoverlabel=dict(namelength=-1),
+    )
+    fig.update_yaxes(title_text="Relative scale 0–100" if normalize else None,
+                     title_font_size=10, tickfont_size=10, automargin=True)
+    if not normalize:
+        # Short, color-matched unit labels keep four numeric scales legible on a
+        # phone. The legend, full series name and exact native value stay in hover.
+        fig.update_yaxes(tickprefix="$", nticks=4, tickformat=".4~g",
+                         tickfont=dict(color=PRICE_COLORS["premium"]))
+        for n, key in enumerate(keys[1:], 2):
+            values = np.asarray(data[key], dtype=float)
+            valid = values[np.isfinite(values)]
+            span = np.ptp(valid) if valid.size else 0.
+            digits = int(np.clip(1 - np.floor(np.log10(span)), 2, 5)) if span > 0 else 3
+            fig.update_layout(**{f"yaxis{n}": dict(
+                overlaying="y",side="right" if n % 2 == 0 else "left",anchor="free",
+                autoshift=True, showgrid=False, zeroline=False, nticks=4,
+                showticklabels=n<=4, tickfont=dict(size=9, color=PRICE_COLORS[key]),
+                tickprefix={"delta":"Δ","gamma":"Γ"}.get(key,""), ticksuffix="%" if key=="iv" else "",
+                tickformat=f".{digits}~f" if span>=.0001 else ".3~g", automargin=True,
+            )})
+    _plot_time_axis(fig, start, times[-1])
+    fig.update_xaxes(rangebreaks=[dict(values=[a], dvalue=(b-a).total_seconds()*1000)
+                                  for a,b in gaps] if session_only else [],
+                     rangeslider_visible=False)
     return fig
 
 
 def contracts(ctx):
-    from paper_engine import MAX_DEBIT
-    st.subheader("Options Contract Intelligence")
-    if not enabled("OPTIONS",True):st.info("Contract Intelligence is disabled.");return
-    listing=ctx.get("expirations",symbol=ctx.ticker)
-    if first_listed_dte(listing,ctx.ticker,ctx.session,ctx.now) is None:
-        st.info("Waiting for verified listed expirations.");return
-    dates=[ctx.session+timedelta(days=n) for n in listed_dtes(listing,ctx.session) if ctx.session+timedelta(days=n)>=ctx.now.astimezone(ET).date()]
-    if not dates:st.info("No current listed expiration.");return
-    exp=st.selectbox("Listed expiry · calendar DTE",dates,format_func=lambda x:f"{x} · {(x-ctx.now.astimezone(ET).date()).days} DTE")
-    side=st.segmented_control("Contract side",["call","put"],default="call") or "call"
-    feed,source=ctx.option_chain(exp.isoformat(),right=side,near=False)
-    quotes=option_rows(feed,ctx.ticker,exp.isoformat())
-    quote=ctx.chart_quote
-    if not quote:st.info("Waiting for a fresh regular-session underlying quote.");return
-    spot=quote["price"]
-    money=st.selectbox("Moneyness",["All","ATM","ITM","OTM"])
-    chain={}
-    for row in quotes:
-        if row.get("type")!=side:continue
-        try: spec=contract_spec(row,ctx.ticker)
-        except (ValueError,TypeError):continue
-        if ctx.now>=min(spec.last_trade,spec.expires): continue
-        chain[spec.code]=(spec,row)
-    if money=="ATM" and chain:
-        nearest=min(abs(spec.strike-spot) for spec,r in chain.values())
-        chain={k:v for k,v in chain.items() if abs(v[0].strike-spot)==nearest}
-    elif money in ("ITM","OTM"):
-        sign=(1 if side=="call" else -1)*(1 if money=="ITM" else -1)
-        chain={k:v for k,v in chain.items() if sign*(spot-v[0].strike)>0}
-    if not chain:st.info("No listed contract matches the selected filters and trading clock.");return
-    code=st.selectbox("Contract / strike",sorted(chain,key=lambda c:abs(chain[c][0].strike-spot)))
-    spec,row=chain[code]
-    status=quote_status(row,feed,ctx.now,paused=ctx.paused,max_age=ctx.option_max_age)
-    bid,ask=positive(row.get("bid")),positive(row.get("ask"))
-    st.caption(f"{source} · {status} · {row.get('updated_at','—')} · {spec.settlement} · {'American' if spec.american else 'European'} · ×{spec.multiplier}")
-    st.write(f"Last trading reference {spec.last_trade.astimezone(ET):%b %d %H:%M %Z} · Payoff reference {spec.expires.astimezone(ET):%b %d %H:%M %Z}")
-    st.dataframe([{k:row.get(k) for k in ("bid","ask","last","volume","open_interest","iv","delta","gamma","theta","vega")} | {"mid":(bid+ask)/2 if bid and ask else None}],hide_index=True)
-    if status!="Fresh quote" or not bid or not ask:
-        st.info("Scenario calibration requires a current two-sided quote.");return
-    a,b,c=st.columns(3)
-    target_basis=st.selectbox("Underlying target source",["Manual target","Trade Plan TP1","Movement upper barrier (5m)","Movement lower barrier (5m)"])
-    suggested=spot
-    if target_basis!="Manual target":
-        from terminal_views import read_workspace
-        from decision_flow import build_decision
-        plan,_=build_decision(ctx,read_workspace(ctx),warm_options=False)
-        barriers=(plan.get("movement_v3") or {}).get("forecasts",{}).get("5",{})
-        suggested=plan.get("tp1") if target_basis=="Trade Plan TP1" else barriers.get("upper" if "upper" in target_basis else "lower")
-        if not positive(suggested):st.info("This target is unavailable for the current decision.");return
-    target=a.number_input("Target underlying ($)",min_value=.01,value=round(float(suggested),2),key=f"v3_target_{ctx.ticker}_{target_basis}_{suggested if target_basis!='Manual target' else 0}")
-    hours=(spec.expires-ctx.now).total_seconds()/3600
-    default=ctx.now+timedelta(seconds=min(hours*1800,3600))
-    target_date=b.date_input("Arrival date (ET)",value=default.astimezone(ET).date(),min_value=ctx.now.astimezone(ET).date(),max_value=spec.expires.astimezone(ET).date(),key=f"v3_day_{code}")
-    target_time=c.time_input("Arrival time (ET)",value=default.astimezone(ET).time().replace(microsecond=0),step=60,key=f"v3_time_{code}")
-    arrival=datetime.combine(target_date,target_time,tzinfo=ET).astimezone(timezone.utc)
-    if not ctx.now<arrival<=spec.expires:st.info("Choose an arrival after now and through the payoff reference.");return
-    a,b,c=st.columns(3)
-    shock=a.number_input("IV change (points)",-95.,200.,0.)
-    rate=b.number_input("Annual rate (%)",-5.,30.,4.)/100
-    div=c.number_input("Annual dividend yield (%)",0.,30.,0.)/100
-    mid=(bid+ask)/2
-    iv=calibrated_iv(spec,spot,ctx.now,mid,rate,div)
-    if iv is None:st.info("The observed midpoint is outside the supported IV bracket for this model.");return
-    fresh_side=[r for r in quotes if r.get("type")==side and quote_status(r,feed,ctx.now,paused=ctx.paused,max_age=ctx.option_max_age)=="Fresh quote"]
-    if st.toggle("Use observed strike skew for the target IV"):
-        skew=skew_scenario(fresh_side,spec.strike,spot,target)
-        if skew is None:
-            st.info("The target needs at least three fresh strikes bracketing both moneyness points.");return
-        shock+=skew*100
-        st.caption(f"Sticky-moneyness scenario · current expiry contributes {skew*100:+.2f} IV points.")
-    if iv+shock/100<=0:st.info("Target IV must be positive.");return
-    a,b,c=st.columns(3)
-    entry=a.number_input("Entry premium ($)",min_value=.01,value=float(ask),key=f"v3_premium_{code}")
-    qty=b.number_input("Scenario contracts",1,2,1)
-    fee=c.number_input("Cost per contract per side ($)",0.,25.,.65)
-    controls=st.columns(3)
-    step=controls[0].selectbox("Minutes per point",[0,1,3,5,15,30,60,240,1440],format_func=lambda x:str(x) if x else "Auto")
-    norm=controls[1].toggle("Normalize chart",value=True)
-    rth=controls[2].toggle("Regular sessions only")
-    extra=st.multiselect("Additional overlays",["underlying","theta","vega"])
-    custom=[]
-    if st.toggle("Custom intermediate price path"):
-        knots=st.text_input("Elapsed minutes and price pairs",placeholder="5,701.50; 12,703.00")
+    from contract_workspace import contracts as show_contracts
+    show_contracts(ctx)
+
+
+def comparison_label(ticker, spec, now, peers=()):
+    day = spec.expires.astimezone(ET).date()
+    days = (day - now.astimezone(ET).date()).days
+    label = f"{ticker} {spec.strike:g} {spec.right.title()} · {days}DTE"
+    if any(other.code != spec.code and other.strike == spec.strike and other.right == spec.right
+           and other.expires.astimezone(ET).date() == day for other in peers):
+        return f"{label} · {spec.settlement.split(' · ')[0]}"
+    return label
+
+
+def compare_contracts(ctx, dates, exp, side, primary_spec, primary_times, primary_stats,
+                      spot, target, arrival, shift, rate, div, fee, custom, *, iv_basis="midpoint",
+                      primary_entry=None, primary_spread=None, qty=1):
+    from contract_sources import contract_chain
+    from iv_decision import iv_value
+
+    if not st.toggle("Compare another strike or expiration", key="v3_compare"):
+        return
+    today = ctx.now.astimezone(ET).date()
+    other_day = st.selectbox(
+        "Comparison expiration", dates, index=dates.index(exp), key="v3_compare_expiry",
+        format_func=lambda day: f"{(day-today).days}DTE · {day:%b %d, %Y}",
+    )
+    feed, source = contract_chain(ctx, other_day.isoformat(), side)
+    entries = {}
+    for row in option_rows(feed, ctx.ticker, other_day.isoformat()):
+        if row.get("type") != side or quote_status(
+            row, feed, ctx.now, max_age=ctx.option_max_age, paused=ctx.paused
+        ) != "Fresh quote":
+            continue
         try:
-            for item in knots.split(";") if knots.strip() else []:
-                minute,level=map(float,item.split(","))
-                if not np.isfinite([minute,level]).all():raise ValueError()
-                custom.append((minute*60,level))
-        except ValueError:st.info("Enter pairs of elapsed minutes and underlying price, separated by semicolons.");return
+            other = contract_spec(row, ctx.ticker)
+        except (ValueError, TypeError):
+            continue
+        if other.code != primary_spec.code and min(other.last_trade, other.expires) > ctx.now:
+            entries[other.code] = other, row
+    if not entries:
+        st.info("No other fresh contract matches this side and expiration.")
+        return
+    peers = [primary_spec, *(spec for spec, row in entries.values())]
+    selected = st.selectbox(
+        "Comparison contract", sorted(entries, key=lambda key: abs(entries[key][0].strike-spot)),
+        format_func=lambda key: comparison_label(ctx.ticker, entries[key][0], ctx.now, peers),
+        key=f"v3_other_{primary_spec.code}_{other_day}",
+    )
+    other, row = entries[selected]
+    fitted = iv_value(row.get("iv")) if iv_basis == "provider" else None
+    iv_source = "provider IV"
+    if fitted is None:
+        fitted = calibrated_iv(other, spot, ctx.now, (row["bid"]+row["ask"])/2, rate, div)
+        iv_source = "midpoint-implied IV"
+    if fitted is None or fitted+shift <= 0:
+        st.info("The comparison contract has no usable IV for this scenario.")
+        return
     try:
-        times=timeline(ctx.now,spec.expires,step,arrival=arrival)
-        prices,remaining,stats=scenario(spec,ctx.now,times,spot,target,arrival,iv,iv+shock/100,rate,div,custom)
-    except ValueError as exc:st.info(str(exc));return
-    fig=combined(spec,times,prices,remaining,stats,entry,qty,fee,norm,rth,arrival,extra)
-    if not norm:
-        for key in ("premium","delta","gamma","iv"):
-            observed=mid if key=="premium" else row.get(key)
-            if observed is not None:
-                fig.add_scatter(x=[row["updated_at"]],y=[observed*100 if key=="iv" else observed],mode="markers",
-                                name="Observed midpoint" if key=="premium" else "Provider "+key,yaxis={"premium":"y","delta":"y2","gamma":"y3","iv":"y4"}[key])
-    st.plotly_chart(fig,width="stretch",config={"displayModeBar":True,"scrollZoom":True})
-    i=times.index(arrival)
-    premium=float(stats["premium"][i]); concession=(ask-bid)/2 if arrival<spec.expires else 0
-    pnl=(max(0,premium-concession)-entry)*100*qty-2*fee*qty
-    summary=st.columns(3)
-    summary[0].metric("Modeled P&L at target",f"${pnl:,.2f}",help="Includes entry premium, estimated exit concession and both fees.")
-    summary[1].metric("Return on modeled debit",f"{100*pnl/((entry*spec.multiplier+fee)*qty):+.1f}%")
-    summary[2].metric("Modeled position value",f"${premium*spec.multiplier*qty:,.2f}")
-    st.caption(f"Target fair value ${premium:.2f} · scenario exit ${max(0,premium-concession):.2f} · expiration break-even before fees {spec.strike+(entry if side=='call' else -entry):,.2f}. "
-               f"IV fitted to midpoint {iv:.1%}. Dashed lines are conditional estimates. Gray bands mark hours outside underlying RTH.")
-    with st.expander("Greeks and price/time P&L"):
-        g=greeks(spec,spot,hours*3600/YEAR,iv,rate,div,extended=True)
-        ds=target-spot; dv=shock; elapsed=(arrival-ctx.now).total_seconds()/86400
-        approx=float(g["premium"]+g["delta"]*ds+.5*g["gamma"]*ds**2+g["vega"]*dv+.5*g["vomma"]*dv**2+g["vanna"]*ds*dv+g["theta"]*elapsed)
-        st.caption(f"Target full reprice ${premium:.2f} · local Taylor estimate ${approx:.2f}. Calendar theta and IV shocks are applied once.")
-        st.dataframe([{"Measure":k,"Value":float(v),"Units":UNITS[k]} for k,v in g.items()],hide_index=True)
-        index=np.unique(np.linspace(0,len(times)-1,min(32,len(times)),dtype=int)); spots=np.linspace(spot*.98,spot*1.02,21)
-        marks=value(spec,spots[:,None],remaining[index],np.where(remaining[index]>0,stats["iv"][index]/100,iv+shock/100),rate,div)
-        pnl_grid=(np.maximum(0,marks-np.where(remaining[index]>0,(ask-bid)/2,0))-entry)*100*qty-2*fee*qty
-        measure=st.selectbox("Heatmap",["Net P&L","Fair premium","Delta","Gamma","Calendar theta","Vega"])
-        if measure=="Fair premium":pnl_grid=marks
-        elif measure not in ("Net P&L","Fair premium"):
-            key={"Delta":"delta","Gamma":"gamma","Calendar theta":"theta","Vega":"vega"}[measure]
-            pnl_grid=greeks(spec,spots[:,None],remaining[index],np.where(remaining[index]>0,stats["iv"][index]/100,iv+shock/100),rate,div)[key]
-        grid=go.Figure(go.Heatmap(x=[times[j] for j in index],y=spots,z=pnl_grid,colorscale="RdBu",zmid=0,colorbar_title=measure))
-        st.plotly_chart(style_chart(grid,330,legend=False),width="stretch")
-    with st.expander("Same target at different times"):
-        alternatives=sorted({ctx.now+timedelta(seconds=(spec.expires-ctx.now).total_seconds()*f) for f in (.1,.5,.9)}|{arrival})
-        comparison=[]
-        for at in alternatives:
-            fair=float(value(spec,target,(spec.expires-at).total_seconds()/YEAR,iv+shock/100,rate,div))
-            exit_est=max(0,fair-((ask-bid)/2 if at<spec.expires else 0))
-            comparison.append({"Arrival ET":at.astimezone(ET).strftime("%b %d %H:%M"),"Target":target,"Fair premium":round(fair,3),
-                               "Scenario P&L ($)":round((exit_est-entry)*spec.multiplier*qty-2*fee*qty,2)})
-        st.dataframe(comparison,hide_index=True)
-        st.caption("Identical target and target IV. Outside market hours each value is theoretical.")
-    if ctx.journal and not ctx.preview:
-        with st.expander("Recorded premium forecasts and subsequent quotes",key="v3_actual_quotes",on_change="rerun") as history:
-            if history.open:
-                forecasts=[];observed=[]
-                for r in reversed(ctx.journal.records(ctx.ticker,"v3_scan",scope=str(ctx.session),limit=450)):
-                    payload=r["payload"]
-                    for item in payload.get("options",[]):
-                        if item.get("contract")==code:forecasts.append((item["arrival"],item["forecast"]))
-                    for item in payload.get("quote_samples",[]):
-                        if item.get("contract")==code:observed.append((item["updated_at"],(item["bid"]+item["ask"])/2))
-                chart=go.Figure()
-                for points,name,dash in ((forecasts,"Prior target scenario","dash"),(observed,"Observed midpoint","solid")):
-                    if points:chart.add_scatter(x=[x for x,y in points],y=[y for x,y in points],name=name,line=dict(dash=dash))
-                if chart.data:st.plotly_chart(style_chart(chart,280),width="stretch")
-                else:st.caption("No recorded observations for this series.")
-    with st.expander("Empirical 5-minute option scenarios", key="v3_mc", on_change="rerun") as mc:
-        if mc.open:
-            result=block_simulation(spec,ctx.history()[0],ctx.now,spot,iv,entry,rate=rate,dividend=div,spread=ask-bid,fee=fee)
-            if result:st.json(result)
-            else:st.caption("At least 100 contiguous historical 5-minute price paths and five tradable minutes remaining are required.")
-    with st.expander("Current IV by strike"):
-        from iv_decision import iv_value
-        skew=sorted((r["strike"],iv_value(r.get("iv"))*100) for r in fresh_side if iv_value(r.get("iv")) and r.get("strike"))
-        if len(skew)>=2:
-            st.plotly_chart(style_chart(go.Figure(go.Scatter(x=[v[0] for v in skew],y=[v[1] for v in skew],mode="lines+markers",name="Provider IV (%)",
-                             hovertemplate="Strike %{x}<br>IV %{y:.2f}%<extra></extra>")),260),width="stretch")
-        else:st.caption("Insufficient fresh strikes.")
-    compare_contracts(ctx,dates,exp,side,spec,times,stats,spot,target,arrival,shock/100,rate,div,fee,custom)
-    if enabled("SELECTION",True):
-        fresh=[r for _,r in chain.values() if quote_status(r,feed,ctx.now,max_age=ctx.option_max_age,paused=ctx.paused)=="Fresh quote"]
-        ranks=research_rank(fresh,spot,target,arrival,ctx.now,rate,div,MAX_DEBIT,fee,ctx.ticker)
-        st.write("Conditional comparison · one contract, same target and arrival")
-        if not ranks or ranks[0]["conditional_pnl"]<=0:st.info("No suitable contract for a positive modeled return under this scenario.")
-        if ranks:st.dataframe(ranks[:20],hide_index=True)
-
-
-def compare_contracts(ctx,dates,exp,side,primary_spec,primary_times,primary_stats,spot,target,arrival,shift,rate,div,fee,custom):
-    enabled_compare=st.toggle("Compare another strike or expiration",key="v3_compare")
-    if not enabled_compare:return
-    other_day=st.selectbox("Comparison expiry",dates,index=dates.index(exp),key="v3_compare_expiry")
-    feed,source=ctx.option_chain(other_day.isoformat(),right=side,near=False)
-    entries={}
-    for row in option_rows(feed,ctx.ticker,other_day.isoformat()):
-        if row.get("type")!=side or quote_status(row,feed,ctx.now,max_age=ctx.option_max_age,paused=ctx.paused)!="Fresh quote":continue
-        try: other=contract_spec(row,ctx.ticker)
-        except (ValueError,TypeError):continue
-        if other.code!=primary_spec.code and min(other.expires,other.last_trade)>ctx.now: entries[other.code]=(other,row)
-    if not entries:st.info("No second fresh matching series.");return
-    selected=st.selectbox("Comparison contract",sorted(entries,key=lambda k:abs(entries[k][0].strike-spot)))
-    other,row=entries[selected]
-    fitted=calibrated_iv(other,spot,ctx.now,(row["bid"]+row["ask"])/2,rate,div)
-    if fitted is None or fitted+shift<=0:st.info("Unable to calibrate comparison IV.");return
-    times=timeline(ctx.now,other.expires,arrival=arrival)
-    _,_,stats=scenario(other,ctx.now,times,spot,target,arrival,fitted,fitted+shift,rate,div,custom)
-    field=st.selectbox("Comparison measure",["premium","delta","gamma","iv","theta","vega"])
-    fig=go.Figure()
-    for spec,axis,data in ((primary_spec,primary_times,primary_stats),(other,times,stats)):
-        fig.add_scatter(x=axis,y=data[field],name=spec.code,mode="lines",line=dict(dash="dash"),
-                        customdata=[x.astimezone(ET).strftime("%b %d %H:%M %Z") for x in axis],
-                        hovertemplate="%{customdata}<br>%{y:.3f}<extra>%{fullData.name}</extra>")
-    fig.update_yaxes(title=UNITS[field])
-    st.plotly_chart(style_chart(fig,360),width="stretch")
-    st.caption(f"{source} comparison · same underlying and IV paths · each series ends at its own payoff reference.")
+        times = timeline(ctx.now, other.expires, arrival=arrival)
+        _, _, stats = scenario(other, ctx.now, times, spot, target, arrival, fitted,
+                               fitted+shift, rate, div, custom)
+    except ValueError as exc:
+        st.info(str(exc))
+        return
+    field = st.selectbox("Comparison measure", ["premium","delta","gamma","iv","theta","vega"],
+                         format_func=lambda k: AXIS_LABELS[k])
+    chart = go.Figure()
+    summaries = []
+    for spec, axis, data, entry, width in (
+        (primary_spec, primary_times, primary_stats, primary_entry, primary_spread),
+        (other, times, stats, row["ask"], row["ask"] - row["bid"]),
+    ):
+        label = comparison_label(ctx.ticker, spec, ctx.now, peers)
+        chart.add_scatter(
+            x=axis, y=data[field], name=label, mode="lines", line=dict(dash="dash"),
+            customdata=[x.astimezone(ET).strftime("%b %d %H:%M %Z") for x in axis],
+            hovertemplate="%{customdata}<br>%{y:.4g}<extra>%{fullData.name}</extra>",
+        )
+        if arrival not in axis:
+            summaries.append(f"{label} expires before the target time.")
+        elif entry is not None and width is not None:
+            mark = data["premium"][axis.index(arrival)]
+            concession = width/2 if arrival<spec.expires else 0.
+            pnl = ((max(0,mark-concession)-entry)*spec.multiplier-2*fee)*qty
+            if arrival<=spec.last_trade:
+                summaries.append(f"{label} · target premium ${mark:,.2f} · modeled P&L ${pnl:,.2f}")
+            else:
+                summaries.append(f"{label} · theoretical value ${mark:,.2f} after last trading.")
+    style_chart(chart, 330)
+    chart.update_yaxes(title=AXIS_LABELS[field])
+    _plot_time_axis(chart, ctx.now, max(primary_spec.expires, other.expires))
+    st.plotly_chart(chart, width="stretch", theme=None)
+    if summaries:
+        st.write("  \n".join(summaries))
+    st.caption(f"{source} · comparison starts from {iv_source} ({fitted:.1%}). Both contracts use the same underlying path and IV-point change.")

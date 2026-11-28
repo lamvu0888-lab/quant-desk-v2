@@ -314,7 +314,8 @@ def test_live_dashboard_reads_webull_quote_and_renders_movement_detector(monkeyp
     prices["quote"] = snapshot({"last_price": spot, "price_time_utc": current[0].isoformat()}, current[0])
     app.button(key="overview_open_movement").click().run()
     assert not app.exception and not app.number_input
-    assert any(f"Webull last trade {spot:,.2f}" in row.value for row in app.caption)
+    banner = next(row.value for row in app.markdown if '<div class="qd-symbol-bar">' in row.value)
+    assert f"Webull · {spot:,.2f}" in banner and "FRESH QUOTE" in banner
 
 
 def test_webull_fast_quote_cadence_keeps_retry_and_sandbox_limits(monkeypatch):

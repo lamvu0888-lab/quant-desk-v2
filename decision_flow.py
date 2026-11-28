@@ -6,7 +6,8 @@ from datetime import datetime, timedelta
 from adaptive_exits import propose as propose_exits
 from data_utils import DataError, field, utc
 from dealer_hedging import UNITS, hedge_scenarios, hedge_snapshot, level_crossings
-from futures_proxy import recent_pressure
+from futures_proxy import price_confirmation, recent_pressure
+from v3_provenance import simulated_context, simulated_feed
 from early_flow import confirmation
 from decision_engine import ENTRY_STATES, make_trade_plan
 from desk_analytics import FIVE_MINUTES, MINUTE, candles_on
@@ -90,7 +91,7 @@ def read_iv(ctx, vol, regime, spot, expiry, webull_chain=None):
     return report
 
 
-from v3_movement import enabled as v3_enabled, signal as movement_signal
+from v3_movement import enabled as v3_enabled, signal as movement_signal, prior_state, resolve_state
 
 
 def build_decision(ctx, read, *, warm_options=True):
@@ -109,12 +110,15 @@ def build_decision(ctx, read, *, warm_options=True):
     points = []
     footprint_source = "Observed ETF footprint" if ctx.ticker not in INDICES else "ES/MES footprint proxy"
     cvd_proxy = None
+    cross_market = None
     if (ctx.ticker == "SPX" and ctx.webull_store and
             callable(getattr(ctx.webull_store, "futures_activity", None)) and minute_close and not ctx.paused):
         for root in ("ES", "MES"):
             feed = ctx.webull_store.futures_activity(root, ctx.now, ctx.session, paused=ctx.paused)
-            if feed.error or not feed.snapshot or feed_has_delay(feed) or feed.snapshot.meta.get("delay_minutes") != 0:
+            if feed.error or not feed.snapshot or simulated_feed(feed) or feed_has_delay(feed) or feed.snapshot.meta.get("delay_minutes") != 0:
                 continue
+            if not cross_market:
+                cross_market = price_confirmation(feed.obj.get("points", []), minute_close, feed.obj.get("contract"))
             if not points and feed.obj.get("points"):
                 points = feed.obj["points"]
                 footprint_source = f"{root} footprint proxy"
@@ -151,6 +155,28 @@ def build_decision(ctx, read, *, warm_options=True):
                                     if row["horizon"] == 5 and row["scenario"] == shock and row["total"] is not None), None)
             if dealer_scenario:
                 plan = assemble(levels)
+    flow1 = Feed()
+    if ctx.ticker in ("SPX", "SPY", "QQQ") and session["status"] == "OPEN" and not ctx.paused:
+        flow1 = ctx.timeline(interval="1m")
+        if not ctx.preview and ctx.ticker in ("QQQ", "SPY") and callable(getattr(ctx.webull_store, "stock_footprint", None)):
+            footprint = ctx.webull_store.stock_footprint(ctx.ticker)
+            if not footprint.error and footprint.snapshot and not simulated_feed(footprint) and footprint.snapshot.meta.get("delay_minutes") == 0:
+                points = footprint.obj.get("points", [])
+    # Evaluate movement before entry and option gates. A fresh ignition should request
+    # an immediate contract read on the worker even while a strategy remains in WAIT.
+    sig = None
+    movement_issue = False
+    if v3_enabled("MOVEMENT", True) and ctx.ticker in ("SPY", "SPX", "QQQ"):
+        gamma_time = source_stamp("exposure", read["gamma_feed"], ctx.ticker) if gamma else None
+        inputs = {**plan, "cross_market": cross_market, "gamma_at": gamma_time.isoformat() if gamma_time else None,
+                  "iv_at": iv["atm_at"]}
+        try:
+            sig = movement_signal(ctx, read, inputs, flow1, points, footprint_source, gamma)
+            if sig.get("price") is not None:
+                sig = resolve_state(sig, prior_state(getattr(ctx, "journal", None), ctx, sig))
+        except (ValueError, TypeError, ArithmeticError, KeyError):
+            movement_issue = True
+    ignition = bool(sig and sig["state"].endswith("IGNITION"))
     def needs_market_checks():
         return plan["status"] in (*ENTRY_STATES, "GET READY") or bool(
             plan.get("confirmed") and not box and plan["direction"] and not quality and not plan["blocks"])
@@ -161,7 +187,7 @@ def build_decision(ctx, read, *, warm_options=True):
         if dark.snapshot and not dark.error and not feed_has_delay(dark) and dark_day == ctx.session:
             levels += dark_levels(same_ticker(dark.rows, ctx.ticker), dark.snapshot.received_at.isoformat(), 3)
             plan = assemble(levels)
-    if use_webull_chain and not warm_options and needs_market_checks():
+    if use_webull_chain and not warm_options and (needs_market_checks() or ignition):
         webull_chain, _ = ctx.option_chain(ctx.expiry, provider="Webull")
         iv = read_iv(ctx, read["vol"], read["regime"], spot, ctx.expiry, webull_chain=webull_chain)
         if iv["atm_sample"]:
@@ -187,17 +213,17 @@ def build_decision(ctx, read, *, warm_options=True):
     plan["price_trend"] = read.get("price_trend")
     review = None
     research_feed = webull_chain
-    if use_webull_chain and (warm_options or needs_market_checks()):
+    if use_webull_chain and (warm_options or needs_market_checks() or ignition):
         review = option_review(webull_chain, "Webull", ctx.ticker, ctx.expiry, spot, plan["direction"], ctx.now,
                                max_age=ctx.option_max_age, paused=ctx.paused)
-        if not review["ready"] and needs_market_checks() and ctx.store:
+        if not review["ready"] and (needs_market_checks() or ignition) and ctx.store:
             alternate_chain, source = ctx.option_chain(ctx.expiry, provider="Tradytics")
             alternate = option_review(alternate_chain, source, ctx.ticker, ctx.expiry, spot, plan["direction"], ctx.now,
                                       max_age=ctx.option_max_age, paused=ctx.paused)
             if alternate["ready"]:
                 research_feed = alternate_chain
                 review = alternate
-    elif needs_market_checks():
+    elif needs_market_checks() or ignition:
         chain, source = ctx.option_chain(ctx.expiry, provider="Tradytics") if ctx.expiry and ctx.store else (Feed(), "Tradytics")
         research_feed = chain
         review = option_review(chain, source, ctx.ticker, ctx.expiry, spot, plan["direction"], ctx.now,
@@ -246,20 +272,18 @@ def build_decision(ctx, read, *, warm_options=True):
     day = candles_on(read["buckets"], ctx.session)
     plan["crossings"] = (level_crossings(day[-2]["close"], day[-1]["close"], plan["gamma_levels"])
                          if len(day) >= 2 and not quality and gamma_at and gamma_at <= utc(day[-1]["time_utc"]) else [])
-    flow1 = Feed()
-    if ctx.ticker in ("SPX", "SPY", "QQQ") and session["status"] == "OPEN" and not ctx.paused and not ctx.preview:
-        flow1 = ctx.timeline(interval="1m")
-        if ctx.ticker in ("QQQ", "SPY") and callable(getattr(ctx.webull_store, "stock_footprint", None)):
-            footprint = ctx.webull_store.stock_footprint(ctx.ticker)
-            if not footprint.error and footprint.snapshot and footprint.snapshot.meta.get("delay_minutes") == 0:
-                points = footprint.obj.get("points", [])
     plan["confirmation_modes"] = confirmation(plan, ctx.now, flow1, points, footprint_source, read["candles"])
     if ctx.ticker in ("SPY", "SPX", "QQQ"):
         plan["adaptive_exit"] = propose_exits(plan, read["regime"].get("atr"), levels)
-    if v3_enabled("MOVEMENT", True) and ctx.ticker in ("SPY","SPX","QQQ"):
+    if simulated_context(ctx, read) or simulated_feed(flow1) or simulated_feed(research_feed):
+        plan["demo"] = True
+        if sig:
+            sig["preview"] = True
+    if movement_issue:
+        plan["v3_input_issue"] = "Movement research received an invalid observation."
+    if sig:
+        plan["movement_v3"] = sig
         try:
-            sig = movement_signal(ctx, read, plan, flow1, points, footprint_source, gamma)
-            plan["movement_v3"] = sig
             if v3_enabled("RECORD") and ctx.expiry and research_feed.snapshot and not quote_issues:
                 from option_quotes import fresh_option_rows
                 rows = fresh_option_rows(research_feed,ctx.ticker,ctx.expiry,ctx.now,max_age=ctx.option_max_age,paused=ctx.paused)

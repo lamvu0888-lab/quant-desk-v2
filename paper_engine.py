@@ -12,6 +12,7 @@ from entry_score import MIN_ENTRY_SCORE
 from early_flow import EARLY
 from gemini_advisor import BASELINE, SHADOW
 from live_chain import contract_symbol, occ_info, unwrap
+from v3_provenance import display_plan
 from market_session import ET, rth_bounds, session_state
 from option_quotes import fresh_option_rows, spread_fraction
 from terminal_data import first_listed_dte, listed_dtes, numeric, positive, time_or_none
@@ -181,7 +182,7 @@ def fast_setup(plan):
 def valid_plan(plan):
     direction = ENTRY.get(plan.get("status"))
     prices = [positive(plan.get(k)) for k in ("stop", "entry", "tp1", "tp2")]
-    return bool(direction and direction == plan.get("direction") and not plan.get("demo")
+    return bool(direction and direction == plan.get("direction") and not display_plan(plan)
                 and (numeric(plan.get("score")) or 0) >= MIN_ENTRY_SCORE
                 and 0 < (numeric(plan.get("hold")) or 0) <= 15 and all(prices)
                 and all(direction * (b - a) > 0 for a, b in zip(prices, prices[1:]))
@@ -264,6 +265,8 @@ def skip(trade, reason):
 def attempt_entry(trade, ctx, webull, halted, get_now=clock):
     plan, symbol, now = trade["plan"], trade["symbol"], ctx.now
     alert = time_or_none(trade["origin"])
+    if getattr(ctx, "preview", False) or display_plan(plan):
+        return skip(trade, "Synthetic data excluded from paper execution")
     if halted:
         return skip(trade, "Daily paper loss stop")
     if not valid_plan(plan) or not supports_options(symbol):

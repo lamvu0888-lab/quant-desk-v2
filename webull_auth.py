@@ -70,7 +70,7 @@ class WebullAuthorization:
                 db.execute("CREATE TABLE IF NOT EXISTS qd_webull_auth (scope TEXT PRIMARY KEY, body TEXT NOT NULL)")
                 param = "%s" if self.dsn else "?"
                 row = db.execute("SELECT body FROM qd_webull_auth WHERE scope=" + param, (self.scope,)).fetchone()
-                content = self.cipher.decrypt(row[0].encode()).decode() if row else ""
+                content = self.cipher.decrypt(row[0].encode("ascii") if isinstance(row[0], str) else row[0]).decode() if row else ""
                 if not content:
                     legacy = Path(os.getenv("WEBULL_OPENAPI_TOKEN_DIR") or "conf") / "token.txt"
                     if legacy.is_file():

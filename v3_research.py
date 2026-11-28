@@ -1,4 +1,5 @@
 """Matured, point-in-time barrier labels and chronological challenger evaluation."""
+from v3_provenance import live_record
 from collections import Counter, defaultdict
 from datetime import timedelta
 import json
@@ -8,10 +9,15 @@ import numpy as np
 from scipy.optimize import minimize
 from scipy.special import expit
 from terminal_data import time_or_none
-from v3_movement import HORIZONS, MINUTE
+from v3_movement import HORIZONS, MINUTE, VERSION, active_mode
 
 FEATURES=("price_z","acceleration","persistence","range_position","net_pressure","footprint_pressure","relative_volume")
 SYMBOLS=("SPY","SPX","QQQ")
+
+
+def same_model(row, version, mode):
+    sig = row.get("payload", {}).get("signal", {})
+    return live_record(row) and sig.get("version") == version and sig.get("mode") == mode
 
 
 def scope_rows(records):
@@ -19,7 +25,7 @@ def scope_rows(records):
     for entry in sorted(records,key=lambda e:e["origin"]):
         p=entry["payload"]
         s=p["signal"]
-        if s["preview"] or not p["ohlcv"] or not s["forecasts"]: continue
+        if not live_record(entry) or not p["ohlcv"] or not s["forecasts"]: continue
         # Never stitch different price sources, option scopes or model versions across a label path.
         key=(s["symbol"],s["session"],s["source"],p["scope"],s["version"],s["mode"])
         groups[key].setdefault(time_or_none(s["at"]),entry)
@@ -48,7 +54,7 @@ def matured(records):
                         arrival=(start+index*MINUTE-processed).total_seconds()
                         break
                 direction=1 if outcome=="up" else -1 if outcome=="down" else 0
-                examples.append(dict(symbol=key[0],session=key[1],at=row["origin"],end=(start+h*MINUTE).isoformat(),
+                examples.append(dict(symbol=key[0],session=key[1],source=key[2],scope=key[3],version=key[4],mode=key[5],at=row["origin"],end=(start+h*MINUTE).isoformat(),
                                      horizon=h,outcome=outcome,arrival_seconds=arrival,
                                      up_excursion=max(b["high"] for b in bars)-sig["price"],
                                      down_excursion=sig["price"]-min(b["low"] for b in bars),
@@ -133,7 +139,7 @@ def archive(records,root,symbol,day):
     from tempfile import NamedTemporaryFile
     root=Path(root); root.mkdir(exist_ok=True,parents=True)
     target=root/f"{day}-{symbol}.parquet"
-    rows=[dict(id=e["id"],origin=e["origin"],payload=json.dumps(e["payload"],allow_nan=False)) for e in records]
+    rows=[dict(id=e["id"],origin=e["origin"],payload=json.dumps(e["payload"],allow_nan=False)) for e in records if live_record(e)]
     if rows:
         with NamedTemporaryFile(dir=root,suffix=".partial",delete=False) as temp: path=Path(temp.name)
         try:
@@ -232,7 +238,7 @@ def market_events(records, health_rows, horizon=5):
     for r in sorted([*records,*health_rows],key=lambda v:v["origin"]):
         p=r["payload"]
         s=p["signal"]
-        if s["preview"] or not p.get("ohlcv") or not s.get("at"):
+        if not live_record(r) or not p.get("ohlcv") or not s.get("at"):
             continue
         t=time_or_none(s["at"])
         bar=p["ohlcv"]
@@ -289,9 +295,10 @@ def market_events(records, health_rows, horizon=5):
     return {"events":events,"eligible_origins":eligible,"ambiguous":ambiguous,"horizon":horizon}
 
 
-def training_records(journal,symbol,through,limit=18000):
+def training_records(journal,symbol,through,limit=18000,*,version=VERSION,mode=None):
     """Bound memory on the small hosted worker. Historical contract chains are irrelevant to barrier fitting."""
     rows=[]
+    mode=mode or active_mode()
     with journal.connection() as db:
         cur=db.execute(journal.sql("SELECT id,scope,origin,payload FROM qd25_observation WHERE symbol=? "
                                    "AND kind='v3_scan' AND scope<=? ORDER BY origin DESC,id DESC LIMIT ?"),
@@ -299,6 +306,8 @@ def training_records(journal,symbol,through,limit=18000):
         while batch:=cur.fetchmany(32):
             for ident,scope,origin,raw in batch:
                 payload=json.loads(raw)
+                if not same_model({"payload": payload}, version, mode):
+                    continue
                 slim={k:payload[k] for k in ("signal","ohlcv","scope","decision","legacy_warning") if k in payload}
                 rows.append(dict(id=ident,scope=scope,origin=origin,payload=slim))
     return rows

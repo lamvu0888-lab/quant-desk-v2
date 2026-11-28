@@ -128,7 +128,10 @@ def test_upgrade_preview_pages_expiry_and_exports(monkeypatch):
     assert not app.exception
     assert any("3 DTE" in value.value for value in app.markdown)
     for page in ("Money Map", "Trade Plan", "Scanner", "TradingView", "Options Flow"):
-        app.selectbox(key="desk_page").set_value(page).run()
+        if page == "Trade Plan":
+            app.selectbox(key="desk_page").set_value(page).run()
+        else:
+            app.button(key=f"open_tool_{page}").click().run()
         assert not app.exception, page
         if page == "TradingView":
             app.button(key="generate_tv").click().run()

@@ -9,7 +9,7 @@
 ### During the setup
 
 1. **5-minute direction, 3-minute structure, 1-minute timing.** Use the 5-minute view for direction and range, 3-minute for the break or retest, and 1-minute for entry timing. Look for expanding true range, a held level and room to the target. Repeated overlapping closes near VWAP suggest the range is still in control.
-2. **Movement Detector and flow.** Treat MOVE WATCH as a cue to inspect the level. Check two completed aligned 5-minute flow bars against price for the dashboard's confirmation. Use recent interval bars more heavily than the full-session running total. Watch whether rising IV increases the premium you would actually pay.
+2. **Movement Intelligence and flow.** Inspect the level, the current warning and its direction. Check two completed aligned 5-minute flow bars against price for the dashboard's confirmation. Use recent interval bars more heavily than the full-session running total. Watch whether rising IV increases the premium you would actually pay.
 3. **Trade Plan and payoff.** Compare the proposed entry with current spot, trigger, stop, invalidation and TP1. Use an actual quoted spread to estimate friction. Monte Carlo can compare entry variants at the same intraday horizon. Read fill probability and after-cost EV together. Recheck the price level and the option quote if you wait for a retest.
 
 ### Manage or pass
@@ -20,7 +20,7 @@ Plan a price invalidation, a premium loss budget and a time exit. Recalculate if
 
 ### Range reversals
 
-1. Open **Trade Plan** or **Movement Detector**. After at least one regular-session hour, look for support, midpoint and resistance. The prior twelve completed 5m candles must span at least 0.30% of the midpoint and 2.5 times their average true range. Price must visit alternating edges at least three times with limited net drift.
+1. Open **Trade Plan**. After at least one regular-session hour, look for support, midpoint and resistance. The prior twelve completed 5m candles must span at least 0.30% of the midpoint and 2.5 times their average true range. Price must visit alternating edges at least three times with limited net drift.
 2. At support, a completed 3m candle must reject the low and close back inside. A later 1m candle must clear that candle’s high. Reverse these conditions at resistance. The setup expires after six minutes. A held break, a move to the midpoint, or a protective-stop touch cancels that rejection.
 3. Check **Evidence and entry conditions**. The 1m and 3m EMA 9/21 readings must turn inward. The latest two completed 5m signed options-flow intervals and recent aggregate flow must agree. Current quotes, target room, the configured evidence minimum (default 60/100) and the existing price-path checks are required. CVD, available dealer data, volume, expected move and nearby levels contribute evidence. A score measures rule agreement.
 4. The protective stop sits beyond the rejected edge. TP1 aims toward the midpoint and needs at least 1.35 times the entry-to-stop distance. TP2 can extend to the opposite edge. A closer wall, support, resistance, dark-pool level or expected-move boundary can shorten the targets.
@@ -56,7 +56,7 @@ Plan a price invalidation, a premium loss budget and a time exit. Recalculate if
 2. **Stress price, IV and time together.** Check what happens if the underlying rises, falls or stays flat over several months. Then repeat with lower IV and fewer months remaining. A higher underlying price can coexist with a lower premium if time value and IV fall enough. Rates and dividends can also matter at long maturities.
 3. **Plan an exit or roll review.** Decide when to re-evaluate remaining maturity, delta, quote width and opportunity cost. A roll is the close of one contract and the opening of another. Compare the two fills and the new risk. Track thesis invalidation on the underlying and review option mark and liquidity independently.
 
-**Use the dashboard in this order.** Start with higher-timeframe price structure, then use IV term structure, exact-expiry skew and the actual options chain. Use the near-term flow or Movement Detector only to refine entry timing when helpful. The 0DTE gamma chart and intraday Monte Carlo describe a different horizon from the LEAPS thesis.
+**Use the dashboard in this order.** Start with higher-timeframe price structure, then use IV term structure, exact-expiry skew and the actual options chain. Use the near-term flow or Movement Intelligence only to refine entry timing when helpful. The 0DTE gamma chart and intraday Monte Carlo describe a different horizon from the LEAPS thesis.
 
 **Worked example.** At spot 100, compare a 90-strike call at 15 with a 105-strike call at 7, at the same far-dated expiry. Their expiration breakevens are 105 and 112 before fees. With a 100 multiplier, the debits are $1,500 and $700. At expiration with spot at 110, the first has $500 gross profit and the second has a $200 gross loss. At spot 95, they lose $1,000 and $700, respectively. To evaluate a sale six months earlier, reprice both with the remaining time and at several IV levels. Use executable bid and ask estimates in the comparison.
 

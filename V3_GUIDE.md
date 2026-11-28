@@ -1,8 +1,8 @@
-# Quant Desk 3.0.0-rc1
+# Quant Desk 3.0.0-rc2
 
 ## Windows installation and review
 
-1. Extract the entire download to a temporary folder, for example Downloads\QuantDesk-V3. The outer directory contains START-HERE.txt, UPLOAD_V3_REVIEW.cmd, a Git bundle, a patch, a test transcript and the complete quant_options_agent source tree.
+1. Extract the entire download to a temporary folder, for example Downloads\QuantDesk-V3. The outer directory contains START-HERE.txt, UPLOAD_V3_UI_REVIEW.cmd, a Git bundle, a patch, a test transcript and the complete quant_options_agent source tree.
 2. To preview without touching your current installation, open PowerShell inside the extracted quant_options_agent folder. Run the following commands one line at a time with Python 3.12 installed. In a credential-free session the dashboard offers Preview. Keep your existing live environment private.
 
        py -3.12 -m venv .venv
@@ -10,29 +10,33 @@
        .\.venv\Scripts\python.exe -m pytest -q -rs
        .\.venv\Scripts\python.exe -m streamlit run terminal.py
 
-3. To upload the reviewed revision, double-click **UPLOAD_V3_REVIEW.cmd** in the outer folder. It uses Git for Windows and your existing folder E:\Webull autotrade\github\quant_options_agent. It fetches the upstream base and the packaged commit, verifies the commit ID, and explicitly pushes that commit to review/v3-intelligence. Local edits, untracked files, index and current branch are outside that push. GitHub may ask you to sign in through your Git credential manager. The legacy UPLOAD_TO_GITHUB.cmd defaults to staging all working files and pushing main. Use the V3 review uploader for this release.
+3. To upload the reviewed revision, double-click **UPLOAD_V3_UI_REVIEW.cmd** in the outer folder. It uses Git for Windows and your existing folder E:\Webull autotrade\github\quant_options_agent. It fetches the upstream base and the packaged commit, verifies the commit ID, and explicitly pushes that commit to review/v3-decision-workspace. Local edits, untracked files, index and current branch are outside that push. GitHub may ask you to sign in through your Git credential manager. The legacy UPLOAD_TO_GITHUB.cmd defaults to staging all working files and pushing main. Use the V3 review uploader for this release.
 4. Review the comparison on GitHub against main. If main has advanced, examine intervening code before merging. Publishing the review branch and merging it are separate decisions. A merge to a branch monitored by Streamlit or Render may redeploy automatically. Keep the Paper Trading Dashboard on its current Streamlit service and use one existing monitor worker.
 5. To apply it locally to your existing folder, open PowerShell and follow the commands below. Substitute the actual extracted bundle path. The first command group is read-only in your working tree. If git status reports a rebase, conflicts, or local modifications, retain that tree and reconcile your changes before switching. The bundle uploader can still transfer the pinned revision. On a clean repository use a fresh branch name for the local review.
 
        Set-Location -LiteralPath 'E:\Webull autotrade\github\quant_options_agent'
        git status
        git fetch --no-tags https://github.com/lamvu0888-lab/quant-desk-v2.git main
-       git bundle verify 'C:\Downloads\QuantDesk-V3\QuantDeskV3.bundle'
-       git fetch --no-tags 'C:\Downloads\QuantDesk-V3\QuantDeskV3.bundle' refs/heads/review/v3-intelligence
+       git bundle verify 'C:\Downloads\QuantDesk-V3\QuantDeskUI.bundle'
+       git fetch --no-tags 'C:\Downloads\QuantDesk-V3\QuantDeskUI.bundle' refs/heads/review/v3-decision-workspace
        git switch -c review/local-v3 FETCH_HEAD
 
-   For a patch-based workflow on a clean review branch at the base shown in START-HERE.txt, use git apply --check with the full path to QuantDeskV3.patch, then git apply with that same path. Choose either the bundle or patch workflow.
+   For a patch-based workflow on a clean review branch at the base shown in START-HERE.txt, use git apply --check with the full path to QuantDeskUI.patch, then git apply with that same path. Choose either the bundle or patch workflow.
 6. Roll back a local preview with git switch - immediately after testing on the new branch. For a reviewed hosted deployment, redeploy your previous known-good revision through the hosting service and revert the V3 change through a reviewed commit if needed. Existing journal records remain readable. The optional usage/lease tables are additive and can stay in place. Restore the previous service environment values as part of a hosting rollback.
 
 ## Where to look
 
-**Movement Detector.** Select SPY, SPX or QQQ. Read the lifecycle, explanation and data confidence together. A sudden price move can raise an ignition warning even with unavailable flow. The contributor panel identifies which observations were available. A fresh ES/MES footprint for SPX is labeled as a proxy. Under V2 confirmation details the original five-minute, early-paper and risk checks are available. A flat or warming feed can correctly show INSUFFICIENT DATA.
+**Movement Intelligence.** Select SPY, SPX or QQQ and read the lifecycle, direction and the Trade Plan decision at the top. The trigger, target or scenario barriers, invalidation and expected horizon come from the current scan. Each of the seven checks shows the evidence and the next observation to watch. Heuristic scores use a 0–100 scale. A large score alone cannot qualify a paper entry. Historical charts share a time axis and offer 1m, 3m and 5m views. Select a detailed indicator below the command center. A missing historical measurement produces a gap. The Preview price replay uses synthetic candles.
 
-**Trade Plan.** Movement timing appears above the entry checklist. An ignition calls attention to the existing directional setup. A completed bar is reevaluated through the monitor’s normal scan, and an opt-in provisional impulse can request an earlier evaluation. An advisory comparison shows contract alternatives when a fresh chain and a directional scenario exist. Buying power, entry quality, executable quotes and the paper ledger still determine simulated fills. No V3 warning grants order permission.
+**Trade Plan.** V3 ignition triggers the option-market check in the same evaluation even when a V2 breakout has not qualified. Trade Plan still evaluates trend, price structure, EV, quotes and risk. An independent setup such as a range reversal can qualify on its own rules. Discord V3 watches are opt-in and distinct from qualified trade notifications. Paper trading requires a qualified plan and the existing execution gates.
 
-**Contracts.** Open Options research → Contracts. Choose an actual listed expiry, side and strike. Check settlement, price timestamp and freshness. Choose a manual target, a Trade Plan target or a movement barrier, then set arrival time, IV shock, rate, continuous dividend yield, entry premium, quantity and costs. The absolute time axis runs to the series’ payoff reference. ET labels, quote markers in raw mode, dashed model curves, optional session-only display and comparisons across expirations help isolate time decay. Compare earlier and later arrivals for the same target. At expiry, the model uses intrinsic value and suppresses undefined Greeks. The primary chart represents calendar time. Hiding closed sessions changes only the display. For SPX AM the opening time is a modeling reference. The ultimate SET fixing can differ from the displayed cash index level. For SPY/QQQ the regular equity close is the payoff-reference endpoint, with the separate last-trading reference displayed.
+**Options Contract Intelligence.** Select an underlying, listed expiration, side and strike. The nearest strike is shown first. Auto uses an eligible Trade Plan target, a directional V3 scenario barrier, or a flat underlying when neither supplies a target. Manual lets you set the target and arrival in Eastern Time. Read the ask and contract cost, then compare the dashed modeled premium, Delta, Gamma and IV against available solid quote observations. The primary timeline uses calendar time to the series payoff reference. The separate last-trading marker matters especially for AM-settled SPX. The actual SET fixing can differ from the opening cash index.
 
-**Learning.** Open Tools & help → Learning while using the same private journal as the worker. Independent price events, matured horizons, qualified observations, blocked decisions, quotes, drift diagnostics and reviews accumulate as sessions complete. A missing data row and a zero-event day have different meanings. The V3 tables and signals are append-only. Opening a dashboard page does not schedule training or send a report.
+Rates, carry, fees, contract count, chart interval, IV adjustment, custom paths and overlays are under Advanced settings. The rate can come from a qualifying Schwab chain. Otherwise the desk uses the configured carry assumptions. The initial ask and current IV use the selected quote when available, with an explicit midpoint-IV fit where supported. Future IV is a scenario using available skew and any specified shock. Contract comparisons use the same target and arrival, include costs and only compare eligible series that still exist at that time. The price-time surface, Greek details and recorded estimates remain available below the results.
+
+**AI Learning.** V2 and V3 are compared on common recorded observations in the same forward window. Read counts and denominators before comparing results. The page also exposes model records, audit details and feedback. Preview cannot read or train on production research. For an opted-in live worker, use the same private journal for recording and display. A new build or mode needs its own observations before differences can be evaluated. Archive replay accepts explicit version and mode filters.
+
+**Navigation and display.** Market Overview, Movement Intelligence, Trade Plan, Options Contract Intelligence, Dealer Positioning, Monte Carlo, AI Learning, Data Health and Learn are the primary destinations. Flow, volatility and the other specialist views remain in Research tools. The workspace uses a single dark palette. On a phone, open the sidebar to change workspaces.
 
 ## Configuration
 
@@ -40,7 +44,7 @@ The default enables the three dashboard views. Paid calls, new outbound alerts a
 
 | Setting | Default | Effect |
 | --- | --- | --- |
-| QD_V3_MOVEMENT / QD_V3_PLAN | true / true | Compute the shared signal / show timing on the Trade Plan. Turn off MOVEMENT to use the original detector. |
+| QD_V3_MOVEMENT / QD_V3_PLAN | true / true | Compute the shared signal / show timing on the Trade Plan. Turning MOVEMENT off pauses V3 display and computation. Historical V2 comparisons are in AI Learning. |
 | QD_V3_MODE | Balanced | Aggressive, Balanced or Conservative evidence cutoffs. These presets are experimental. |
 | QD_V3_OPTIONS / QD_V3_SELECTION | true / true | Contract workspace / conditional research ranking. |
 | QD_V3_RECORD | false | On the existing monitor, capture the enabled watchlist in its private journal. Enable once your data agreement allows retention. |

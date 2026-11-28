@@ -60,77 +60,21 @@ Use the **Momentum pane** for **RSI**, which compares the size of recent gains a
 
 ## Movement Detector
 
-### 1. Market status and completed closes
+### Movement status and next action
 
-**What you see.** A line connects recent completed 5-minute closes. A gold diamond shows the current fresh quote between closes. The card summarizes direction, volatility regime and how consistently the completed bars support the move. An early move watch may appear after a qualifying short-window price move.
+Read the current lifecycle and the Trade Plan decision together. PRESSURE means directional evidence is developing. IGNITION asks the desk to evaluate the corresponding setup. EXPANSION, EXHAUSTION and FAILED MOVE prompt a review of follow-through or invalidation. An independent range reversal can still qualify through Trade Plan.
 
-**Look for.** Separate stair-stepping closes from overlapping closes. Check whether the 5-minute bias agrees with the short-window push and whether the push cleared a recent range. Then look at volatility and flow.
+### Evidence behind the move
 
-**Example.** One fast 1-minute push can trigger MOVE WATCH while the 5-minute line remains flat. Mark the range boundary and see where the next completed closes land.
+The seven 0–100 readings summarize readiness, buying pressure, selling pressure, ignition, continuation, exhaustion and data confidence. They are evidence scores. Read the checklist for the inputs that contributed, their source times, conflicting evidence and what needs to change. Model-based dealer positioning describes potential amplification or damping. An ES/MES footprint for SPX measures futures activity. Missing directional flow stays unavailable.
 
-### 2. Price-range volatility and intraday ATM IV
+### Price and pressure history
 
-**What you see.** The first chart averages 5-minute true range over 14 bars, in underlying points. True range accounts for the prior close as well as the candle high and low. The optional second chart shows sampled ATM option IV in annualized percent. Its 1/3/5-minute comparison needs observations from the same source, expiry and strike pair when Webull supplies the estimate.
+Use the chart to compare movement transitions with completed prices and the direction of subsequent pressure. A warning may arrive while an executable contract quote is still missing. Read the Trade Plan qualification reason before interpreting a marker as an entry. Compare timeframes only where complete observations support the aggregation. Sparse observations and gaps limit comparisons. AI Learning holds historical V2 and V3 performance.
 
-**Look for.** On the range chart, look for widening movement alongside a held break. On the IV chart, compare the change in volatility points with the adjustable watch level. The default +0.30 points is exploratory. Check quote age and the selected maturity. Sparse samples can leave the change blank.
+### Levels and scenarios
 
-**Example.** IV rising from 14.1% to 14.4% is +0.30 points. That can happen while price stays inside its range. A rising ATR chart with flat IV instead shows wider realized price swings without a matching rise in sampled option IV.
-
-### 3. GEX and nearby dealer-positioning levels
-
-**What you see.** When the snapshot is usable, net gamma bars are organized by strike with model spot and flip shown when available. The card also lists available call and put walls and may show scenario hedge units.
-
-**Look for.** Focus on the next level price could encounter. Under a dealer-hedging model, positive gamma can dampen moves and negative gamma can amplify them. Judge the break or rejection with actual closes and directional flow. Recheck after a material price move or an exposure refresh.
-
-**Example.** Price crossing a modeled flip on one wick provides weak evidence. A close through it, a held retest, and aligned completed flow give more information about the move.
-
-### 4. Completed net premium bars and CVD context
-
-**What you see.** Bars show signed directional options premium in dollars at completed interval closes. Green is positive and red is negative. The 5-minute chart can show dotted directional floors. The 1/3/5-minute selector changes the display. The card separately shows agreement for the 5-minute entry checks and available CVD context.
-
-**Look for.** Compare multiple consecutive bars with price direction. Check whether the latest two completed 5-minute intervals clear their directional floor and line up with price. Use 1-minute bars to spot a change early and CVD as a separate context check.
-
-**Example.** Two positive 1-minute bars followed by a negative completed 5-minute interval suggest the initial burst faded. A SPY CVD disagreement against SPX options flow is cross-market context.
-
-### 5. Price structure
-
-**What you see.** A line plots completed 1-, 3- or 5-minute closes and the gold diamond marks the current fresh quote. Dotted lines show the range high and low, the midpoint for a range reversal and session VWAP when available. A candle-based VWAP carries an estimated label.
-
-**Look for.** Look for a break, acceptance on closes, and a retest that stays on the expected side. A move back through the boundary or repeated VWAP crossings can indicate a failed break or a range. Switch to the candlestick view to inspect wicks.
-
-**Example.** The 3-minute line closes above the range high twice, then retests and closes above it again. A subsequent close back inside the range weakens the continuation case.
-
-### 6. Momentum and share volume
-
-**What you see.** The upper bars show each 5-minute close minus the preceding close, in points. The lower bars show native share volume when available. SPX has no native share volume.
-
-**Look for.** Compare the sign, size and persistence of successive close changes. Check whether volume expands on the push and quiets during a pullback when the data exists. Distinguish a one-bar spike from follow-through and compare with flow separately.
-
-**Example.** Three price changes of +0.8, +0.6 and +0.2 points are still positive with slowing momentum. A new high with shrinking displacement near resistance calls for a closer look at price acceptance.
-
-### 7. Movement decision and evidence thresholds
-
-**What you see.** Horizontal bars show price confirmation, two matching flow intervals and the 71-point evidence threshold. On a reversal, the first bar tracks the 3m rejection and a later 1m close through its trigger. Hover for the actual count or score. A full bar means that row reached its threshold.
-
-**Look for.** Find the unfinished check, then read the overall state and written blockers. Separate an early price watch, a setup getting ready and a confirmed entry. Session, price geometry, data freshness and the option quote check can independently hold confirmation.
-
-**Example.** All three bars can fill while Trade Plan waits on a wide option spread. The chart shows progress on selected checks, and Trade Plan explains the remaining blocker.
-
-### 8. Trigger, invalidation, stop and targets
-
-**What you see.** Dotted horizontal lines show available plan levels in underlying points. A dot marks current spot. Trigger is where the setup can activate, invalidation is where the thesis fails, stop is the modeled risk exit, and TP1/TP2 are targets.
-
-**Look for.** Compare distance from a realistic entry to the stop and first target. Check whether a major opposing level sits before TP1. For a bearish plan, the intended targets lie below entry. A gap can jump past a planned exit.
-
-**Example.** A long entry at 760, stop at 759 and TP1 at 762 has two points of gross reward per point of planned underlying risk. Entry at 761 leaves one point to TP1 and two to the same stop, before costs.
-
-### 9. Data quality and timestamp alignment
-
-**What you see.** Rows visualize source age relative to the chart's threshold for quote, 5-minute price, flow and GEX. Hover for elapsed seconds and limits. Missing rows are labeled, and red indicates an invalid or out-of-limit timestamp.
-
-**Look for.** Compare the actual source timestamps and require the right ticker, expiry, session and completed intervals. A recent HTTP response can contain an old observation. A short green bar reflects this chart's age check. This chart uses 120 seconds for the quote and 420 seconds for 5-minute price, flow and GEX. Individual feed and entry rules can impose stricter requirements. Read the separate status text for exact bucket alignment and option readiness.
-
-**Example.** Flow stamped 10:15 and price stamped 10:20 can both be recent by age. Wait for a compatible completed bucket before using them together for confirmation.
+A trigger or invalidation refers to the underlying price. A projected movement barrier is a volatility-scaled scenario boundary. It carries a time horizon and does not establish the probability of hitting that price. When levels or a qualifying setup are unavailable, wait for fresh structure. A synthetic preview illustrates the interface and has no live market status.
 
 ## Options Flow
 
@@ -296,7 +240,7 @@ Use the **Momentum pane** for **RSI**, which compares the size of recent gains a
 
 ### Range reversal at support or resistance
 
-**What you see.** A qualifying sideways hour shows support, midpoint and resistance in Trade Plan and Movement Detector. A support bounce points long. A resistance rejection points short.
+**What you see.** A qualifying sideways hour shows support, midpoint and resistance in Trade Plan. A support bounce points long. A resistance rejection points short.
 
 **Look for.** A completed 3m candle rejects one edge and a later 1m close clears the rejection candle toward the middle. EMA 9/21 timing and two completed 5m options-flow intervals must turn inward. Check the stop beyond the edge and the available reward to TP1.
 
