@@ -254,6 +254,7 @@ def test_walkforward_on_synthetic_sessions():
     result=benchmark(rows)
     assert result["folds"][-1]["stage"]=="holdout" and result["folds"][-1]["n"]==104
     assert result["folds"][-1]["brier"]<result["folds"][-1]["climatology_brier"]
+    assert result["components"]["up"]["test"]==104 and result["components"]["neither"]["status"]=="Insufficient class support"
     assert threshold_search(rows)["promotion"] is False
 
 

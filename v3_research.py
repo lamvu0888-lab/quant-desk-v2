@@ -121,7 +121,9 @@ def benchmark(examples):
         from v3_challenger import optional_models
         metrics[-1]["extra_models"]=optional_models([r for r in rows if r["session"] in development],
                                                     [r for r in rows if r["session"] in days[-4:]])
+    from v3_challenger import component_models
     return dict(status="Research only",target="up barrier first within 5 minutes",sessions=len(days),folds=metrics,
+                components=component_models(rows,development,days[-4:]),
                 promotion=False)
 
 

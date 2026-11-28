@@ -159,3 +159,48 @@ def threshold_search(examples):
     cuts=(55,60,65,70,75)
     chosen=max(cuts,key=lambda k:(assess(dev,k)["f1"],-abs(k-65)))
     return {"status":"Shadow only","trials":len(cuts),"cut":chosen,"baseline":assess(held,65),"challenger":assess(held,chosen),"promotion":False}
+
+
+def component_models(rows, development, held):
+    """Calibrate on development sessions only. Training labels are independent price outcomes."""
+    from v3_research import logistic
+    from scipy.special import expit
+    from scipy.optimize import minimize
+    def label(row, task):
+        side=row["label"]
+        trend=np.sign(row["features"].get("persistence") or 0)
+        if task=="up":return int(side==1)
+        if task=="down":return int(side==-1)
+        if task=="neither":return int(side==0)
+        if task=="expansion":return int(side!=0)
+        if task=="ignition_within_2m":
+            arrival=row.get("arrival_seconds")
+            return int(bool(side and arrival is not None and arrival<=120))
+        if not trend:return None
+        if task=="continuation":return int(side==trend)
+        return int(side==-trend)
+    def subset(days,task):
+        return [dict(r,label=y) for r in rows if r["session"] in days and (y:=label(r,task)) is not None]
+    result={}
+    for task in ("up","down","neither","expansion","ignition_within_2m","continuation","reversal"):
+        fit,cal,test=(subset(days,task) for days in (development[:-3],development[-3:],held))
+        if len(test)<30 or any(sum(r["label"]==a for r in split)<10 for a in (0,1) for split in (fit,cal)):
+            result[task]={"status":"Insufficient class support","train":len(fit),"calibration":len(cal),"test":len(test)}
+            continue
+        scores=logistic(fit,cal+test)
+        logits=np.log(np.clip(scores,1e-7,1-1e-7)/np.clip(1-scores,1e-7,1))
+        x=logits[:len(cal)]
+        y=np.array([r["label"] for r in cal])
+        def loss(params):
+            z=params[0]+params[1]*x
+            return (np.logaddexp(0,z)-y*z).mean()+.001*(params[1]-1)**2
+        params=minimize(loss,[0.,1.],bounds=[(-10,10),(0,8)])
+        if not params.success:
+            result[task]={"status":"Calibration unavailable"}
+            continue
+        p=expit(params.x[0]+params.x[1]*logits[len(cal):])
+        target=np.array([r["label"] for r in test])
+        result[task]={"test":len(test),"events":int(target.sum()),"raw_brier":float(np.mean((scores[len(cal):]-target)**2)),
+                      "calibrated_brier":float(np.mean((p-target)**2)),"mean_prediction":float(p.mean()),
+                      "observed_frequency":float(target.mean()),"calibration_sessions":len(development[-3:])}
+    return result
