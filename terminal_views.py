@@ -724,6 +724,10 @@ def overview(ctx):
         nav_button("Open Trade Plan", "Trade Plan", "overview_open_plan")
         nav_button("Open Movement Intelligence", "Movement Detector", "overview_open_movement")
     prints, prints_feed = price_panel(ctx, read)
+    overview_gamma(ctx, read, spot)
+    panel_header("Cumulative flow & momentum", "net_flow", "overview_momentum", ctx.scope)
+    render_chart(flow_desk_figure(flow.rows, "5m"), "overview_flow_chart", flow)
+    feed_stamp("timeline", flow, ctx)
     with st.container(border=True):
         st.subheader("Dealer levels")
         level_list(gamma, spot)
@@ -745,9 +749,6 @@ def overview(ctx):
                   metric("Net GEX", compact(gamma.get("total"), currency=True, signed=True), "$ per 1% move", gamma.get("total")),
                   metric("Options net flow", compact(net, currency=True, signed=True), "Completed intervals", net),
                   metric("IV rank", ratio_pct(vol.obj.get("iv_rank")), f"30D ATM IV {ratio_pct(vol.obj.get('atm_iv_30d'))}")])
-            overview_gamma(ctx, read, spot)
-            panel_header("Cumulative flow & momentum", "net_flow", "overview_momentum", ctx.scope)
-            render_chart(flow_desk_figure(flow.rows, "5m"), "overview_flow_chart", flow)
 
 
 def overview_gamma(ctx, read, spot):
