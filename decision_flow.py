@@ -90,6 +90,9 @@ def read_iv(ctx, vol, regime, spot, expiry, webull_chain=None):
     return report
 
 
+from v3_movement import enabled as v3_enabled, signal as movement_signal
+
+
 def build_decision(ctx, read, *, warm_options=True):
     quote = ctx.quote()
     spot = positive(quote.get("price"))
@@ -183,6 +186,7 @@ def build_decision(ctx, read, *, warm_options=True):
     plan["price_watch"] = read.get("price_watch")
     plan["price_trend"] = read.get("price_trend")
     review = None
+    research_feed = webull_chain
     if use_webull_chain and (warm_options or needs_market_checks()):
         review = option_review(webull_chain, "Webull", ctx.ticker, ctx.expiry, spot, plan["direction"], ctx.now,
                                max_age=ctx.option_max_age, paused=ctx.paused)
@@ -191,9 +195,11 @@ def build_decision(ctx, read, *, warm_options=True):
             alternate = option_review(alternate_chain, source, ctx.ticker, ctx.expiry, spot, plan["direction"], ctx.now,
                                       max_age=ctx.option_max_age, paused=ctx.paused)
             if alternate["ready"]:
+                research_feed = alternate_chain
                 review = alternate
     elif needs_market_checks():
         chain, source = ctx.option_chain(ctx.expiry, provider="Tradytics") if ctx.expiry and ctx.store else (Feed(), "Tradytics")
+        research_feed = chain
         review = option_review(chain, source, ctx.ticker, ctx.expiry, spot, plan["direction"], ctx.now,
                                max_age=ctx.option_max_age, paused=ctx.paused)
     if review is not None:
@@ -250,6 +256,21 @@ def build_decision(ctx, read, *, warm_options=True):
     plan["confirmation_modes"] = confirmation(plan, ctx.now, flow1, points, footprint_source, read["candles"])
     if ctx.ticker in ("SPY", "SPX", "QQQ"):
         plan["adaptive_exit"] = propose_exits(plan, read["regime"].get("atr"), levels)
+    if v3_enabled("MOVEMENT", True) and ctx.ticker in ("SPY","SPX","QQQ"):
+        try:
+            sig = movement_signal(ctx, read, plan, flow1, points, footprint_source, gamma)
+            plan["movement_v3"] = sig
+            if v3_enabled("RECORD") and ctx.expiry and research_feed.snapshot and not quote_issues:
+                from option_quotes import fresh_option_rows
+                rows = fresh_option_rows(research_feed,ctx.ticker,ctx.expiry,ctx.now,max_age=ctx.option_max_age,paused=ctx.paused)
+                fields = ("contract","strike","type","expiry","updated_at","bid","ask","iv","delta","gamma","theta","vega")
+                plan["v3_quote_samples"] = [{k:r.get(k) for k in fields} for r in rows[:100]]
+            if (v3_enabled("SELECTION",True) and sig["side"] and sig["price"] and ctx.expiry and research_feed.snapshot
+                    and not quote_issues and (v3_enabled("RECORD") or "IGNITION" in sig["state"])):
+                from v3_contract_track import comparison
+                plan["v3_contracts"] = comparison(ctx, research_feed, sig, plan)
+        except (ValueError, TypeError, ArithmeticError, KeyError):
+            plan["v3_input_issue"] = "Movement or contract research received an invalid observation."
     return plan, iv
 
 

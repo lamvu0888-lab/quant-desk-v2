@@ -365,3 +365,15 @@ Use the **Momentum pane** for **RSI**, which compares the size of recent gains a
 **Look for.** Check market time first, then provider status, matching expiry and session. For Webull options, compare usable two-sided quotes with returned coverage and verify SPXW separately for SPX. Distinguish closed session, a missing permission, a stale observation and a rate-limit cooldown.
 
 **Example.** Webull SPY price can update while Tradytics flow is still on the last completed 5-minute bucket. A 1-minute watch may be useful, while the confirmation still waits for the aligned bucket. After the regular close, expired options can correctly show no usable quotes.
+
+## Contracts
+
+### Option premium timeline
+
+Choose an actual listed series and a target time. Each dashed line is the result of repricing that contract along the chosen path to its payoff reference. Displayed Greeks use calendar days and IV percentage points. ETF exercise uses an American tree with continuous dividend yield. A cash-settled AM index contract uses its opening reference and can finish trading the prior session. Settlement depends on the official fixing. The research ranking compares conditional returns at a single target and arrival.
+
+## Learning
+
+### Daily learning evidence
+
+The worker records original observations when recording is enabled. Reports compare V2 entry decisions and V3 movement warnings at the same observable origins. A label requires contiguous forward observations. A candle that touches both barriers first is ambiguous. Multiple horizons may overlap, so origin counts do not represent independent trades. Candidate performance and model feedback are research outputs.

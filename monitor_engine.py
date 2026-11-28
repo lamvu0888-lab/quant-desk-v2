@@ -29,8 +29,17 @@ def semantic_key(plan):
     return [status]
 
 
+def strategy_record(plan):
+    """Keep captured chain samples in the research journal only."""
+    from v3_movement import enabled
+    excluded = {"v3_quote_samples"}
+    if not enabled("RECORD"):
+        excluded.update(("movement_v3","v3_contracts"))
+    return {k:v for k,v in plan.items() if k not in excluded}
+
+
 def notification(plan, status=None):
-    return {**plan, "status": status or plan["status"], "triggered_at_utc": plan["detected"],
+    return {**strategy_record(plan), "status": status or plan["status"], "triggered_at_utc": plan["detected"],
             "state": plan["status"], "notes": "Analysis and paper tracking only.",
             "explanation": (plan.get("blocks") or plan.get("missing") or plan.get("evidence") or
                             ["Await the next completed price and flow observations."])[0]}
@@ -117,7 +126,7 @@ def process_scan(journal, ctx, read, *, check_move=True):
             early = apply_model_gate(early, model_summary(read["candles"], early, now), validation)
             if early["status"] in ENTRY_STATES:
                 ident = event_id("early-paper", scope, symbol, early["entry_bar"])
-                if not journal.record_early(ident, symbol, scope, now, early, ENTRY_COOLDOWN):
+                if not journal.record_early(ident, symbol, scope, now, strategy_record(early), ENTRY_COOLDOWN):
                     modes.update(status="GET READY", reasons=["Early paper setup already recorded or in cooldown."])
             else:
                 modes.update(status=early["status"], reasons=early["blocks"] or early["missing"])
@@ -165,7 +174,7 @@ def process_scan(journal, ctx, read, *, check_move=True):
                 signal_bar = box["rejection_at"] if box else plan["bar"]
                 alert_id = event_id("entry", scope, symbol, signal_bar, plan["setup"])
                 is_entry = plan["status"] in ENTRY_STATES
-                payload = {"plan": candidate, "model": model, "decision_status": plan["status"]}
+                payload = {"plan": strategy_record(candidate), "model": model, "decision_status": plan["status"]}
                 inserted, reserved = journal.record_candidate(candidate_id, symbol, scope, now, payload,
                                                                alert_id=alert_id if is_entry else None,
                                                                cooldown=ENTRY_COOLDOWN)
@@ -215,6 +224,15 @@ def process_scan(journal, ctx, read, *, check_move=True):
         decision_id = event_id("decision", scope, symbol, now.isoformat(), fingerprint)
         payload = {**notification(plan), "semantic": semantic, "quality": reason_key}
         journal.insert(decision_id, symbol, "decision", scope, now, payload)
+    if plan.get("movement_v3"):
+        from v3_movement import record, transition
+        try:
+            ident = record(journal, ctx, read, plan)
+            notice = transition(journal, ctx, plan, ident) if ident else None
+            if notice:
+                alerts.append(notice)
+        except Exception as exc:
+            print(f"V3 recording unavailable ({type(exc).__name__}).", flush=True)
     if entry_alert:
         alerts.append((entry_alert, notification(plan)))
     return alerts, plan
