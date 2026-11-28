@@ -103,3 +103,26 @@ def test_learning_excludes_synthetic_reports_and_identifies_recorded_build():
     view = detector_comparison([synthetic, live], "SPY", 5)
     assert view["scans"] == 4
     assert view["config"] == live["payload"]["research_config"]
+
+
+def test_combined_mobile_labels_keep_close_markers_separate_and_units_visible():
+    from v3_views import _plot_time_axis
+    import plotly.graph_objects as go
+
+    _,now,_,spec,_=option_fixture()
+    arrival=now+timedelta(minutes=5)
+    times=timeline(now,spec.expires,arrival=arrival)
+    prices,remaining,stats=scenario(spec,now,times,7000.,7010.,arrival,.154,.15,.04,0.)
+    fig=combined(spec,times,prices,remaining,stats,42.,1,.65,False,False,arrival,[])
+    labels={a.text:a for a in fig.layout.annotations}
+    assert labels["Target"].yshift>labels["Now"].yshift
+    assert labels["Expiry"].xanchor=="right"
+    assert fig.layout.legend.xref==fig.layout.legend.yref=="container"
+    assert fig.layout.legend.entrywidthmode=="pixels" and fig.layout.legend.entrywidth==50
+    assert fig.layout.yaxis.tickprefix=="$" and fig.layout.yaxis4.ticksuffix=="%"
+    assert fig.layout.yaxis2.tickprefix=="Δ" and fig.layout.yaxis3.tickprefix=="Γ"
+    assert len(fig.layout.xaxis.ticktext)==3 and all("<br>" not in t for t in fig.layout.xaxis.ticktext)
+    intraday=go.Figure()
+    _plot_time_axis(intraday,now,arrival)
+    assert len(intraday.layout.xaxis.ticktext)==4
+    assert all(len(t)==5 for t in intraday.layout.xaxis.ticktext)

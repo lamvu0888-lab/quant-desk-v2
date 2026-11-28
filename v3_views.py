@@ -164,11 +164,16 @@ def chart_history(ctx, spec, row, feed):
 
 
 def _plot_time_axis(fig, start, end):
-    ticks = [start + (end - start) * i / 4 for i in range(5)]
+    same_day = start.astimezone(ET).date() == end.astimezone(ET).date()
+    divisions = 3 if same_day else 2
+    ticks = [start + (end - start) * i / divisions for i in range(divisions + 1)]
+    label_format = "%H:%M" if same_day else "%b %d" if end - start >= timedelta(days=3) else "%b %d<br>%H:%M"
     fig.update_xaxes(
         type="date", range=[start, end], tickvals=ticks,
-        ticktext=[t.astimezone(ET).strftime("%b %d<br>%H:%M") for t in ticks],
-        title_text="Eastern time", showspikes=True, spikemode="across",
+        ticktext=[t.astimezone(ET).strftime(label_format) for t in ticks],
+        tickangle=0, tickfont_size=10,
+        title_text="Eastern time", title_standoff=4, title_font_size=10,
+        showspikes=True, spikemode="across",
         spikesnap="cursor", spikethickness=1, spikecolor="#b0bdcc",
     )
 
@@ -220,11 +225,31 @@ def combined(spec, times, prices, remaining, stats, entry, qty, cost, normalize,
     for stamp, label in markers:
         if start <= stamp <= times[-1]:
             grouped_annotations.setdefault(stamp, []).append(label)
-    for stamp, labels in grouped_annotations.items():
+    def visible_seconds(stamp):
+        elapsed = (stamp - start).total_seconds()
+        if session_only:
+            elapsed -= sum((min(stamp, b) - a).total_seconds() for a,b in gaps if a < stamp)
+        return elapsed
+
+    duration = max(1., visible_seconds(times[-1]))
+    lane_ends = []
+    for stamp, labels in sorted(grouped_annotations.items()):
         shape_list.append(dict(type="line", x0=stamp, x1=stamp, y0=0, y1=1, yref="paper",
                                line=dict(dash="dot", width=1, color="#92a9c2")))
-        fig.add_annotation(x=stamp, y=1, yref="paper", text=" / ".join(labels), showarrow=False,
-                           yshift=9, font=dict(size=11, color="#eaf2ff"))
+        label = " / ".join(labels)
+        position = visible_seconds(stamp) / duration
+        # Reserve label room even in the narrowest supported plot. Anchor edge
+        # labels inward and move overlapping time labels to a separate line.
+        width = (7 + 6 * len(label)) / 200
+        anchor = "left" if position < width / 2 else "right" if position > 1 - width / 2 else "center"
+        left = position - (width if anchor == "right" else width / 2 if anchor == "center" else 0.)
+        lane = next((i for i, right in enumerate(lane_ends) if left >= right), len(lane_ends))
+        if lane == len(lane_ends):
+            lane_ends.append(0.)
+        lane_ends[lane] = left + width
+        fig.add_annotation(x=stamp, xanchor=anchor, y=1, yanchor="bottom", yref="paper",
+                           text=label, showarrow=False, yshift=3 + 15 * lane,
+                           font=dict(size=10, color="#eaf2ff"))
 
     for index, key in enumerate(keys):
         projected = np.asarray(data[key], dtype=float)
@@ -254,18 +279,31 @@ def combined(spec, times, prices, remaining, stats, entry, qty, cost, normalize,
                 hovertemplate="%{customdata[0]}<br>" + label + " %{customdata[1]:.4g}<extra>" + qualifier + "</extra>",
             )
     style_chart(fig, 460, hover="x unified")
-    fig.update_layout(shapes=shape_list, dragmode="zoom", margin=dict(t=27,b=78,l=8,r=8),
-                      legend=dict(y=-.22, font=dict(size=10)), hoverlabel=dict(namelength=-1))
-    fig.update_yaxes(title_text="Relative scale 0–100" if normalize else "Premium ($)",
+    fig.update_layout(
+        shapes=shape_list, dragmode="zoom",
+        margin=dict(t=34 + len(lane_ends)*15, b=43 + 23*((len(keys)+1)//2), l=5, r=5),
+        legend=dict(xref="container", x=.5, xanchor="center", yref="container", y=0, yanchor="bottom",
+                    entrywidth=50, entrywidthmode="pixels", tracegroupgap=0, font=dict(size=10)),
+        hoverlabel=dict(namelength=-1),
+    )
+    fig.update_yaxes(title_text="Relative scale 0–100" if normalize else None,
                      title_font_size=10, tickfont_size=10, automargin=True)
     if not normalize:
+        # Short, color-matched unit labels keep four numeric scales legible on a
+        # phone. The legend, full series name and exact native value stay in hover.
+        fig.update_yaxes(tickprefix="$", nticks=4, tickformat=".4~g",
+                         tickfont=dict(color=PRICE_COLORS["premium"]))
         for n, key in enumerate(keys[1:], 2):
+            values = np.asarray(data[key], dtype=float)
+            valid = values[np.isfinite(values)]
+            span = np.ptp(valid) if valid.size else 0.
+            digits = int(np.clip(1 - np.floor(np.log10(span)), 2, 5)) if span > 0 else 3
             fig.update_layout(**{f"yaxis{n}": dict(
                 overlaying="y",side="right" if n % 2 == 0 else "left",anchor="free",
-                autoshift=True, showgrid=False, zeroline=False,
+                autoshift=True, showgrid=False, zeroline=False, nticks=4,
                 showticklabels=n<=4, tickfont=dict(size=9, color=PRICE_COLORS[key]),
-                title=dict(text=AXIS_LABELS[key] if n<=4 else None, font=dict(size=10,color=PRICE_COLORS[key])),
-                automargin=True,
+                tickprefix={"delta":"Δ","gamma":"Γ"}.get(key,""), ticksuffix="%" if key=="iv" else "",
+                tickformat=f".{digits}~f" if span>=.0001 else ".3~g", automargin=True,
             )})
     _plot_time_axis(fig, start, times[-1])
     fig.update_xaxes(rangebreaks=[dict(values=[a], dvalue=(b-a).total_seconds()*1000)
