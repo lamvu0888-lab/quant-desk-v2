@@ -277,3 +277,24 @@ def test_pricing_learning_matches_contract_even_after_it_drops_from_shortlist():
     rows=pricing_errors(records)
     assert rows["matched"]==1 and rows["total_forecast_mae"]==pytest.approx(.45)
     assert rows["groups"]["Recommended"]["matched"]==1 and rows["delta_conditional_mae"]>=0
+
+
+def test_private_archive_replay_and_paired_bootstrap(tmp_path):
+    from v3_evaluate import bootstrap_difference,evaluate
+    rows=fake_records()
+    archive(rows,tmp_path,"SPY",DAY)
+    result=evaluate(tmp_path,"SPY")
+    assert result["days"][0]["recorded"]==40 and result["days"][0]["ambiguous"]>0
+    assert result["promotion"] is False and result["paired_origin_recall"]["sessions"]==1
+    paired=bootstrap_difference([[1,2,4]]*10)
+    assert paired["interval95"]==pytest.approx([.25,.25]) and paired["directional_origins"]==40
+
+
+
+def test_strategy_journal_capture_controls(monkeypatch):
+    from monitor_engine import strategy_record
+    plan={"status":"WAIT","movement_v3":{"scores":{}},"v3_quote_samples":[1],"v3_contracts":{}}
+    monkeypatch.setenv("QD_V3_RECORD","false")
+    assert strategy_record(plan)=={"status":"WAIT"}
+    monkeypatch.setenv("QD_V3_RECORD","true")
+    assert "movement_v3" in strategy_record(plan) and "v3_quote_samples" not in strategy_record(plan)

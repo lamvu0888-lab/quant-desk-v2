@@ -61,3 +61,11 @@ If collection stays empty, verify that the existing monitor is running the revie
 The audited engine limits are $1,000 debit, two contracts, a 20% premium stop and a $500 daily loss stop. This release retains them. The $5,000/$1,000 settings mentioned in the brief were not the values in the working baseline. Compute, API entitlements, exchange exceptions, vendor retention limits and live credentials require confirmation in the user's environment. Use a private journal and controlled archive retention. Forecasts, quotes, raw arrays and API credentials belong outside GitHub. The ZIP excludes the uploaded environment, OAuth database and virtual environment.
 
 For engineering coverage, empirical evidence and remaining work, read V3_RESEARCH.md and V3_ACCEPTANCE.md. Exact changed paths and the packaged test transcript are in the release root.
+
+## Replay recorded sessions on Windows
+
+Once private daily Parquet files exist, run the following inside the extracted source with the same environment. Substitute your authorized archive location. The offline evaluator reads only that directory and issues no provider, broker, AI or notification requests.
+
+    .\.venv\Scripts\python.exe v3_evaluate.py 'D:\QuantDeskResearch' --symbol SPY
+
+Repeat with SPX or QQQ. The output includes daily coverage and pricing matches, five-minute baseline and V3 comparisons on identical origins, a 2,000-draw paired session bootstrap after ten covered dates, a development benchmark and bounded threshold sensitivity. A confidence interval on overlapping-origin recall does not measure profitability. Treat delivered forward time periods as a separate, locked validation sample before approving trading changes.
