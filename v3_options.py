@@ -135,7 +135,7 @@ def timeline(now, expiry, minutes=0, *, arrival=None):
     return sorted(set(times+[expiry]+([arrival] if arrival and now<arrival<expiry else [])))
 
 
-def scenario(spec, now, times, spot, target, arrival, iv, target_iv, rate, dividend, custom=None):
+def scenario(spec, now, times, spot, target, arrival, iv, target_iv, rate, dividend, custom=None, *, extended=False):
     if arrival<=now or any(x<now or x>spec.expires for x in times):
         raise ValueError("Scenario time outside contract lifetime")
     seconds=np.array([(t-now).total_seconds() for t in times])
@@ -146,7 +146,7 @@ def scenario(spec, now, times, spot, target, arrival, iv, target_iv, rate, divid
     fraction=np.minimum(seconds/(arrival-now).total_seconds(),1)
     vols=iv+(target_iv-iv)*fraction
     remaining=np.array([(spec.expires-at).total_seconds()/YEAR for at in times])
-    return prices,remaining,greeks(spec,prices,remaining,vols,rate,dividend)
+    return prices,remaining,greeks(spec,prices,remaining,vols,rate,dividend,extended=extended)
 
 
 def research_rank(rows,spot,target,arrival,now,rate,dividend,budget,cost,symbol):

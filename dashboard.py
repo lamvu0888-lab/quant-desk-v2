@@ -19,37 +19,37 @@ from monte_carlo import forecast,walk_forward,ForecastError
 st.set_page_config(page_title='Quant | Options Research',page_icon='◈',layout='wide',initial_sidebar_state='expanded')
 st.markdown('''<style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
-:root{color-scheme:light}
-.stApp,[data-testid="stAppViewContainer"],header[data-testid="stHeader"]{background:#F7F9FB;color:#172B3A}
+:root{color-scheme:dark}
+.stApp,[data-testid="stAppViewContainer"],header[data-testid="stHeader"]{background:#0C1320;color:#EDF3FF}
 html,body,[class*="css"],.stApp{font-family:'DM Sans',sans-serif}
 .block-container{max-width:1640px;padding-top:1.8rem;padding-bottom:3rem}
-h1,h2,h3{font-family:Manrope,sans-serif!important;letter-spacing:-.035em;color:#172B3A}
-[data-testid="stSidebar"]{background:#FFF;border-right:1px solid #E3E9ED}
+h1,h2,h3{font-family:Manrope,sans-serif!important;letter-spacing:-.035em;color:#EDF3FF}
+[data-testid="stSidebar"]{background:#141F30;border-right:1px solid #384A62}
 [data-testid="stSidebar"] .block-container{padding-top:1.8rem}
-[data-testid="stMetric"]{background:#FFF;border:1px solid #E2E9ED;border-radius:12px;padding:18px 20px;min-height:112px}
-[data-testid="stMetricLabel"]{font-size:12px;color:#607482!important}
-[data-testid="stMetricValue"]{font-family:Manrope,sans-serif;font-weight:700;font-size:27px;color:#172B3A}
+[data-testid="stMetric"]{background:#141F30;border:1px solid #384A62;border-radius:12px;padding:18px 20px;min-height:112px}
+[data-testid="stMetricLabel"]{font-size:12px;color:#BACADA!important}
+[data-testid="stMetricValue"]{font-family:Manrope,sans-serif;font-weight:700;font-size:27px;color:#EDF3FF}
 [data-testid="stMetricDelta"]{font-size:12px}
-[data-testid="stCaptionContainer"]{color:#647786}
-[data-testid="stVerticalBlockBorderWrapper"]{border-color:#E2E9ED}
+[data-testid="stCaptionContainer"]{color:#BACADA}
+[data-testid="stVerticalBlockBorderWrapper"]{border-color:#384A62}
 .stButton button{border-radius:8px;font-weight:600}
-button[kind="primary"]{background:#087F76;border-color:#087F76;color:white}
-button[data-baseweb="tab"]{font-weight:600;padding:12px 18px;color:#536B79}
-button[data-baseweb="tab"][aria-selected="true"]{color:#087F76}
-[data-baseweb="tab-highlight"]{background:#087F76}
+button[kind="primary"]{background:#65D9B8;border-color:#65D9B8;color:#062920}
+button[data-baseweb="tab"]{font-weight:600;padding:12px 18px;color:#BACADA}
+button[data-baseweb="tab"][aria-selected="true"]{color:#65D9B8}
+[data-baseweb="tab-highlight"]{background:#65D9B8}
 [data-testid="stAlert"]{border-radius:10px}
-.brand{font-family:Manrope,sans-serif;font-size:25px;font-weight:800;letter-spacing:-1px;color:#163545}
-.brand span{color:#0E8E82}.eyebrow{font-size:10px;letter-spacing:2px;font-weight:700;color:#708491;margin-bottom:8px}
-.page-title{font-family:Manrope,sans-serif;font-size:31px;font-weight:800;letter-spacing:-1.2px;margin:0;color:#173443}
-.subtitle{font-size:13px;color:#738592;margin:6px 0 24px}
-.pill{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.6px;border-radius:5px;padding:6px 9px;background:#E6F5F0;color:#087C65}
-.pill.amber{background:#FFF2DB;color:#976413}.pill.gray{background:#ECF0F3;color:#607480}
-.section-label{font-size:12px;font-weight:700;color:#6C8190;text-transform:uppercase;letter-spacing:1.3px;margin:20px 0 8px}
-.insight{background:#EBF5F3;border-left:3px solid #119487;border-radius:4px;padding:15px 18px;font-size:13px;color:#254B50;margin:12px 0 20px}
-.help{font-size:12px;line-height:1.6;color:#758894}.status-row{display:flex;gap:10px;align-items:center;margin:14px 0 20px}
+.brand{font-family:Manrope,sans-serif;font-size:25px;font-weight:800;letter-spacing:-1px;color:#EDF3FF}
+.brand span{color:#68DCB7}.eyebrow{font-size:10px;letter-spacing:2px;font-weight:700;color:#BACADA;margin-bottom:8px}
+.page-title{font-family:Manrope,sans-serif;font-size:31px;font-weight:800;letter-spacing:-1.2px;margin:0;color:#EDF3FF}
+.subtitle{font-size:13px;color:#BACADA;margin:6px 0 24px}
+.pill{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.6px;border-radius:5px;padding:6px 9px;background:#153D37;color:#8FE8CD}
+.pill.amber{background:#413322;color:#FFD789}.pill.gray{background:#203147;color:#D6E3EF}
+.section-label{font-size:12px;font-weight:700;color:#BACADA;text-transform:uppercase;letter-spacing:1.3px;margin:20px 0 8px}
+.insight{background:#15352E;border-left:3px solid #68DCB7;border-radius:4px;padding:15px 18px;font-size:13px;color:#D5EBE4;margin:12px 0 20px}
+.help{font-size:12px;line-height:1.6;color:#BACADA}.status-row{display:flex;gap:10px;align-items:center;margin:14px 0 20px}
 </style>''',unsafe_allow_html=True)
 
-TEAL='#09887D';RED='#CB6170';INK='#234352';BLUE='#4B78A7'
+TEAL='#68DCB7';RED='#FF8D9B';INK='#EDF3FF';BLUE='#83B5FF'
 
 
 def fmt(x,digits=2):
@@ -70,10 +70,10 @@ def local_time(value):
 
 
 def chart_style(fig,height=380):
-    fig.update_layout(template='plotly_white',height=height,paper_bgcolor='white',plot_bgcolor='white',
+    fig.update_layout(template='plotly_dark',height=height,paper_bgcolor='#141F30',plot_bgcolor='#141F30',
         font=dict(family='DM Sans, sans-serif',color=INK,size=12),margin=dict(l=10,r=12,t=26,b=12),
         legend=dict(orientation='h',y=1.11,x=0),hovermode='x unified',
-        xaxis=dict(gridcolor='#EFF3F5',zeroline=False),yaxis=dict(gridcolor='#EFF3F5',zeroline=False))
+        xaxis=dict(gridcolor='#35455D',zeroline=False),yaxis=dict(gridcolor='#35455D',zeroline=False))
     return fig
 
 
@@ -157,7 +157,7 @@ def price_chart(candles):
     fig=go.Figure(go.Candlestick(x=frame['time'],open=frame.open,high=frame.high,low=frame.low,close=frame.close,
         increasing_line_color=TEAL,decreasing_line_color=RED,increasing_fillcolor=TEAL,decreasing_fillcolor=RED,name=ticker))
     fig.add_scatter(x=frame['time'],y=frame.close.ewm(span=9,adjust=False).mean(),name='EMA 9',line=dict(color=BLUE,width=1))
-    fig.add_scatter(x=frame['time'],y=frame.close.ewm(span=21,adjust=False).mean(),name='EMA 21',line=dict(color='#C59954',width=1))
+    fig.add_scatter(x=frame['time'],y=frame.close.ewm(span=21,adjust=False).mean(),name='EMA 21',line=dict(color='#F6C879',width=1))
     chart_style(fig,430);fig.update_layout(xaxis_rangeslider_visible=False)
     st.plotly_chart(fig,width='stretch',key='price_candles')
     st.caption('Actual Webull one-minute OHLCV, grouped from each regular-session open. Incomplete buckets and gaps are omitted. Times shown in New York time.')
@@ -166,13 +166,13 @@ def price_chart(candles):
 def fan_chart(result,horizon):
     rows=[r for r in result['fan'] if r['minute']<=horizon]
     frame=pd.DataFrame(rows);fig=go.Figure()
-    for low,high,color,name in [('low_95','high_95','rgba(9,136,125,.08)','95% model range'),('low_68','high_68','rgba(9,136,125,.18)','68% model range')]:
+    for low,high,color,name in [('low_95','high_95','rgba(104,220,183,.13)','95% model range'),('low_68','high_68','rgba(104,220,183,.22)','68% model range')]:
         fig.add_scatter(x=frame.minute,y=frame[high],mode='lines',line=dict(width=0),showlegend=False,hoverinfo='skip')
         fig.add_scatter(x=frame.minute,y=frame[low],mode='lines',line=dict(width=0),fill='tonexty',fillcolor=color,name=name)
     for path in result['sample_paths'][:15]:
-        fig.add_scatter(x=list(range(horizon+1)),y=path[:horizon+1],mode='lines',line=dict(width=.6,color='rgba(60,116,136,.13)'),showlegend=False,hoverinfo='skip')
+        fig.add_scatter(x=list(range(horizon+1)),y=path[:horizon+1],mode='lines',line=dict(width=.6,color='rgba(131,181,255,.22)'),showlegend=False,hoverinfo='skip')
     fig.add_scatter(x=frame.minute,y=frame['median'],name='Median path',line=dict(color=TEAL,width=2.4))
-    fig.add_hline(y=result['spot'],line_dash='dot',line_color='#99ABB6')
+    fig.add_hline(y=result['spot'],line_dash='dot',line_color='#BACADA')
     chart_style(fig,420);fig.update_xaxes(title='Minutes from forecast origin');fig.update_yaxes(title='Underlying price ($)')
     st.plotly_chart(fig,width='stretch',key='mc_fan')
 
@@ -284,7 +284,7 @@ def main_view():
             with left:
                 fig=go.Figure(go.Bar(x=frame.strike,y=frame[col],marker_color=[TEAL if v>=0 else RED for v in frame[col]],name=metric))
                 fig.add_vline(x=exp['spot'],line_color=INK,line_dash='dash',annotation_text='Model spot')
-                if metric=='Gamma' and exp.get('nearest_gamma_flip') is not None: fig.add_vline(x=exp['nearest_gamma_flip'],line_color='#C59954',line_dash='dot',annotation_text='Modeled flip')
+                if metric=='Gamma' and exp.get('nearest_gamma_flip') is not None: fig.add_vline(x=exp['nearest_gamma_flip'],line_color='#F6C879',line_dash='dot',annotation_text='Modeled flip')
                 chart_style(fig,420);fig.update_layout(yaxis_title=units,xaxis_title='Option strike')
                 st.plotly_chart(fig,width='stretch',key='exposure_strikes')
             with right:

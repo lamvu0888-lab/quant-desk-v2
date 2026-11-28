@@ -11,7 +11,7 @@ from streamlit.testing.v1 import AppTest
 from decision_engine import ENTRY_STATES, make_trade_plan
 from discord_monitor import data_warning, deliver
 from monitor_engine import process_scan
-from movement_detector import CHECKS, ENTRY_COOLDOWN, MIN_ENTRY_SCORE, price_movement
+from movement_detector import ENTRY_COOLDOWN, MIN_ENTRY_SCORE, price_movement
 from research_journal import Journal
 from signal_explain import discord_text
 from terminal_demo import DEMO_AT
@@ -145,31 +145,20 @@ def test_warning_rearms_after_two_healthy_scans():
     assert [i for i, notified in enumerate(notices) if notified] == [2, 15]
 
 
-def test_movement_navigation_and_spx_proxy(monkeypatch):
+def test_movement_navigation_and_spx_selection(monkeypatch):
     monkeypatch.setattr("dotenv.dotenv_values", lambda *args, **kwargs: {})
     for name in ("TRADYTICS_API_KEY", "WEBULL_APP_KEY", "WEBULL_APP_SECRET", "DISCORD_WEBHOOK_URL", "DEFAULT_TICKER"):
         monkeypatch.delenv(name, raising=False)
     path = Path(__file__).resolve().parents[1] / "terminal.py"
     app = AppTest.from_file(str(path), default_timeout=30).run()
     app.button(key="overview_open_movement").click().run()
-    headings = [row.value for row in app.markdown if '<section class="qd-movement-stage">' in row.value]
-    assert len(headings) == len(CHECKS)
-    assert all(f"<h3>{name}</h3>" in row for name, row in zip(CHECKS, headings))
-    assert len(app.get("plotly_chart")) >= len(CHECKS)  # separate observed-IV chart
-    assert len([row for row in app.markdown if '<div class="qd-next-cue">' in row.value]) == len(CHECKS)
-    assert len([row for row in app.caption if row.value.startswith("What to look for ·")]) == len(CHECKS)
-    assert any(row.value.startswith("What to look for on the IV chart") for row in app.caption)
-    assert not app.number_input
-    assert app.selectbox(key="movement_iv_threshold").value == 3
-    app.selectbox(key="movement_iv_threshold").set_value(5).run()
-    app.segmented_control(key="movement_flow_interval").set_value("1m").run()
-    assert not app.exception
-    app.segmented_control(key="movement_iv_window").set_value(5).run()
-    assert app.selectbox(key="movement_iv_threshold").value == 5
-    assert not app.exception
+    assert app.session_state["desk_page"] == "Movement Detector"
+    assert "Movement Intelligence" in app.selectbox(key="desk_page").options
+    assert not any("V2 confirmation details" in item.label for item in app.expander)
+    assert not any(item.key == "movement_iv_threshold" for item in app.selectbox)
+    assert not any(item.label == "Dark mode" for item in app.toggle)
     app.button(key="watch_SPX").click().run()
-    app.toggle(key="movement_spy_cvd").set_value(True).run()
-    assert any("SPY estimated 10m CVD" in row.value for row in app.caption)
+    assert app.session_state["desk_ticker"] == "SPX" and not app.exception
     app.button(key="movement_open_trade").click().run()
     assert any("Option quote check" in row.value for row in app.markdown)
     assert all("Strategy Lab" not in option and "History" not in option for option in app.selectbox(key="desk_page").options)

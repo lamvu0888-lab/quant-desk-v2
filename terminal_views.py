@@ -23,7 +23,7 @@ from dealer_heatmap import heatmap_view, level_name, nearby_levels, read_column,
 from ema_trend import ema_trend
 from market_session import ET, active_session, rth_bounds, session_state
 from movement_detector import early_price_move
-from movement_ui import detector_view, nav_button
+from movement_ui import nav_button
 from monte_carlo import forecast, walk_forward
 from option_quotes import age_text, option_rows, quote_age, quote_status, sample_exposure, spread_fraction
 from schwab_feed import quote_status as schwab_quote_status
@@ -700,7 +700,7 @@ def overview(ctx):
                          "No completed options-flow interval has arrived for the selected session and DTE yet.")
             feed_stamp("timeline", flow, ctx)
     command_panel(ctx, decision, iv, read["candles"], key="overview")
-    nav_button("Open Movement Detector", "Movement Detector", "overview_open_movement")
+    nav_button("Open Movement Intelligence", "Movement Detector", "overview_open_movement")
     panel_header("Market pulse", "overview", "overview_kpis", ctx.scope)
     kpis([
         metric("Underlying", amount(spot), f"{signed_pct(change)} · {ctx.price_provider}", change),
@@ -1378,13 +1378,9 @@ def money_map(ctx):
 
 def movement_page(ctx):
     read = read_workspace(ctx)
-    decision, iv = dashboard_decision(ctx, read)
-    if decision.get("movement_v3"):
-        movement_panel(ctx, decision)
-        with st.expander("V2 confirmation details", expanded=False):
-            detector_view(ctx, read, decision, iv)
-    else:
-        detector_view(ctx, read, decision, iv)
+    decision, _ = dashboard_decision(ctx, read)
+    movement_panel(ctx, decision, read)
+    nav_button("Open Trade Plan", "Trade Plan", "movement_open_trade")
 
 
 def trade_plan(ctx):
@@ -1405,7 +1401,7 @@ def trade_plan(ctx):
     shown = command_panel(ctx, decision, iv, read["candles"], key="trade", track=True,
                           bar_ok=read["bars_usable"])
     option_entry_panel(ctx, decision)
-    nav_button("Open Movement Detector", "Movement Detector", "trade_open_movement")
+    nav_button("Open Movement Intelligence", "Movement Detector", "trade_open_movement")
     journal_panel(ctx, shown)
     st.download_button("Download current trade plan (JSON)", json.dumps(shown, indent=2, allow_nan=False),
                        file_name=ctx.title("trade_plan_v26.json"), mime="application/json", key="qd25_plan_export")

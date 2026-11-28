@@ -1,6 +1,8 @@
-# Acceptance ledger for the 22-part development command
+# RC1 acceptance ledger for the original 22-part development command
 
-This release candidate is suitable for review and opt-in forward measurement. A scope item below may have tested code and still lack the market evidence required to use it in trading. The exact commit, changed paths, dependency versions and test output accompany the source in the outer release folder.
+This historical ledger records the first release candidate. See V3_GUIDE.md and the packaged VALIDATION.txt for the RC2 interface, signal routing and tests.
+
+The original release candidate is suitable for review and opt-in forward measurement. A scope item below may have tested code and still lack the market evidence required to use it in trading. The exact commit, changed paths, dependency versions and test output accompany the source in the outer release folder.
 
 | Command item | Delivered in the integrated project | Open acceptance item |
 | --- | --- | --- |

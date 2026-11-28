@@ -277,8 +277,12 @@ def test_all_workspace_pages_and_v25_probability_run(monkeypatch):
     assert not app.exception
     assert any("ENTRY COMMAND CENTER" in m.value for m in app.markdown)
     assert app.button(key="discord_test_button").disabled
+    from terminal import PRIMARY_PAGES
     for value in PAGES_LABEL:
-        app.selectbox(key="desk_page").set_value(value).run()
+        if value in PRIMARY_PAGES:
+            app.selectbox(key="desk_page").set_value(value).run()
+        else:
+            app.button(key=f"open_tool_{value}").click().run()
         assert not app.exception, value
     app.selectbox(key="desk_page").set_value("Forecast").run()
     app.selectbox(key="desk_expiry_mode").set_value("0 DTE").run()

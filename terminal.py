@@ -17,7 +17,7 @@ from schwab_feed import feed_store as make_schwab_store
 from terminal_data import et_time, expiration_date, first_listed_dte, listed_dtes, numeric, quote_row, status, ticker_symbol
 from terminal_demo import DEMO_AT, DemoStore
 from terminal_learn import learn_page
-from terminal_style import amount, esc, signed_pct, tag, theme_css
+from terminal_style import STYLE, amount, esc, signed_pct, tag
 from terminal_views import Desk, PAGES, route_price
 from tradytics_feed import Feed, FeedError, FeedStore, TradyticsClient
 from discord_monitor import send_test as send_discord_test
@@ -27,7 +27,7 @@ from option_quotes import age_text, quote_age
 from webull_feed import INDEX_SYMBOLS, WebullFeedStore, price_source
 
 UTC = timezone.utc
-VERSION = "3.0.0-rc1"
+VERSION = "3.0.0-rc2"
 WEBULL_CHART_PAGES = {"Overview", "Movement Detector"}
 PAGES_LABEL = {
     "Contracts": ("Options Contract Intelligence", "Compare contracts, target timing and premium scenarios.", "◇"),
@@ -47,7 +47,9 @@ PAGES_LABEL = {
     "Learn": ("Learn", "A practical guide to the tools on your desk.", "▤"),
     "Data Health": ("Data health", "Connection, permissions and source timing across the desk.", "⊙"),
 }
-NAV_LABELS = {"Options Flow": "Flow & Bubbles", "Positioning": "Dealer Positioning",
+NAV_LABELS = {"Overview": "Market Overview", "Movement Detector": "Movement Intelligence",
+              "Contracts": "Options Contract Intelligence", "Learning": "AI Learning", "Trade Plan": "Trade Plan",
+              "Options Flow": "Flow & Bubbles", "Positioning": "Dealer Positioning",
               "Volatility": "IV Decision Center", "Forecast": "Monte Carlo"}
 
 
@@ -145,12 +147,9 @@ def open_symbol():
         st.session_state["desk_symbol_error"] = str(exc)
 
 
-PAGE_GROUPS = {
-    "Trading desk": ("Overview", "Movement Detector", "Trade Plan"),
-    "Options research": ("Contracts", "Positioning", "Options Flow", "Volatility", "Forecast"),
-    "Market scans": ("Scanner", "Money Map", "Dark Pool", "Signals"),
-    "Tools & help": ("Learning", "Data Health", "TradingView", "Learn"),
-}
+PRIMARY_PAGES = ("Overview", "Movement Detector", "Trade Plan", "Contracts", "Positioning",
+                 "Forecast", "Learning", "Data Health", "Learn")
+RESEARCH_TOOLS = ("Options Flow", "Volatility", "Scanner", "Money Map", "Dark Pool", "Signals", "TradingView")
 
 
 def open_heatmap():
@@ -210,20 +209,25 @@ def expiration_picker(ticker, now, preview, paused, store):
 
 
 def header(page):
-    title, subtitle, _ = PAGES_LABEL[page]
-    left, right = st.columns([2.7, 1.2], vertical_alignment="bottom")
-    left.markdown('<div class="qd-page"><div><div class="qd-eyebrow">QUANT DESK / MARKET WORKSPACE</div>'
-                  f'<h1>{esc(title)}</h1><p>{esc(subtitle)}</p></div></div>', unsafe_allow_html=True)
-    with right.form("command_symbol", border=False):
-        a, b = st.columns([2.7, 1], vertical_alignment="center")
-        a.text_input("Ticker", placeholder="SPY, SPX, NVDA…", max_chars=12,
-                     label_visibility="collapsed", key="desk_symbol_input")
-        b.form_submit_button("Open", type="primary", on_click=open_symbol, width="stretch")
+    title = PAGES_LABEL[page][0]
+    left, right = st.container(key="qd_page_header").columns([2.7, 1.2], vertical_alignment="bottom")
+    left.markdown(f'<div class="qd-page"><h1>{esc(title)}</h1></div>', unsafe_allow_html=True)
+    if page in ("Movement Detector", "Contracts"):
+        with right.container(horizontal=True, gap="small", vertical_alignment="center"):
+            for symbol in ("SPY", "SPX", "QQQ"):
+                st.button(symbol, key=f"watch_{symbol}", type="primary" if symbol == st.session_state["desk_ticker"] else "secondary",
+                          on_click=choose_ticker, args=(symbol,))
+    else:
+        with right.form("command_symbol", border=False):
+            a, b = st.columns([2.7, 1], vertical_alignment="center")
+            a.text_input("Ticker", placeholder="SPY, SPX, NVDA…", max_chars=12,
+                         label_visibility="collapsed", key="desk_symbol_input")
+            b.form_submit_button("Open", type="primary", on_click=open_symbol, width="stretch")
     if st.session_state.get("desk_symbol_error"):
         st.warning(st.session_state["desk_symbol_error"])
 
 
-def symbol_bar(ctx):
+def symbol_bar(ctx, *, show_scope=True):
     quote = ctx.quote()
     if ctx.price_provider == "Webull":
         quote_badge = "FRESH QUOTE" if ctx.webull_quality.get("quote_ready") else ctx.webull_quality.get("status", "Waiting for quote")
@@ -239,10 +243,12 @@ def symbol_bar(ctx):
         stamp = et_time(quote.get("price_at"))
     age = age_text(quote_age(quote.get("price_at") or quote.get("time"), ctx.now))
     basis = "Preview" if ctx.preview else ctx.price_provider
-    q_tone = "preview" if ctx.preview else "good" if quote_badge in ("RECENT", "FRESH QUOTE") else "warn"
+    q_tone = "good" if quote_badge in ("RECENT", "FRESH QUOTE") else "warn"
+    quote_status = "" if ctx.preview else tag(quote_badge, q_tone)
+    scope = f'<span class="qd-symbol-name">{esc(ctx.scope)}</span>' if show_scope else ""
     st.markdown('<div class="qd-symbol-bar">' + symbol + '<div class="qd-spacer"></div>' + mode +
-                tag(label) + tag(quote_badge, q_tone) + f'<span class="qd-symbol-name">{esc(basis)} · {esc(stamp)} · {esc(age)}</span>'
-                f'<span class="qd-symbol-name">{esc(ctx.scope)}</span></div>',
+                tag(label) + quote_status + f'<span class="qd-symbol-name">{esc(basis)} · {amount(quote.get("price"))} · {esc(stamp)} · {esc(age)}</span>'
+                f'{scope}</div>',
                 unsafe_allow_html=True)
 
 
@@ -267,8 +273,7 @@ def market_strip(ctx):
 
 def main():
     st.set_page_config(page_title="Quant Desk | Options Intelligence", page_icon="◈", layout="wide", initial_sidebar_state="auto")
-    st.session_state.setdefault("desk_dark_mode", False)
-    st.markdown(theme_css("Dark" if st.session_state["desk_dark_mode"] else "Light"), unsafe_allow_html=True)
+    st.markdown(STYLE, unsafe_allow_html=True)
     local = dotenv_values(ROOT / ".env")
     key = config_value(local, "TRADYTICS_API_KEY")
     auth = config_value(local, "TRADYTICS_AUTH_MODE", "query").lower()
@@ -301,21 +306,27 @@ def main():
     with st.sidebar:
         st.markdown('<div class="qd-brand"><div class="qd-mark">◈</div><div><div class="qd-name">Quant Desk</div>'
                     f'<div class="qd-brand-sub">Options intelligence · {VERSION}</div></div></div>', unsafe_allow_html=True)
-        st.toggle("Dark mode", key="desk_dark_mode", help="Switch between the light and dark dashboard themes.")
-        for col, symbol in zip(st.columns(3, gap="small"), ("SPY", "SPX", "QQQ")):
-            col.button(symbol, key=f"watch_{symbol}", width="stretch", on_click=choose_ticker, args=(symbol,))
+        active = st.session_state["desk_page"]
+        choices = (*PRIMARY_PAGES, active) if active in RESEARCH_TOOLS else PRIMARY_PAGES
+        page = st.selectbox("Workspace", choices, format_func=lambda value: NAV_LABELS.get(value, value), key="desk_page")
+        with st.expander("Research tools"):
+            for tool in RESEARCH_TOOLS:
+                st.button(NAV_LABELS.get(tool, tool), key=f"open_tool_{tool}", on_click=go_to, args=(tool,), width="stretch")
+            st.button("Dealer heat map", key="desk_map", on_click=open_heatmap, width="stretch")
+        if page not in ("Contracts", "Movement Detector"):
+            with st.container(horizontal=True, gap="small"):
+                for symbol in ("SPY", "SPX", "QQQ"):
+                    st.button(symbol, key=f"watch_{symbol}", on_click=choose_ticker, args=(symbol,),
+                              type="primary" if symbol == ticker else "secondary")
         mode = st.segmented_control("Workspace mode", ["Live", "Preview"], key="desk_mode") or "Live"
-        dte, expiry_mode = expiration_picker(ticker, DEMO_AT if mode == "Preview" else datetime.now(UTC), mode == "Preview",
-                                             st.session_state.get("desk_paused", False), store)
-        st.markdown('<div class="qd-rule"></div><div class="qd-nav-label">Workspace</div>', unsafe_allow_html=True)
-        first, second = st.columns(2, gap="small")
-        first.button("Chart", key="desk_chart", on_click=go_to, args=("Overview",), width="stretch")
-        second.button("Movement", key="desk_movement", on_click=go_to, args=("Movement Detector",), width="stretch")
-        first.button("Trade plan", key="desk_plan", on_click=go_to, args=("Trade Plan",), width="stretch")
-        second.button("Dealer map", key="desk_map", on_click=open_heatmap, width="stretch")
-        grouped = {page: f"{group} · {NAV_LABELS.get(page, page)}"
-                   for group, pages in PAGE_GROUPS.items() for page in pages}
-        page = st.selectbox("Browse workspace", list(grouped), format_func=grouped.get, key="desk_page")
+        if page == "Contracts":
+            # The contract workspace selects an actual series from its own listed expirations.
+            # Preserve the global scope selection for the other workspaces.
+            st.session_state["desk_expiry_mode"] = st.session_state["desk_expiry_mode"]
+            dte, expiry_mode = None, "All DTE"
+        else:
+            dte, expiry_mode = expiration_picker(ticker, DEMO_AT if mode == "Preview" else datetime.now(UTC),
+                                                 mode == "Preview", st.session_state.get("desk_paused", False), store)
         with st.expander("Feed controls"):
             providers = ["Auto", "Webull", "Tradytics"]
             if ticker == "SPX":
@@ -380,8 +391,6 @@ def main():
     header(page)
     if config_error and not preview:
         st.warning(config_error)
-    if preview and not key:
-        st.caption("Preview uses illustrative data. Add your Tradytics key to .env and restart to load your live feeds.")
     if not preview and not key and price_provider == "Tradytics":
         st.info("Set TRADYTICS_API_KEY in the local .env file. Use Preview to explore every chart while you set up the feeds.")
     webull = None
@@ -420,7 +429,7 @@ def main():
             listing = ctx.get("expirations", symbol=ticker)
             ctx.dte = first_listed_dte(listing, ticker, ctx.session, ctx.now)
             ctx.expiry_waiting = ctx.dte is None
-        symbol_bar(ctx)
+        symbol_bar(ctx, show_scope=page != "Contracts")
         if page == "Overview":
             market_strip(ctx)
         PAGES[page](ctx)

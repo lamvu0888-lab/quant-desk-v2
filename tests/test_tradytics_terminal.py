@@ -138,7 +138,10 @@ def test_terminal_preview_pages_and_index_switch(monkeypatch):
     assert app.session_state["desk_ticker"] == "SPX"
     assert not app.exception
     for page in ("Options Flow", "Positioning", "Volatility", "Dark Pool", "Signals", "Forecast", "Data Health", "Learn"):
-        app.selectbox(key="desk_page").set_value(page).run()
+        if page in ("Options Flow", "Volatility", "Dark Pool", "Signals"):
+            app.button(key=f"open_tool_{page}").click().run()
+        else:
+            app.selectbox(key="desk_page").set_value(page).run()
         assert not app.exception, page
     app.button(key="learn_open_page").click().run()
     assert app.session_state["desk_page"] == "Overview"
@@ -152,7 +155,7 @@ def test_learn_chart_catalog_and_holding_periods(monkeypatch):
     monkeypatch.delenv("TRADYTICS_API_KEY", raising=False)
     catalog = load_sections("learn_charts.md")
     assert set(catalog) == set(PAGES_LABEL) - {"Learn"}
-    assert catalog["Movement Detector"].count("### ") == 9
+    assert "Price and pressure history" in catalog["Movement Detector"]
 
     app = AppTest.from_file(str(Path(__file__).resolve().parents[1] / "terminal.py"), default_timeout=20).run()
     app.selectbox(key="desk_page").set_value("Learn").run()

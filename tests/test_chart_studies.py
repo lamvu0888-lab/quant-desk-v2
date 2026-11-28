@@ -67,12 +67,12 @@ def test_chart_workspace_normal_routes(monkeypatch):
     def traces():
         chart = next(x.proto for x in app.get("plotly_chart") if "price_action_chart" in x.proto.id)
         return {t["name"]: t for t in json.loads(chart.spec)["data"]}
-    for button, page in (("desk_map", "Positioning"), ("desk_movement", "Movement Detector"),
-                         ("desk_plan", "Trade Plan"), ("desk_chart", "Overview")):
-        app.button(key=button).click().run()
+    app.button(key="desk_map").click().run()
+    assert app.session_state["desk_page"] == "Positioning"
+    assert app.segmented_control(key="positioning_view").value == "Heat map"
+    for page in ("Movement Detector","Trade Plan","Overview"):
+        app.selectbox(key="desk_page").set_value(page).run()
         assert not app.exception and app.session_state["desk_page"] == page
-        if page == "Positioning":
-            assert app.segmented_control(key="positioning_view").value == "Heat map"
     app.segmented_control(key="overview_timeframe").set_value("3m").run()
     app.multiselect(key="chart_session_studies").set_value([OPENING, ANCHOR, BANDS, MTF]).run()
     app.selectbox(key="chart_oscillator").set_value(RSI).run()

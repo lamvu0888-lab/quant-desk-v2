@@ -164,6 +164,7 @@ def exact_timeline(upper, lower, session, now, interval):
         result.append({"time": row["time"], "date": row["date"], "price": row.get("price"), **values})
     delay = max(numeric(feed.snapshot.meta.get("delay_minutes")) or 0 for feed in (upper, lower))
     return Feed(Snapshot(result, {"date": str(session), "interval": interval, "matched_intervals": len(result), "delay_minutes": delay,
+                                  "synthetic": any(x.snapshot.meta.get("synthetic") or x.snapshot.meta.get("sandbox") for x in (upper, lower)),
                                   "source_intervals": max(len(a), len(b))}, latest), loading=upper.loading or lower.loading)
 
 
